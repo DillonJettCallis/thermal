@@ -1,0 +1,30 @@
+
+
+fun higherMath(op: { Int, Int -> Int }): Int {
+  return op(2, 2);
+}
+
+def higherInput(dyn op: def { Int -> Int }): Int {
+  return op(2);
+}
+
+
+
+
+
+fun higherOutput(op: def { Int -> def Int }): def Int {
+  return op(2);
+}
+
+fun returnHigher(num: Int): { def Int -> def Int } {
+  return { x -> x + num };
+}
+
+fun returnDynamicDef(message: def String): def { -> sig Int } {
+  var count = 0;
+  return { ->
+    log(message);
+    count += 1;
+    return count;
+  }
+}

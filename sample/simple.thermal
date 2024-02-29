@@ -1,0 +1,15 @@
+import Dom;
+
+def main(): Dom::Html {
+  return Dom::Html {
+    head: Dom::Head {
+      title: 'Sample page'
+    },
+    body: Dom::Body {
+      content: [
+        Dom::Element::Text('Sample body')
+      ]
+    }
+  }
+}
+

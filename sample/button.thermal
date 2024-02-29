@@ -1,0 +1,44 @@
+import Dom::{ Html, Head, Body, Element, Style, Display, FlexDirection, px };
+
+def main(): Html {
+  return Html {
+    head: Head {
+      title: 'Sample page'
+    },
+    body: Body {
+      content: [
+        Element::Text('Sample body')
+      ]
+    }
+  }
+}
+
+def clickCounter(): Element {
+  var count: Int = 0;
+
+  return Element::Div {
+    style: Style {
+      display: Display::Flex,
+      flexDirection: FlexDirection::Row,
+      gap: px(10),
+    },
+    content: [
+      label(toString(count)),
+      Element::Button {
+        onClick: sig { count += 1; true }
+        content: [
+          Element::Text('Click here')
+        ]
+      }
+    ]
+  }
+}
+
+
+fun label(text: String): Element::Label {
+  return Element::Label {
+    content: [
+      Element::Text(text)
+    ]
+  };
+}
