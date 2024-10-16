@@ -1,59 +1,84 @@
 import {
   Access,
   AccessExpression,
+  AndExpression,
   AssignmentStatement,
   BlockEx,
   BooleanLiteralEx,
   CallEx,
   ConstantDeclaration,
   ConstructExpression,
+  ConstructFieldExpression,
   Declaration,
+  EnumAtomVariant,
   EnumDeclaration,
+  EnumStructVariant,
+  EnumTupleVariant,
   Expression,
+  ExpressionPhase,
   File,
+  FloatLiteralEx,
   FunctionDeclaration,
+  FunctionPhase,
   FunctionStatement,
   IdentifierEx,
   IfEx,
+  ImportDeclaration,
+  ImportExpression,
+  IntLiteralEx,
   isAccess,
   IsExpression,
-  isPhase,
+  isExpressionPhase,
+  isFunctionPhase,
   LambdaEx,
-  NominalType,
-  NumberLiteralEx,
-  Parameter,
-  ParameterizedType,
-  Phase,
+  ListLiteralEx,
+  MapLiteralEx,
+  NominalImportExpression,
+  NotExpression,
+  OrExpression,
   Position,
-  ResultType,
   ReturnEx,
+  SetLiteralEx,
   Statement,
   StaticAccessExpression,
   StringLiteralEx,
   StructDeclaration,
-  TypeExpression,
-  TypeParameter
-} from "./ast";
-import { isKind, Kind, Lexer, Token } from "./lexer";
-import { Set } from 'immutable';
+  StructField,
+  Symbol,
+  UncheckedFunctionTypeParameter,
+  UncheckedNominalType,
+  UncheckedParameter,
+  UncheckedParameterizedType,
+  UncheckedTypeExpression,
+  UncheckedTypeParameterType
+} from "./ast.js";
+import { isKind, Kind, Lexer, Token } from "./lexer.js";
+import { Map, Seq, Set } from 'immutable';
 
 export class Parser {
 
   readonly #tokens: Array<Token>;
   readonly #limit: number;
+  readonly #module: Symbol;
 
   #index: number = 0;
 
-  private constructor(tokens: Token[]) {
+  private constructor(tokens: Token[], module: Symbol) {
     this.#tokens = tokens;
     this.#limit = tokens.length;
+    this.#module = module;
   }
 
-  static parseFile(path: string): File {
+  static parseFile(path: string, module: Symbol): File {
     return {
       src: path,
-      declarations: new Parser(Lexer.lexFile(path)).#parseFile(),
+      module,
+      declarations: new Parser(Lexer.lexFile(path), module).#parseFile(),
     }
+  }
+
+  static parseExpression(path: string, content: string, module: Symbol): Expression {
+    return new Parser(Lexer.lexString(path, content), module).#parseExpression();
   }
 
   #endOfFile(): boolean {
@@ -64,12 +89,20 @@ export class Parser {
     if (this.#endOfFile()) {
       throw new Error('Out of bounds');
     } else {
-      return this.#tokens[this.#index];
+      return this.#tokens[this.#index]!!;
     }
   }
 
   #skip(): void {
     this.#index++;
+  }
+
+  #prev(): Token {
+    if (this.#index === 0) {
+      throw new Error('Out of bounds');
+    } else {
+      return this.#tokens[this.#index - 1]!!;
+    }
   }
 
   #next(): Token {
@@ -83,7 +116,7 @@ export class Parser {
 
     if (isKind(next, kind)) {
       this.#skip();
-      return next;
+      return next as { pos: Position, kind: Test, value: string };
     } else {
       return undefined;
     }
@@ -94,9 +127,9 @@ export class Parser {
 
     if (isKind(next, kind)) {
       this.#skip();
-      return next;
+      return next as { pos: Position, kind: Test, value: string };
     } else {
-      return next.pos.fail(`Expected token type '${kind}' but found ${next.kind}`);
+      return next.pos.fail(`Expected token type '${kind}' but found ${next.kind} '${next.value}'`);
     }
   }
 
@@ -122,6 +155,10 @@ export class Parser {
   }
 
   #checkSymbol(symbol: string): boolean {
+    if (this.#endOfFile()) {
+      return false;
+    }
+
     const next = this.#peek();
 
     if (isKind(next, 'symbol') && next.value === symbol) {
@@ -148,6 +185,11 @@ export class Parser {
 
     while (!this.#endOfFile()) {
       decs.push(this.#parseDeclaration());
+
+      // skip semi-colons
+      while (!this.#endOfFile() && this.#peek().value === ';') {
+        this.#skip();
+      }
     }
 
     return decs;
@@ -155,46 +197,119 @@ export class Parser {
 
   #parseDeclaration(): Declaration {
     const first = this.#assertKind('keyword');
+
+    if (first.value === 'import') {
+      return this.#parseImportDeclare(first.pos);
+    }
+
+    const extern = this.#checkKeyword('extern');
+
     const [access, keyword] = isAccess(first.value)
       ? [first.value, this.#assertKind('keyword')]
       : ['internal' as const, first];
 
     switch (keyword.value) {
       case 'const':
+        if (extern) {
+          keyword.pos.fail(`Structs cannot be 'extern'`);
+        }
         return this.#parseConstDeclare(access, first.pos);
       case 'fun':
-        return this.#parseFunctionDeclare(access, first.pos);
+      case 'def':
+      case 'sig':
+        return this.#parseFunctionDeclare(extern, access, keyword.value, first.pos);
       case 'struct':
+        if (extern) {
+          keyword.pos.fail(`Structs cannot be 'extern'`);
+        }
         return this.#parseStructDeclare(access, first.pos);
       case 'enum':
+        if (extern) {
+          keyword.pos.fail(`Enums cannot be 'extern'`);
+        }
         return this.#parseEnumDeclare(access, first.pos);
+      case 'import':
       default:
         return first.pos.fail(`Expected declaration but found ${first.kind} '${first.value}'`);
     }
   }
 
+  #parseImportDeclare(pos: Position): ImportDeclaration {
+    // we've already parsed the 'import' keyword
+    const pack = this.#parseNominalImport();
+    this.#assertSymbol('/');
+    const ex = this.#parseImportExpression();
+
+    return {
+      pos,
+      kind: 'import',
+      package: pack,
+      ex,
+    }
+  }
+
+  #parseImportExpression(): ImportExpression {
+    const base = this.#parseNominalImport();
+
+    if (this.#checkSymbol('::')) {
+      if (this.#checkSymbol('{')) {
+        return {
+          pos: base.pos,
+          kind: 'nested',
+          base,
+          children: this.#parseList('}', true, () => this.#parseImportExpression()),
+        }
+      } else {
+        return {
+          pos: base.pos,
+          kind: 'nested',
+          base,
+          children: [this.#parseImportExpression()],
+        }
+      }
+    } else {
+      return base;
+    }
+  }
+
+  #parseNominalImport(): NominalImportExpression {
+    const name = this.#assertKind('identifier');
+
+    return {
+      pos: name.pos,
+      kind: 'nominal',
+      name: name.value,
+    };
+  }
 
   #parseConstDeclare(access: Access, pos: Position): ConstantDeclaration {
     // we've already parsed the 'const' keyword and the access modifier
 
     const nameToken = this.#assertKind('identifier');
     this.#assertSymbol(':');
+    const type = this.#parseTypeExpression();
+    this.#assertSymbol('=');
     const expression = this.#parseExpression();
 
     return {
       pos,
+      kind: 'const',
       access,
+      symbol: this.#module.child(nameToken.value),
       name: nameToken.value,
+      type,
       expression,
     }
   }
 
-  #parseFunctionDeclare(access: Access, pos: Position): FunctionDeclaration {
-    const func = this.#parseFunctionStatement(pos);
+  #parseFunctionDeclare(extern: boolean, access: Access, phase: FunctionPhase, pos: Position): FunctionDeclaration {
+    const func = this.#parseFunctionStatement(phase, pos);
 
     return {
       ...func,
+      extern,
       access,
+      symbol: this.#module.child(func.name),
       pos,
     };
   }
@@ -204,16 +319,13 @@ export class Parser {
     const typeParams = this.#parseTypeParams();
 
     this.#assertSymbol('{');
-    const fields: { [key: string]: TypeExpression } = Object.fromEntries(this.#parseList('}', true, () => {
-      const name = this.#assertKind('identifier').value;
-      this.#assertSymbol(':');
-      const type = this.#parseTypeExpression();
-      return [name, type] as const;
-    }));
+    const fields: Map<string, StructField> = Map(this.#parseList('}', true, () => this.#parseStructField()));
 
     return {
       pos,
+      kind: 'struct',
       access,
+      symbol: this.#module.child(name),
       name,
       typeParams,
       fields,
@@ -224,44 +336,64 @@ export class Parser {
     const name = this.#assertKind('identifier').value;
     const typeParams = this.#parseTypeParams();
     this.#assertSymbol('{');
-    const variants = Object.fromEntries(this.#parseList('}', true, () => {
-      const name = this.#assertKind('identifier').value;
+    const symbol = this.#module.child(name);
+
+    const variants = Seq(this.#parseList('}', true, () => {
+      const nameToken = this.#assertKind('identifier');
+      const name = nameToken.value;
+      const pos = nameToken.pos;
       const next = this.#assertKind('symbol');
 
       switch (next.value) {
         case '{': {
-          const fields: { [key: string]: TypeExpression } = Object.fromEntries(this.#parseList('}', true, () => {
-            const name = this.#assertKind('identifier').value;
-            this.#assertSymbol(':');
-            const type = this.#parseTypeExpression();
-            return [name, type] as const;
-          }));
+          const fields: Map<string, StructField> = Map(this.#parseList('}', true, () => this.#parseStructField()));
 
-          return [name, {fields}] as const;
+          return [name, { pos, kind: 'struct', symbol: symbol.child(name), fields } satisfies EnumStructVariant] as const;
         }
         case '(': {
-          const fields: TypeExpression[] = this.#parseList(')', false, () => {
+          const fields: UncheckedTypeExpression[] = this.#parseList(')', false, () => {
             return this.#parseTypeExpression();
           });
-          return [name, {fields}];
+          return [name, { pos, kind: 'tuple', fields, symbol: symbol.child(name) } satisfies EnumTupleVariant] as const;
         }
-        case ':':
-          return [name, {type: this.#parseTypeExpression()} as const];
         default:
-          return next.pos.fail(`Expected enum variant but found symbol '${next.value}'`);
+          return [name, { pos, kind: 'atom', symbol: symbol.child(name) } satisfies EnumAtomVariant] as const;
       }
-    }));
+    })).toKeyedSeq()
+      .mapKeys((_, pair) => pair[0])
+      .map(pair => pair[1])
+      .toMap();
 
     return {
       pos,
+      kind: 'enum',
       access,
+      symbol,
       name,
       typeParams,
       variants,
     }
   }
 
-  #parseFunctionStatement(pos: Position): FunctionStatement {
+  #parseStructField(): [string, StructField] {
+    const name = this.#assertKind('identifier').value;
+    this.#assertSymbol(':');
+    const type = this.#parseTypeExpression();
+
+    const defaultEx = this.#checkSymbol('=')
+      ? this.#parseExpression()
+      : undefined;
+
+    return [
+      name,
+      {
+        type,
+        default: defaultEx,
+      }
+    ]
+  }
+
+  #parseFunctionStatement(phase: FunctionPhase, pos: Position): FunctionStatement {
     // the word 'fun' has already been parsed by this point
     const name = this.#assertKind('identifier').value;
     const typeParams = this.#parseTypeParams();
@@ -269,7 +401,7 @@ export class Parser {
     const params = this.#parseList(')', false, () => {
       const first = this.#next();
 
-      if (first.kind === 'keyword' && isPhase(first.value)) {
+      if (first.kind === 'keyword' && isExpressionPhase(first.value)) {
         const phase = first.value;
         const name = this.#assertKind('identifier').value;
         this.#assertSymbol(':');
@@ -279,7 +411,7 @@ export class Parser {
           phase,
           name,
           type,
-        } satisfies Parameter;
+        } satisfies UncheckedParameter;
       } else if (first.kind === 'identifier') {
         const name = first.value;
         this.#assertSymbol(':');
@@ -289,13 +421,13 @@ export class Parser {
           phase: undefined,
           name,
           type,
-        } satisfies Parameter;
+        } satisfies UncheckedParameter;
       } else {
         return first.pos.fail(`Expected parameter, found ${first.kind} '${first.value}'`);
       }
     });
     this.#assertSymbol(':');
-    const resultType = this.#parseResultType();
+    const resultType = this.#parseTypeExpression();
 
     const final = this.#assertKind('symbol');
     const body = final.value === '='
@@ -308,6 +440,7 @@ export class Parser {
       kind: 'function',
       pos,
       name,
+      phase,
       typeParams,
       params,
       resultType,
@@ -320,11 +453,10 @@ export class Parser {
 
     if (first.kind === 'symbol' && first.value === '{') {
       this.#skip();
-      if (this.#checkLambda(first.pos)) {
-        return this.#parseLambda(first.pos);
-      } else {
-        return this.#parseBlockExpression(first.pos);
-      }
+      return this.#parseBlockExpression(first.pos);
+    } else if (first.kind === 'keyword' && isFunctionPhase(first.value)) {
+      this.#skip();
+      return this.#parseLambda(first.value, first.pos);
     } else if (first.kind === 'keyword' && first.value === 'if') {
       this.#skip();
       return this.#parseIfExpression(first.pos);
@@ -336,55 +468,34 @@ export class Parser {
     }
   }
 
-  // after parsing a brace, this code will figure out of this is a lambda or a block
-  #checkLambda(pos: Position): boolean {
-    let depth = 1;
+  #parseLambda(phase: FunctionPhase, pos: Position): LambdaEx {
+    // the opening phase has already been parsed
+    this.#assertSymbol('{');
 
-    for (let i = this.#index + 1; i < this.#limit; i++) {
-      const next = this.#tokens[i];
-      if (next.kind === 'symbol') {
-        switch (next.value) {
-          case '{':
-            ++depth;
-            break;
-          case '}':
-            if (--depth === 0) {
-              return false;
-            }
-            break;
-          case '=>':
-            if (depth === 0) {
-              return true
-            }
-        }
-      }
-    }
-
-    pos.fail('Unclosed brace starting');
-  }
-
-  #parseLambda(pos: Position): LambdaEx {
-    // the opening { has already been parsed
     return {
       pos,
       kind: 'function',
+      phase,
       params: this.#parseList('=>', false, () => {
-        const name = this.#assertKind('identifier');
+        const first = this.#next();
+        const [phase, name] = isExpressionPhase(first.value)
+          ? [first.value, this.#assertKind('identifier')]
+          : [undefined, first];
 
         if (this.#checkSymbol(':')) {
           return {
             pos: name.pos,
-            phase: undefined,
+            phase,
             name: name.value,
             type: this.#parseTypeExpression(),
-          } satisfies Parameter;
+          } satisfies UncheckedParameter;
         } else {
           return {
             pos: name.pos,
-            phase: undefined,
+            phase,
             name: name.value,
             type: undefined,
-          } satisfies Parameter;
+          } satisfies UncheckedParameter;
         }
       }),
       body: this.#parseBlockExpression(pos),
@@ -425,12 +536,26 @@ export class Parser {
     const sum = this.#parseBinaryExpSet(Set.of("+", "-"), prod)
     const compare = this.#parseBinaryExpSet(Set.of(">", ">=", "<", "<="), sum)
     const equal = this.#parseBinaryExpSet(Set.of("==", "!="), compare)
-    const and = this.#parseBinaryExpSet(Set.of("&&"), equal)
-    const or = this.#parseBinaryExpSet(Set.of("||"), and)
+    const and = this.#parseBinaryExpSet(Set.of("&&"), equal, (pos, left, right) => {
+      return {
+        pos,
+        kind: 'and',
+        left,
+        right,
+      } satisfies AndExpression;
+    });
+    const or = this.#parseBinaryExpSet(Set.of("||"), and, (pos, left, right) => {
+      return {
+        pos,
+        kind: 'or',
+        left,
+        right,
+      } satisfies OrExpression;
+    });
     return or()
   }
 
-  #parseBinaryExpSet(ops: Set<string>, tail: () => Expression): () => Expression {
+  #parseBinaryExpSet(ops: Set<string>, tail: () => Expression, handler?: (pos: Position, left: Expression, right: Expression) => Expression): () => Expression {
     const recurse = (): Expression => {
       const left = tail();
 
@@ -441,6 +566,13 @@ export class Parser {
       const next = this.#peek();
 
       if (ops.has(next.value)) {
+        this.#skip();
+        const right = recurse();
+
+        if (handler !== undefined) {
+          return handler(next.pos, left, right);
+        }
+
         return {
           pos: next.pos,
           kind: 'call',
@@ -452,7 +584,7 @@ export class Parser {
           typeArgs: undefined,
           args: [
             left,
-            recurse(),
+            right,
           ]
         } satisfies CallEx;
       } else {
@@ -465,6 +597,11 @@ export class Parser {
 
   #parseIsExpression(): Expression {
     const base = this.#parseCallExpression();
+
+    if (this.#endOfFile()) {
+      return base;
+    }
+
     const next = this.#peek();
 
     if (next.value === 'is' || next.value === '!is') {
@@ -474,7 +611,7 @@ export class Parser {
         kind: 'is',
         not: next.value === '!is',
         base,
-        type: this.#parseTypeExpression(),
+        check: this.#parseTypeExpression(),
       } satisfies IsExpression;
     } else {
       return base;
@@ -486,7 +623,7 @@ export class Parser {
     const typeArgs = this.#parseFunctionTypeArguments();
 
     if (this.#checkSymbol('(')) {
-      const args = this.#parseList(')', false, () => this.#parseExpression());
+      const args = this.#parseList(')', true, () => this.#parseExpression());
 
       return {
         pos: base.pos,
@@ -504,7 +641,7 @@ export class Parser {
     }
   }
 
-  #parseFunctionTypeArguments(): TypeExpression[] | undefined {
+  #parseFunctionTypeArguments(): UncheckedTypeExpression[] | undefined {
     if (this.#checkSymbol('[')) {
       return this.#parseList(']', false, () => this.#parseTypeExpression());
     } else {
@@ -523,18 +660,20 @@ export class Parser {
           const value = this.#parseExpression();
 
           return {
+            pos: name.pos,
             name: name.value,
             value,
-          } satisfies { name: string, value: Expression };
+          } satisfies ConstructFieldExpression;
         } else {
           return {
+            pos: name.pos,
             name: name.value,
             value: {
               pos: name.pos,
               kind: 'identifier',
               name: name.value,
             }
-          } satisfies { name: string, value: IdentifierEx };
+          } satisfies ConstructFieldExpression;
         }
       });
 
@@ -550,12 +689,13 @@ export class Parser {
   }
 
   #parseAccessExpression(): Expression {
-    let base = this.#parseStaticAccessExpression();
+    let base = this.#parseCollectionLiteral();
 
     while (this.#checkSymbol('.')) {
+      const pos = this.#prev().pos;
       const field = this.#assertKind('identifier');
       base = {
-        pos: field.pos,
+        pos,
         kind: 'access',
         base,
         field: {
@@ -569,11 +709,104 @@ export class Parser {
     return base;
   }
 
+  #parseCollectionLiteral(): Expression {
+    const next = this.#peek();
+
+    switch (next.value) {
+      case '[':
+        this.#skip();
+        return {
+          pos: next.pos,
+          kind: 'list',
+          values: this.#parseList(']', true, () => this.#parseExpression()),
+        } satisfies ListLiteralEx;
+      case '%[':
+        this.#skip();
+        return {
+          pos: next.pos,
+          kind: 'set',
+          values: this.#parseList(']', true, () => this.#parseExpression()),
+        } satisfies SetLiteralEx;
+      case '#[':
+        this.#skip();
+        return {
+          pos: next.pos,
+          kind: 'map',
+          values: this.#parseList(']', true, () => {
+            const key = this.#parseExpression();
+            this.#assertSymbol(':');
+            const value = this.#parseExpression();
+            return {
+              key,
+              value,
+            };
+          }),
+        } satisfies MapLiteralEx;
+      default:
+        return this.#parseNot();
+    }
+  }
+
+  #parseNot(): Expression {
+    const next = this.#peek();
+
+    if (next.value === '!') {
+      this.#skip();
+
+      return {
+        pos: next.pos,
+        kind: 'not',
+        base: this.#parseNegate(),
+      } satisfies NotExpression;
+    } else {
+      return this.#parseNegate();
+    }
+  }
+
+  #parseNegate(): Expression {
+    const next = this.#peek();
+
+    if (next.value === '-') {
+      this.#skip();
+
+      return {
+        pos: next.pos,
+        kind: 'call',
+        func: {
+          pos: next.pos,
+          kind: 'staticAccess',
+          path: [
+            {
+              pos: next.pos,
+              kind: 'identifier',
+              name: 'core'
+            }, {
+              pos: next.pos,
+              kind: 'identifier',
+              name: 'math'
+            }, {
+              pos: next.pos,
+              kind: 'identifier',
+              name: 'negate'
+            }
+          ],
+        } satisfies StaticAccessExpression,
+        typeArgs: [],
+        args: [
+          this.#parseStaticAccessExpression(),
+        ],
+      } satisfies CallEx;
+    } else {
+      return this.#parseStaticAccessExpression();
+    }
+  }
+
   #parseStaticAccessExpression(): Expression {
     let base = this.#parseTerm();
 
     if (base.kind === 'identifier' && this.#checkSymbol('::')) {
-      const path = [] as IdentifierEx[];
+      const path = [base] as IdentifierEx[];
+      const pos = this.#prev().pos;
 
       do {
         const field = this.#assertKind('identifier');
@@ -586,7 +819,7 @@ export class Parser {
       } while (this.#checkSymbol('::'));
 
       return {
-        pos: base.pos,
+        pos,
         kind: 'staticAccess',
         path,
       } satisfies StaticAccessExpression;
@@ -605,11 +838,22 @@ export class Parser {
         value: next.value,
       } satisfies StringLiteralEx;
     } else if (next.kind === 'number') {
-      return {
-        pos: next.pos,
-        kind: 'numberLiteral',
-        value: next.value,
-      } satisfies NumberLiteralEx;
+      // TODO: there is more to number literals than this
+      const num = Number.parseFloat(next.value)
+
+      if (Number.isSafeInteger(num)) {
+        return {
+          pos: next.pos,
+          kind: 'intLiteral',
+          value: num,
+        } satisfies IntLiteralEx;
+      } else {
+        return {
+          pos: next.pos,
+          kind: 'floatLiteral',
+          value: num,
+        } satisfies FloatLiteralEx;
+      }
     } else if (next.kind === 'keyword' && (next.value === 'true' || next.value === 'false')) {
       return {
         pos: next.pos,
@@ -627,6 +871,8 @@ export class Parser {
     }
   }
 
+  static readonly #reassignmentOps = Set.of('=', '+=', '-=', '*=', '/=');
+
   #parseBlockExpression(pos: Position): BlockEx {
     // the opening brace has already been parsed
     const body = [] as Statement[];
@@ -636,19 +882,59 @@ export class Parser {
 
       if (first.kind === 'symbol' && first.value === ';') {
         // do nothing
-      } else if (first.kind === 'keyword' && first.value === 'fun') {
         this.#skip();
-        body.push(this.#parseFunctionStatement(pos));
-      } else if (first.kind === 'keyword' && isPhase(first.value)) {
+      } else if (first.kind === 'keyword' && isFunctionPhase(first.value)) {
+        this.#skip();
+        body.push(this.#parseFunctionStatement(first.value, pos));
+      } else if (first.kind === 'keyword' && isExpressionPhase(first.value)) {
         this.#skip();
         body.push(this.#parseAssignment(first.value, pos));
       } else {
         const expression = this.#parseExpression();
-        body.push({
-          kind: 'expression',
-          pos,
-          expression,
-        })
+        const possibleAssignment = this.#peek();
+
+        if (expression.kind === 'identifier' && possibleAssignment.kind === 'symbol' && Parser.#reassignmentOps.has(possibleAssignment.value)) {
+          this.#skip();
+          const content = this.#parseExpression();
+
+          if (possibleAssignment.value === '=') {
+            body.push({
+              kind: 'reassignment',
+              pos,
+              name: expression.name,
+              expression: content,
+            })
+          } else {
+            // desugar +=, -=, *= and /= into normal assignments calling their operator functions
+            body.push({
+              kind: 'reassignment',
+              pos,
+              name: expression.name,
+              expression: {
+                kind: 'call',
+                pos: possibleAssignment.pos,
+                func: {
+                  kind: 'identifier',
+                  pos: possibleAssignment.pos,
+                  name: possibleAssignment.value[0]!!,
+                },
+                typeArgs: undefined,
+                args: [
+                  expression,
+                  content,
+                ]
+              },
+            });
+          }
+
+
+        } else {
+          body.push({
+            kind: 'expression',
+            pos,
+            expression,
+          });
+        }
       }
     }
 
@@ -659,7 +945,7 @@ export class Parser {
     }
   }
 
-  #parseAssignment(phase: Phase, pos: Position): AssignmentStatement {
+  #parseAssignment(phase: ExpressionPhase, pos: Position): AssignmentStatement {
     // the initial keyword has already been parsed
     const name = this.#assertKind('identifier').value;
     const type = this.#checkSymbol(':')
@@ -709,73 +995,69 @@ export class Parser {
     return items;
   }
 
-  #parseTypeParams(): TypeParameter[] {
-    if (this.#checkSymbol('[')) {
-      return this.#parseList(']', false, () => this.#parseTypeParam());
+  #parseTypeParams(): UncheckedTypeParameterType[] {
+    if (this.#checkSymbol('<')) {
+      return this.#parseList('>', false, () => {
+        const id = this.#assertKind('identifier');
+
+        return {
+          pos: id.pos,
+          kind: 'typeParameter',
+          name: id.value,
+        } satisfies UncheckedTypeParameterType;
+      });
     } else {
-      return [] as TypeParameter[];
+      return [] as UncheckedTypeParameterType[];
     }
   }
 
-  #parseTypeParam(): TypeParameter {
-    const { pos, value: name } = this.#assertKind('identifier');
+  #functionTypeParameter(): UncheckedFunctionTypeParameter {
+    const next = this.#peek();
 
-    if (this.#checkSymbol(':')) {
-      const type = this.#parseTypeExpression();
-
+    if (next.kind === 'keyword' && isExpressionPhase(next.value)) {
+      this.#skip();
       return {
-        pos,
-        name,
-        bound: {
-          constraint: 'invariant',
-          type,
-        }
-      } satisfies TypeParameter
-    } else if (this.#checkSymbol('<')) {
-      const type = this.#parseTypeExpression();
-
-      return {
-        pos,
-        name,
-        bound: {
-          constraint: 'covariant',
-          type,
-        }
-      } satisfies TypeParameter
-    } else if (this.#checkSymbol('>')) {
-      const type = this.#parseTypeExpression();
-
-      return {
-        pos,
-        name,
-        bound: {
-          constraint: 'contravariant',
-          type,
-        }
-      } satisfies TypeParameter
+        pos: next.pos,
+        phase: next.value,
+        type: this.#parseFunctionTypeExpression(),
+      }
     } else {
       return {
-        pos,
-        name,
-        bound: undefined,
-      } satisfies TypeParameter
+        pos: next.pos,
+        phase: undefined,
+        type: this.#parseFunctionTypeExpression(),
+      }
     }
   }
 
-  #parseTypeExpression(): TypeExpression {
+  #parseTypeExpression(): UncheckedTypeExpression {
     return this.#parseFunctionTypeExpression();
   }
 
-  #parseFunctionTypeExpression(): TypeExpression {
-    const pos = this.#peek().pos;
+  #parseFunctionTypeExpression(): UncheckedTypeExpression {
+    const next = this.#peek();
 
-    if (this.#checkSymbol('{')) {
-      const params = this.#parseList('=>', false, () => this.#parseTypeExpression());
-      const result = this.#parseResultType();
+    if (next.kind === 'keyword' && isFunctionPhase(next.value)) {
+      this.#skip();
+      this.#assertSymbol('{');
+      const params = this.#parseList('->', false, () => this.#functionTypeParameter());
+      const result = this.#parseTypeExpression();
       this.#assertSymbol('}');
       return {
-        pos,
+        pos: next.pos,
         kind: 'function',
+        phase: next.value,
+        params,
+        result,
+      }
+    } else if (this.#checkSymbol('{')) {
+      const params = this.#parseList('->', false, () => this.#functionTypeParameter());
+      const result = this.#parseTypeExpression();
+      this.#assertSymbol('}');
+      return {
+        pos: next.pos,
+        kind: 'function',
+        phase: 'fun',
         params,
         result,
       }
@@ -784,47 +1066,41 @@ export class Parser {
     }
   }
 
-  #parseParameterizedTypeExpression(): TypeExpression {
+  #parseParameterizedTypeExpression(): UncheckedTypeExpression {
     const base = this.#parseNominalTypeExpression();
 
-    if (this.#checkSymbol('[')) {
-      const args = this.#parseList(']', false, () => this.#parseTypeExpression());
+    if (this.#checkSymbol('<')) {
+      const args = this.#parseList('>', false, () => this.#parseTypeExpression());
 
       return {
         pos: base.pos,
         kind: 'parameterized',
         base,
         args,
-      } satisfies ParameterizedType;
+      } satisfies UncheckedParameterizedType;
     } else {
       return base;
     }
   }
 
-  #parseNominalTypeExpression(): NominalType {
-    const name = this.#assertKind('identifier');
+  #parseNominalTypeExpression(): UncheckedNominalType {
+    const pos = this.#peek().pos;
+    const name: IdentifierEx[] = [];
+
+    do {
+      const next = this.#assertKind('identifier');
+
+      name.push({
+        pos: next.pos,
+        kind: 'identifier',
+        name: next.value,
+      });
+    } while (!this.#endOfFile() && this.#checkSymbol('::'))
 
     return {
-      pos: name.pos,
+      pos,
       kind: 'nominal',
-      name: name.value,
-    }
-  }
-
-  #parseResultType(): ResultType {
-    const next = this.#peek();
-
-    if (next.kind === 'keyword' && isPhase(next.value)) {
-      this.#skip();
-      return {
-        phase: next.value,
-        type: this.#parseTypeExpression(),
-      } satisfies ResultType;
-    } else {
-      return {
-        phase: undefined,
-        type: this.#parseTypeExpression(),
-      } satisfies ResultType;
+      name,
     }
   }
 }

@@ -1,4 +1,4 @@
-import Dom::{ Html, Head, Body, Element, Style, Display, FlexDirection, px };
+import core/dom::{ Html, Head, Body, Element, elem, style, attr };
 
 def main(): Html {
   return Html {
@@ -7,7 +7,7 @@ def main(): Html {
     },
     body: Body {
       content: [
-        Element::Text('Sample body')
+        elem::text('Sample body')
       ]
     }
   }
@@ -16,29 +16,26 @@ def main(): Html {
 def clickCounter(): Element {
   var count: Int = 0;
 
-  return Element::Div {
-    style: Style {
-      display: Display::Flex,
-      flexDirection: FlexDirection::Row,
-      gap: px(10),
-    },
-    content: [
+  return elem::div (
+    [
+      style::display(style::Display::Flex),
+      style::flexDirection(style::FlexDirection::Row),
+      style::gap(style::px(10))
+    ], [
       label(toString(count)),
-      Element::Button {
-        onClick: sig { count += 1; true }
-        content: [
-          Element::Text('Click here')
-        ]
-      }
-    ]
-  }
+      elem::button ([
+          attr::onClick(sig { => count = count + 1; true }),
+        ], [
+          elem::text('Click here')
+      ])
+    ],
+  )
 }
 
 
-fun label(text: String): Element::Label {
-  return Element::Label {
-    content: [
-      Element::Text(text)
-    ]
-  };
+fun label(text: String): Element {
+  return elem::label(
+    [],
+    [elem::text(text)],
+  );
 }

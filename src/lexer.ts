@@ -1,37 +1,106 @@
-import { Position } from './ast';
 import { readFileSync } from 'node:fs';
 import { Set } from 'immutable';
+import { Position } from "./ast.js";
+
+const whitespace = Set(' \t\r\n');
+const digits = Set('0123456789');
+const number = digits.concat(Set('_.'));
+const quotes = Set('\'"`');
+const identifierStartTest = /^[\p{L}_]$/u;
+const identifierTest = /^[\p{L}_\d]$/u;
+const keywords = Set.of(
+  // the four expression types
+  'const',
+  'val',
+  'var',
+  'dyn',
+  // the three function types
+  'fun',
+  'def',
+  'sig',
+
+  // the data types
+  'struct',
+  'enum',
+
+  // the literals
+  'true',
+  'false',
+
+  // control flow
+  'if',
+  'else',
+  'match',
+  'return',
+
+  // operators
+  'is',
+  'isNot',
+
+  // namespacing
+  'import',
+
+  // access
+  'private',
+  'protected',
+  'package',
+  'public',
+  // the default value, 'internal' isn't marked with a keyword, and is only assessable by having no keywords
+
+  // for mapping in javascript
+  'extern',
+);
+const operators = Set.of(
+  // parens
+  '(',
+  ')',
+  '{',
+  '}',
+  // literals
+  '[',
+  '%[',
+  '#[',
+  ']',
+  // compare/generics
+  '<',
+  '>',
+  // comparison
+  '<=',
+  '>=',
+  '==',
+  '!=',
+  '<=>',
+  // math
+  '+',
+  '-',
+  '*',
+  '/',
+  // assignment math
+  '+=',
+  '-=',
+  '*=',
+  '/=',
+  // boolean
+  '!',
+  '&&',
+  '||',
+  // access
+  '.',
+  // assignment
+  ':',
+  '=',
+  // name spacing
+  '::',
+  // separators
+  ',',
+  ';',
+  // lambda
+  '->',
+  '=>',
+);
+const operatorSymbols = operators.flatMap(it => it);
 
 export class Lexer {
-
-  static #whitespace = Set(' \t\r\n');
-  static #uniqueSymbols = Set('(){}[],;+-*/.');
-  static #symbols = Lexer.#uniqueSymbols.concat('=<>&|!:');
-  static #digits = Set('0123456789');
-  static #number = Lexer.#digits.concat('_.');
-  static #quotes = Set('\'"`');
-  static #identifierStartTest = /^[\p{L}_]$/u;
-  static #identifierTest = /^[\p{L}_\d]$/u;
-  static #keywords = Set.of(
-    'const',
-    'val',
-    'var',
-    'def',
-    'sig',
-    'fun',
-    'struct',
-    'true',
-    'false',
-    'return',
-    'if',
-    'else',
-    'is',
-    'import',
-    'export',
-    'public',
-    'private',
-    'protected',
-  );
 
   readonly #src: string;
   readonly #content: string;
@@ -53,30 +122,35 @@ export class Lexer {
     return new Lexer(path, content).#lexFile();
   }
 
+  public static lexString(path: string, content: string): Token[] {
+    return new Lexer(path, content).#lexFile();
+  }
+
   #pos(): Position {
     return new Position(this.#src, this.#line, this.#col);
   }
 
   #endOfFile(): boolean {
-    return this.#index > this.#limit;
+    return this.#index >= this.#limit;
   }
 
   #peek(): string {
     if (this.#endOfFile()) {
       throw new Error('Out of bounds');
     } else {
-      return this.#content[this.#index];
+      return this.#content[this.#index]!!;
     }
   }
 
   #skip(): void {
-    this.#index++;
     if (this.#peek() == '\n') {
       this.#line++;
       this.#col = 1;
     } else {
       this.#col++;
     }
+
+    this.#index++;
   }
 
   #next(): string {
@@ -87,7 +161,7 @@ export class Lexer {
 
   #skipWhitespace(): boolean {
     // until we reach the end of the file, if the next char is whitespace, skip it
-    while (!this.#endOfFile() && Lexer.#whitespace.has(this.#peek())) {
+    while (!this.#endOfFile() && whitespace.has(this.#peek())) {
       this.#skip();
     }
 
@@ -106,25 +180,22 @@ export class Lexer {
 
   #lexNext(): Token {
     const pos = this.#pos();
-    const first = this.#peek();
+    const first = this.#next();
 
-    if (Lexer.#symbols.has(first)) {
-      this.#skip();
-
+    if (operatorSymbols.has(first)) {
       return {
         pos,
         kind: 'symbol',
-        value: this.#lexSymbol(first, pos),
+        value: this.#lexSymbol(first),
       }
     }
 
-    if (Lexer.#digits.has(first)) {
-      this.#skip();
+    if (digits.has(first)) {
       let num = first;
 
       while (!this.#endOfFile()) {
         const next = this.#peek();
-        if (Lexer.#number.has(next)) {
+        if (number.has(next)) {
           num += next;
           this.#skip();
         } else {
@@ -139,8 +210,7 @@ export class Lexer {
       }
     }
 
-    if (Lexer.#quotes.has(first)) {
-      this.#skip();
+    if (quotes.has(first)) {
       return {
         pos,
         kind: 'string',
@@ -148,12 +218,12 @@ export class Lexer {
       };
     }
 
-    if (Lexer.#identifierStartTest.test(first)) {
+    if (identifierStartTest.test(first)) {
       const word = this.#lexWord(first, pos);
 
       return {
         pos,
-        kind: Lexer.#keywords.has(word) ? 'keyword': 'identifier',
+        kind: keywords.has(word) ? 'keyword': 'identifier',
         value: word
       }
     }
@@ -161,116 +231,23 @@ export class Lexer {
     return pos.fail(`Unknown character ${first}`);
   }
 
-  #lexSymbol(first: string, pos: Position): string {
-    if (this.#endOfFile()) {
-      return first;
-    }
-
-    if (Lexer.#uniqueSymbols.has(first)) {
-      return first;
-    }
-
-    if (first === '<' || first === '>') {
+  #lexSymbol(first: string): string {
+    // until we reach the end of the file, check for the next character
+    while (!this.#endOfFile()) {
       const next = this.#peek();
+      const maybe = first + next;
 
-      if (next == '=') {
+      // if the next char is an op, if there is an op that we could be building toward, take it and continue
+      if (operatorSymbols.has(next) && operators.find(it => it.startsWith(maybe))) {
+        first = maybe;
         this.#skip();
-
-        if (!this.#endOfFile()) {
-          const last = this.#peek();
-
-          if (last === '>' || last === '<' || last === '=') {
-            pos.fail(`Invalid operator '${first}${next}${last}'`);
-          }
-        }
-
-        return first + next;
       } else {
+        // otherwise return here with the op we have now
         return first;
       }
     }
 
-    if (first === '!') {
-      const next = this.#peek();
-
-      if (next === '=') {
-        this.#skip();
-
-        if (!this.#endOfFile()) {
-          const last = this.#peek();
-
-          if (last === '!' || last === '=') {
-            pos.fail(`Invalid operator '${first}${next}${last}'`);
-          }
-        }
-
-        return '!=';
-      } else if (next === 'i' && this.#src[this.#index + 1] === 's') {
-        this.#skip();
-        this.#skip();
-        return '!is';
-      } {
-        return '!';
-      }
-    }
-
-    if (first === '=') {
-      const next = this.#peek();
-
-      if (next === '=' || next === '>') {
-        this.#skip();
-
-        if (!this.#endOfFile()) {
-          const last = this.#peek();
-
-          if (last === '=' || last === '>' || last === '<' || last === '!') {
-            pos.fail(`Invalid operator '${first}${next}${last}'`);
-          }
-        }
-
-        return first + next;
-      } else {
-        return '!';
-      }
-    }
-
-    if (first === '&' || first === '|') {
-      const next = this.#peek();
-
-      if (next === first) {
-        this.#skip();
-
-        if (!this.#endOfFile()) {
-          const last = this.#peek();
-
-          if (last === '&' || last === '|') {
-            pos.fail(`Invalid operator '${first}${next}${last}'`);
-          }
-        }
-
-        return first + next;
-      } else {
-        if (first === '&') {
-          pos.fail(`Invalid operator '&'`);
-        } else {
-          return '|';
-        }
-      }
-    }
-
-    if (first === ':') {
-      const next = this.#peek();
-
-      if (next === ':') {
-        this.#skip();
-
-        return '::';
-      } else {
-        return ':';
-      }
-    }
-
-    pos.fail(`Invalid operator '${first}'`);
+    return first;
   }
 
   #lexString(quote: string, pos: Position): string {
@@ -301,7 +278,7 @@ export class Lexer {
     while (!this.#endOfFile()) {
       const next = this.#peek();
 
-      if (Lexer.#identifierTest.test(next)) {
+      if (identifierTest.test(next)) {
         word += next;
         this.#skip();
       } else {
@@ -328,6 +305,6 @@ export interface Token {
   value: string;
 }
 
-export function isKind<Test extends Kind>(token: Token, test: Test): token is { pos: Position; kind: Test; value: string; } {
+export function isKind<Test extends Kind>(token: Token, test: Test): boolean {
   return token.kind === test;
 }

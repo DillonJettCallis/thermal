@@ -1,13 +1,13 @@
-import Dom;
+import core/dom;
 
-def main(): Dom::Html {
-  return Dom::Html {
-    head: Dom::Head {
+def main(): dom::Html {
+  return dom::Html {
+    head: dom::Head {
       title: 'Sample page'
     },
-    body: Dom::Body {
+    body: dom::Body {
       content: [
-        Dom::Element::Text('Sample body')
+        dom::elem::text('Sample body')
       ]
     }
   }
