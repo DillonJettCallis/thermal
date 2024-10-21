@@ -1,15 +1,17 @@
 import { Map } from "immutable";
-import { Access, AccessRecord, DependencyManager, File, PackageName, Symbol } from "../ast.js";
+import { Access, DependencyManager, PackageName, Symbol } from "../ast.js";
+import { CheckedAccessRecord } from "./checkerAst.js";
+import { ParserFile, ParserImportDeclaration } from "../parser/parserAst.js";
 
 /**
  * Check this file and make sure everything it imports actually exists.
  *
  * Does not check anything about the uses of the imports, just that they point to real things that can be found.
  */
-export function verifyImports(files: File[], manager: DependencyManager, declarations: Map<PackageName, Map<Symbol, AccessRecord>>): void {
+export function verifyImports(files: ParserFile[], manager: DependencyManager, declarations: Map<PackageName, Map<Symbol, CheckedAccessRecord>>): void {
   files.forEach(file => {
     file.declarations.forEach(dec => {
-      if (dec.kind === 'import') {
+      if (dec instanceof ParserImportDeclaration) {
         manager.breakdownImport(dec).forEach(it => {
           const record = declarations.get(it.package)?.get(it);
 

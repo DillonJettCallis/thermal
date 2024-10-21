@@ -1,12 +1,13 @@
-import { Parser } from "./parser.js";
-import { readdirSync } from 'node:fs';
-import { AccessRecord, DependencyDictionary, PackageName, Symbol, Version } from "./ast.js";
-import { substringBeforeLast } from "./utils.js";
+import { Parser } from "./parser/parser.js";
+import { DependencyDictionary, PackageName, Symbol, Version } from "./ast.js";
 import { coreLib } from "./lib.js";
 import { collectSymbols } from "./checker/collector.js";
 import { Map } from "immutable";
 import { verifyImports } from "./checker/verifier.js";
-import {Checker} from "./checker/checker.js";
+import { Checker } from "./checker/checker.js";
+import { CheckedAccessRecord } from "./checker/checkerAst.js";
+import { readdirSync } from "node:fs";
+import { substringBeforeLast } from "./utils.js";
 
 function main(): void {
   const dir = 'sample';
@@ -17,14 +18,14 @@ function main(): void {
 
   const depDict = new DependencyDictionary();
   const rootManager = depDict.addManager(packageName);
-  const { package: corePackage, preamble, coreTypes } = coreLib();
+  const {package: corePackage, preamble, coreTypes} = coreLib();
   depDict.addManager(corePackage.name);
   rootManager.addDependency(corePackage.name);
 
-  // const allFiles = readdirSync(dir).map(file => Parser.parseFile(`${dir}/${file}`, root.child(substringBeforeLast(file, '.thermal'))));
-  const allFiles = [Parser.parseFile(`${dir}/simple.thermal`, root.child('simple'))];
+  const allFiles = readdirSync(dir).map(file => Parser.parseFile(`${dir}/${file}`, root.child(substringBeforeLast(file, '.thermal'))));
+  // const allFiles = [Parser.parseFile(`${dir}/simple.thermal`, root.child('simple'))];
   const allApplicationSymbols = collectSymbols(allFiles, rootManager, preamble);
-  const allProgramSymbols = Map<PackageName, Map<Symbol, AccessRecord>>().asMutable();
+  const allProgramSymbols = Map<PackageName, Map<Symbol, CheckedAccessRecord>>().asMutable();
   allProgramSymbols.set(corePackage.name, corePackage.declarations);
   allProgramSymbols.set(packageName, allApplicationSymbols);
 
@@ -37,8 +38,6 @@ function main(): void {
 
   console.log(allFiles);
 }
-
-
 
 
 main();

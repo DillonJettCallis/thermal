@@ -1,501 +1,655 @@
-import {
-  AccessExpression,
-  AccessRecord,
-  AndExpression, AssignmentStatement, BlockEx,
-  BooleanLiteralEx,
-  CallEx,
-  ConstructExpression,
-  DependencyManager,
-  EnumType,
-  EnumTypeStructVariant,
-  EnumTypeTupleVariant,
-  EnumTypeVariant,
-  Expression, ExpressionStatement,
-  File,
-  FloatLiteralEx, FunctionStatement,
-  FunctionType,
-  FunctionTypeParameter,
-  IdentifierEx,
-  IfEx,
-  IntLiteralEx,
-  IsExpression, LambdaEx,
-  ListLiteralEx,
-  MapLiteralEx,
-  NominalType,
-  NotExpression,
-  OrExpression,
-  OverloadFunctionType,
-  PackageName, Parameter,
-  ParameterizedType,
-  Position, ReassignmentStatement, ReturnEx,
-  SetLiteralEx, Statement,
-  StaticAccessExpression,
-  StringLiteralEx,
-  StructType,
-  Symbol,
-  Typed,
-  TypedConstructFieldExpression, TypedStatement,
-  TypeExpression,
-  TypeParameterType,
-  typesEqual
-} from "../ast.js";
+import { DependencyManager, PackageName, Position, Symbol, } from "../ast.js";
 import { List, Map, Seq, Set } from "immutable";
 import { collectDeclarations, Qualifier } from "./collector.js";
-import { zip } from "../utils.js"
 import { CoreTypes } from "../lib.js";
-
+import {
+  CheckedAccessEx,
+  CheckedAccessRecord,
+  CheckedAndEx,
+  CheckedAssignmentStatement,
+  CheckedBlockEx,
+  CheckedBooleanLiteralEx,
+  CheckedCallEx,
+  CheckedConstantDeclare,
+  CheckedConstructEntry,
+  CheckedConstructEx,
+  CheckedEnumAtomVariant,
+  CheckedEnumDeclare,
+  CheckedEnumStructVariant,
+  CheckedEnumTupleVariant,
+  CheckedEnumType,
+  CheckedEnumTypeAtomVariant,
+  CheckedEnumTypeStructVariant,
+  CheckedEnumTypeTupleVariant,
+  CheckedEnumTypeVariant,
+  CheckedExpression,
+  CheckedExpressionStatement,
+  CheckedFile,
+  CheckedFloatLiteralEx,
+  CheckedFunctionDeclare,
+  CheckedFunctionStatement,
+  CheckedFunctionType,
+  CheckedFunctionTypeParameter,
+  CheckedIdentifierEx,
+  CheckedIfEx,
+  CheckedImportDeclaration,
+  CheckedIntLiteralEx,
+  CheckedIsEx,
+  CheckedLambdaEx,
+  CheckedListLiteralEx,
+  CheckedMapLiteralEntry,
+  CheckedMapLiteralEx,
+  CheckedModuleType,
+  CheckedNominalType,
+  CheckedNotEx,
+  CheckedOrEx,
+  CheckedOverloadFunctionType,
+  CheckedParameter,
+  CheckedParameterizedType,
+  CheckedReassignmentStatement,
+  CheckedReturnEx,
+  CheckedSetLiteralEx,
+  CheckedStatement,
+  CheckedStaticAccessEx,
+  CheckedStringLiteralEx,
+  CheckedStructDeclare,
+  CheckedStructField,
+  CheckedStructType,
+  CheckedTypeExpression,
+  CheckedTypeParameterType
+} from "./checkerAst.js";
+import {
+  ParserAccessEx,
+  ParserAndEx,
+  ParserAssignmentStatement,
+  ParserBlockEx,
+  ParserBooleanLiteralEx,
+  ParserCallEx,
+  ParserConstantDeclare,
+  ParserConstructEx,
+  ParserEnumStructVariant,
+  ParserEnumTupleVariant,
+  ParserExpression,
+  ParserExpressionStatement,
+  ParserFile,
+  ParserFloatLiteralEx,
+  ParserFunctionDeclare,
+  ParserFunctionStatement,
+  ParserIdentifierEx,
+  ParserIfEx,
+  ParserImportDeclaration,
+  ParserIntLiteralEx,
+  ParserIsEx,
+  ParserLambdaEx,
+  ParserListLiteralEx,
+  ParserMapLiteralEx,
+  ParserNotEx,
+  ParserOrEx,
+  ParserReassignmentStatement,
+  ParserReturnEx,
+  ParserSetLiteralEx,
+  ParserStatement,
+  ParserStaticAccessEx,
+  ParserStringLiteralEx,
+  ParserStructDeclare
+} from "../parser/parserAst.js";
 
 export class Checker {
   readonly #manager: DependencyManager;
-  readonly #declarations: Map<PackageName, Map<Symbol, AccessRecord>>;
+  readonly #declarations: Map<PackageName, Map<Symbol, CheckedAccessRecord>>;
   readonly #coreTypes: CoreTypes;
   readonly #preamble: Map<string, Symbol>;
-  readonly #rules: List<Rule<Expression>>;
 
-  constructor(manager: DependencyManager, declarations: Map<PackageName, Map<Symbol, AccessRecord>>, coreTypes: CoreTypes, preamble: Map<string, Symbol>) {
+  constructor(manager: DependencyManager, declarations: Map<PackageName, Map<Symbol, CheckedAccessRecord>>, coreTypes: CoreTypes, preamble: Map<string, Symbol>) {
     this.#manager = manager;
     this.#declarations = declarations;
     this.#coreTypes = coreTypes;
     this.#preamble = preamble;
-    this.#rules = this.#initRules();
   }
 
-  checkFile(file: File): void {
+  checkFile(file: ParserFile): CheckedFile {
     const declarations = collectDeclarations(file, this.#manager, this.#preamble);
     const filePos = new Position(file.src, 0, 0);
     const qualifier = new Qualifier(declarations);
     const fileScope = Scope.init(declarations.map(symbol => this.#typeSymbolToTypeExpression(symbol, filePos)), qualifier, file.module, this.#coreTypes.unit);
 
-    file.declarations.forEach(dec => {
-      // TODO: check constants
+    const checkedDeclarations = file.declarations.map(dec => {
+      if (dec instanceof ParserImportDeclaration) {
+        return new CheckedImportDeclaration(dec);
+      } else if (dec instanceof ParserFunctionDeclare) {
+        const func = this.checkFunctionStatement(dec.func, fileScope, file.module);
 
-      if (dec.kind === 'function') {
-        const funcScope = fileScope.childFunction(dec.symbol, qualifier.checkTypeExpression(dec.resultType));
+        return new CheckedFunctionDeclare({
+          pos: dec.pos,
+          extern: dec.extern,
+          access: dec.access,
+          symbol: dec.symbol,
+          func,
+        })
+      } else if (dec instanceof ParserConstantDeclare) {
+        const type = fileScope.qualifier.checkTypeExpression(dec.type);
+        const expression = this.#checkExpression(dec.expression, fileScope, type);
 
-        // add params, which for a function declare aren't allowed to be null so we just assert that
-        dec.params.forEach(param => {
-          funcScope.set(param.name, qualifier.checkTypeExpression(param.type!!));
+        if (!this.#checkAssignable(expression.type, type)) {
+          return expression.pos.fail(`Incompatible types. Expected ${type} but found ${expression.type}`);
+        }
+
+        return new CheckedConstantDeclare({
+          pos: dec.pos,
+          name: dec.name,
+          access: dec.access,
+          symbol: dec.symbol,
+          expression,
+          type,
+        })
+      } else if (dec instanceof ParserStructDeclare) {
+        const typeParams = dec.typeParams.map(it => fileScope.qualifier.checkTypeExpression(it) as CheckedTypeParameterType);
+        const fields = dec.fields.map(it => {
+          const type = fileScope.qualifier.checkTypeExpression(it.type);
+
+          return new CheckedStructField({
+            pos: it.pos,
+            type,
+            default: it.default === undefined ? undefined : this.#checkExpression(it.default, fileScope, type),
+          });
         });
 
-        dec.body = this.#checkExpression(funcScope, dec.body, undefined) as Expression
+        return new CheckedStructDeclare({
+          pos: dec.pos,
+          name: dec.name,
+          symbol: dec.symbol,
+          access: dec.access,
+          typeParams,
+          fields,
+        })
+      } else {
+        const typeParams = dec.typeParams.map(it => fileScope.qualifier.checkTypeExpression(it) as CheckedTypeParameterType);
+        const variants = dec.variants.map(variant => {
+          if (variant instanceof ParserEnumStructVariant) {
+            const fields = variant.fields.map(it => {
+              const type = fileScope.qualifier.checkTypeExpression(it.type);
+
+              return new CheckedStructField({
+                pos: it.pos,
+                type,
+                default: it.default === undefined ? undefined : this.#checkExpression(it.default, fileScope, type),
+              });
+            });
+
+            return new CheckedEnumStructVariant({
+              pos: variant.pos,
+              symbol: variant.symbol,
+              fields,
+            });
+          } else if (variant instanceof ParserEnumTupleVariant) {
+            return new CheckedEnumTupleVariant({
+              pos: variant.pos,
+              symbol: variant.symbol,
+              fields: variant.fields.map(it => fileScope.qualifier.checkTypeExpression(it)),
+            });
+          } else {
+            return new CheckedEnumAtomVariant({
+              pos: variant.pos,
+              symbol: variant.symbol,
+            });
+          }
+        });
+
+        return new CheckedEnumDeclare({
+          pos: dec.pos,
+          name: dec.name,
+          symbol: dec.symbol,
+          access: dec.access,
+          typeParams,
+          variants,
+        });
       }
+    });
+
+    return new CheckedFile({
+      src: file.src,
+      module: file.module,
+      declarations: checkedDeclarations,
     });
   }
 
-  #checkExpression<Ex extends Expression>(scope: Scope, ex: Ex, expected: TypeExpression | undefined): Typed<Ex> {
-    // we have to cast the rule to Rule<Ex> because we know the rule must have passed the test but typescript doesn't know that
-    // undefined means it wasn't found at all, which is an error
-    const rule = this.#rules.find(it => it.test(ex, expected)) as Rule<Ex> | undefined;
-
-    if (rule === undefined) {
-      return ex.pos.fail('No rule to check expression');
+  #checkExpression(ex: ParserExpression, scope: Scope, expected: CheckedTypeExpression | undefined): CheckedExpression {
+    if (ex instanceof ParserBooleanLiteralEx) {
+      return this.checkBooleanLiteral(ex);
+    } else if (ex instanceof ParserIntLiteralEx) {
+      return this.checkIntLiteral(ex);
+    } else if (ex instanceof ParserFloatLiteralEx) {
+      return this.checkFloatLiteral(ex);
+    } else if (ex instanceof ParserStringLiteralEx) {
+      return this.checkStringLiteral(ex);
+    } else if (ex instanceof ParserIdentifierEx) {
+      return this.checkIdentifier(ex, scope);
+    } else if (ex instanceof ParserIsEx) {
+      return this.checkIs(ex, scope);
+    } else if (ex instanceof ParserAccessEx) {
+      return this.checkAccess(ex, scope);
+    } else if (ex instanceof ParserStaticAccessEx) {
+      return this.checkStaticAccess(ex, scope);
+    } else if (ex instanceof ParserConstructEx) {
+      return this.checkConstruct(ex, scope, expected);
+    } else if (ex instanceof ParserCallEx) {
+      return this.checkCall(ex, scope);
+    } else if (ex instanceof ParserAndEx) {
+      return this.checkAnd(ex, scope);
+    } else if (ex instanceof ParserOrEx) {
+      return this.checkOr(ex, scope);
+    } else if (ex instanceof ParserNotEx) {
+      return this.checkNot(ex, scope);
+    } else if (ex instanceof ParserIfEx) {
+      return this.checkIf(ex, scope, expected);
+    } else if (ex instanceof ParserLambdaEx) {
+      return this.checkLambda(ex, scope, expected);
+    } else if (ex instanceof ParserBlockEx) {
+      return this.checkBlock(ex, scope, expected);
+    } else if (ex instanceof ParserReturnEx) {
+      return this.checkReturn(ex, scope);
+    } else if (ex instanceof ParserListLiteralEx) {
+      return this.checkListLiteral(ex, scope, expected);
+    } else if (ex instanceof ParserSetLiteralEx) {
+      return this.checkSetLiteral(ex, scope, expected);
     } else {
-      return rule.type(scope, ex, expected);
+      return this.checkMapLiteral(ex, scope, expected);
     }
   }
 
-  #initRules(): List<Rule<Expression>> {
-    // order does matter! The first rule that matches is taken
-    return List.of<Rule<Expression>>(
-      this.booleanRule(),
-      this.intRule(),
-      this.floatRule(),
-      this.stringRule(),
-      this.identifierRule(),
-      this.accessRule(),
-      this.staticAccessRule(),
-      this.constructRule(),
-      this.callRule(),
-      // boolean rules
-      this.isRule(),
-      this.orRule(),
-      this.andRule(),
-      this.notRule(),
-      this.ifRule(),
-
-      this.lambdaRule(),
-      this.blockRule(),
-      this.returnRule(),
-
-      // collection literals
-      this.listExpectingNoneRule(),
-      this.listExpectingSomeRule(),
-      this.setExpectingNoneRule(),
-      this.setExpectingSomeRule(),
-      this.mapExpectingNoneRule(),
-      this.mapExpectingSomeRule(),
-    );
+  checkBooleanLiteral(ex: ParserBooleanLiteralEx): CheckedBooleanLiteralEx {
+    return new CheckedBooleanLiteralEx({
+      pos: ex.pos,
+      value: ex.value,
+      type: this.#coreTypes.boolean,
+    });
   }
 
-  booleanRule(): Rule<BooleanLiteralEx> {
-    return this.#literalRule('booleanLiteral', this.#coreTypes.boolean);
+  checkIntLiteral(ex: ParserIntLiteralEx): CheckedIntLiteralEx {
+    return new CheckedIntLiteralEx({
+      pos: ex.pos,
+      value: ex.value,
+      type: this.#coreTypes.int,
+    });
   }
 
-  intRule(): Rule<IntLiteralEx> {
-    return this.#literalRule('intLiteral', this.#coreTypes.int);
+  checkFloatLiteral(ex: ParserFloatLiteralEx): CheckedFloatLiteralEx {
+    return new CheckedFloatLiteralEx({
+      pos: ex.pos,
+      value: ex.value,
+      type: this.#coreTypes.float,
+    });
   }
 
-  floatRule(): Rule<FloatLiteralEx> {
-    return this.#literalRule('floatLiteral', this.#coreTypes.float);
+  checkStringLiteral(ex: ParserStringLiteralEx): CheckedStringLiteralEx {
+    return new CheckedStringLiteralEx({
+      pos: ex.pos,
+      value: ex.value,
+      type: this.#coreTypes.string,
+    });
   }
 
-  stringRule(): Rule<StringLiteralEx> {
-    return this.#literalRule('stringLiteral', this.#coreTypes.string);
+  checkIdentifier(ex: ParserIdentifierEx, scope: Scope): CheckedIdentifierEx {
+    return new CheckedIdentifierEx({
+      pos: ex.pos,
+      name: ex.name,
+      type: scope.get(ex.name, ex.pos),
+    });
   }
 
-  identifierRule(): Rule<IdentifierEx> {
-    return this.#expressionRule<IdentifierEx>('identifier', (scope, id, _expected) => {
-      return {
-        ...id,
-        type: scope.get(id.name, id.pos),
-      }
-    })
+  checkIs(ex: ParserIsEx, scope: Scope): CheckedIsEx {
+    return new CheckedIsEx({
+      pos: ex.pos,
+      not: ex.not,
+      base: this.#checkExpression(ex.base, scope, undefined),
+      check: scope.qualifier.checkTypeExpression(ex.check),
+      type: this.#coreTypes.boolean,
+    });
   }
 
-  isRule(): Rule<IsExpression> {
-    return this.#expressionRule<IsExpression>('is', (scope, ex) => {
-      return {
-        ...ex,
-        base: this.#checkExpression(scope, ex.base, undefined),
-        check: scope.qualifier.checkTypeExpression(ex.check),
-        type: this.#coreTypes.boolean,
-      };
-    })
-  }
+  checkAccess(ex: ParserAccessEx, scope: Scope): CheckedAccessEx {
+    const base = this.#checkExpression(ex.base, scope, undefined);
+    const type = this.#processAccess(base.type, ex.field);
 
-  accessRule(): Rule<AccessExpression> {
-    return this.#expressionRule<AccessExpression>('access', (scope, ex) => {
-      const base = this.#checkExpression(scope, ex.base, undefined);
-      const type = this.#processAccess(base.type, ex.field);
-
-      return {
-        ...ex,
-        field: {
-          ...ex.field,
-          type,
-        },
-        base,
+    return new CheckedAccessEx({
+      pos: ex.pos,
+      field: new CheckedIdentifierEx({
+        pos: ex.field.pos,
+        name: ex.field.name,
         type,
-      }
-    })
+      }),
+      base,
+      type,
+    });
   }
 
-  staticAccessRule(): Rule<StaticAccessExpression> {
-    return this.#expressionRule<StaticAccessExpression>('staticAccess', (scope, ex) => {
-      const [first, ...rest] = ex.path;
+  checkStaticAccess(ex: ParserStaticAccessEx, scope: Scope): CheckedStaticAccessEx {
+    const [first, ...rest] = ex.path.toArray();
 
-      const init = this.#checkExpression(scope, first!!, undefined);
-      const path = [init];
-      let prev = init.type;
+    const init = this.checkIdentifier(first!!, scope);
+    const path = List.of(init).asMutable();
+    let prev = init.type;
 
-      for (const next of rest) {
-        switch (prev.kind) {
-          case 'module':
-            const child = this.#declarations.get(prev.name.package)?.get(prev.name.child(next.name)) ?? next.pos.fail(`No such import found ${prev.name}`);
-            path.push({
-              ...next,
-              type: child.type,
-            });
-            prev = child.type;
-            break;
-          case 'enum':
-            const variant = prev.variants.get(next.name) ?? next.pos.fail(`No such enum variant found ${prev.name}`);
-            path.push({
-              ...next,
-              type: variant
-            });
-            prev = variant;
-            break;
-          default:
-            return next.pos.fail('No static members found');
-        }
-      }
-
-      return {
-        ...ex,
-        path,
-        type: prev,
-      }
-    })
-  }
-
-  constructRule(): Rule<ConstructExpression> {
-    return this.#expressionRule<ConstructExpression>('construct', (scope, ex, expected) => {
-      const base = this.#checkExpression(scope, ex.base, undefined);
-      const baseType = base.type;
-
-      if (baseType.kind === 'struct' || baseType.kind === 'enumStruct') {
-        // TODO: I forgot to handle default values inside of struct types
-        // for now, let's just ignore defaults and we'll handle it some other time
-        const expectedKeys = baseType.fields.keySeq().toSet();
-        const actualKeys = Seq(ex.fields).map(it => it.name).toSet();
-        // TODO: check for duplicated fields
-
-        if (expectedKeys.equals(actualKeys)) {
-          const expectedFields = expected?.kind === 'struct' || expected?.kind === 'enumStruct'
-            ? expected.fields
-            : Map<string, TypeExpression>()
-          ;
-
-          // we can use any expected type information to resolve things like generics and lambdas
-          const resolvedFields = List(ex.fields).toMap().mapKeys((_, it) => it.name).map(it => {
-            return {
-              pos: it.pos,
-              name: it.name,
-              value: this.#checkExpression(scope, it.value, expectedFields.get(it.name)),
-            } satisfies TypedConstructFieldExpression;
-          });
-
-          // TODO: constructors can't explicitly declare generics, but they should be able to
-          // now we need to confirm that the given expressions match the type we started with
-          const genericParams = baseType.kind === 'struct' ? baseType.typeParams : this.#genericsOfEnum(baseType);
-          const genericNames = Seq(genericParams).map(it => it.name).toSet();
-          const actualRawGenerics = resolvedFields.reduce((sum, actual) => {
-            const expected = baseType.fields.get(actual.name)!!;
-
-            return sum.concat(this.#applyGenerics(expected, actual.value.type, genericNames));
-          }, List<{ symbol: Symbol, type: TypeExpression }>());
-
-          const actualGenerics = actualRawGenerics.groupBy(it => it.symbol).map(list => {
-            return list.map(it => it.type).reduce<TypeExpression>((left, right) => {
-              if (left === undefined) {
-                return right;
-              }
-
-              return this.#mergeTypes(left, right);
-            });
-          });
-
-          // make sure that all generics have been filled
-          const actualTypeArgs = genericParams.map(it => actualGenerics.get(it.name) ?? ex.pos.fail(`Unable to determine generic type ${it.name}`));
-
-          // make sure that all types are actually assignable
-          baseType.fields.forEach((expected, key) => {
-            const expectedWithGenerics = this.#fillGenericTypes(expected, actualGenerics);
-            const actual = this.#fillGenericTypes(resolvedFields.get(key)?.value?.type ?? ex.pos.fail('This should not happen. A constructor is missing a required field after it was already checked'), actualGenerics);
-
-            if (!this.#checkAssignable(actual, expectedWithGenerics)) {
-              actual.pos.fail(`Type ${actual} is not assignable to expected type ${expectedWithGenerics}`);
-            }
-          });
-
-          const baseName = {pos: ex.pos, kind: 'nominal', name: baseType.name} satisfies NominalType;
-
-          const type = genericParams.length === 0
-            ? baseName
-            : { pos: ex.pos, kind: 'parameterized', base: baseName, args: actualTypeArgs } satisfies ParameterizedType;
-
-          return {
-            pos: ex.pos,
-            base,
-            kind: 'construct',
-            fields: resolvedFields.valueSeq().toArray(),
-            type,
-          } satisfies Typed<ConstructExpression>;
-        } else {
-          // find out what we're missing or are extra
-          const extra = actualKeys.subtract(expectedKeys);
-          const missing = expectedKeys.subtract(actualKeys);
-
-          const extraMessage = extra.isEmpty() ? '' : ` unknown fields ${extra}`;
-          const missingMessage = missing.isEmpty() ? '' : ` missing fields ${missing}`;
-
-          return ex.pos.fail(`Incompatible fields for constructor ${baseType.name} with ${extraMessage} ${missingMessage}`);
-        }
+    for (const next of rest) {
+      if (prev instanceof CheckedModuleType) {
+        const child = this.#declarations.get(prev.name.package)?.get(prev.name.child(next.name)) ?? next.pos.fail(`No such import found ${prev.name}`);
+        path.push(new CheckedIdentifierEx({
+          pos: next.pos,
+          name: next.name,
+          type: child.type,
+        }));
+        prev = child.type;
+      } else if (prev instanceof CheckedEnumType) {
+        const variant = prev.variants.get(next.name) ?? next.pos.fail(`No such enum variant found ${prev.name}`);
+        path.push(new CheckedIdentifierEx({
+          pos: next.pos,
+          name: next.name,
+          type: variant,
+        }));
+        prev = variant;
       } else {
-        return ex.pos.fail('Attempt to construct non-constructable')
+        return next.pos.fail('No static members found');
       }
-    })
+    }
+
+    return new CheckedStaticAccessEx({
+      pos: ex.pos,
+      path: path.asImmutable(),
+      type: prev,
+    });
   }
 
-  callRule(): Rule<CallEx> {
-    return this.#expressionRule<CallEx>('call', (scope, ex, expected) => {
-      const func = this.#checkExpression(scope, ex.func, undefined);
-      const funcType = func.type;
+  checkConstruct(ex: ParserConstructEx, scope: Scope, expected: CheckedTypeExpression | undefined): CheckedConstructEx {
+    const base = this.#checkExpression(ex.base, scope, undefined);
+    const baseType = base.type;
 
-      if (funcType.kind === 'function') {
-        // TODO: handle default arguments
-        // TODO: handle generics in the expected type, that matters
-        if (funcType.params.length === ex.args.length) {
-          // we can use any expected type information to resolve things like generics and lambdas
-          const resolvedFields = ex.args.map((it, index) => this.#checkExpression(scope, it, funcType.params[index]?.type));
+    if (baseType instanceof CheckedStructType || baseType instanceof CheckedEnumTypeStructVariant) {
+      // TODO: I forgot to handle default values inside of struct types
+      // for now, let's just ignore defaults and we'll handle it some other time
+      const expectedKeys = baseType.fields.keySeq().toSet();
+      const actualKeys = Seq(ex.fields).map(it => it.name).toSet();
+      // TODO: check for duplicated fields
 
-          // now we need to confirm that the given expressions match the type we started with
-          const genericParams = funcType.typeParams;
-          const genericNames = Seq(genericParams).map(it => it.name).toSet();
-          const actualRawGenerics = resolvedFields.reduce((sum, actual, index) => {
-            const expected = funcType.params[index]!!.type;
-
-            return sum.concat(this.#applyGenerics(expected, actual.type, genericNames));
-          }, List<{ symbol: Symbol, type: TypeExpression }>());
-
-          const actualGenerics = actualRawGenerics.groupBy(it => it.symbol).map(list => {
-            return list.map(it => it.type).reduce<TypeExpression>((left, right) => {
-              if (left === undefined) {
-                return right;
-              }
-
-              return this.#mergeTypes(left, right);
-            });
-          });
-
-          // make sure that all generics have been filled
-          const typeArgs = genericParams.map(it => actualGenerics.get(it.name) ?? ex.pos.fail(`Unable to determine generic type ${it.name}`));
-
-          // make sure that all types are actually assignable
-          funcType.params.forEach((expected, index) => {
-            const expectedWithGenerics = this.#fillGenericTypes(expected.type, actualGenerics);
-            const actual = this.#fillGenericTypes(resolvedFields[index]?.type ?? ex.pos.fail('This should not happen. A function call is missing a required argument after it was already checked'), actualGenerics);
-
-            if (!this.#checkAssignable(actual, expectedWithGenerics)) {
-              actual.pos.fail(`Type ${actual} is not assignable to expected type ${expectedWithGenerics}`);
-            }
-          });
-
-          return {
-            pos: ex.pos,
-            func,
-            kind: 'call',
-            args: resolvedFields,
-            typeArgs,
-            type: this.#fillGenericTypes(funcType.result, actualGenerics),
-          } satisfies Typed<CallEx>;
-        } else {
-          return ex.pos.fail(`Function ${func.pos} expects ${funcType.params.length} arguments but found ${ex.args.length} arguments instead`);
-        }
-      } else if (funcType.kind === 'overloadFunction') {
-        // TODO: check overloads
-
-        // overloads are not allowed to have generics
-        // this is a copy of the above code, done in a loop, with generic handling removed
+      if (expectedKeys.equals(actualKeys)) {
+        const expectedFields = expected instanceof CheckedStructType || expected instanceof CheckedEnumTypeStructVariant
+          ? expected.fields
+          : Map<string, CheckedTypeExpression>()
+        ;
 
         // we can use any expected type information to resolve things like generics and lambdas
-        branchLoop: for (const branch of funcType.branches) {
-          const funcType = branch;
-          const resolvedFields = ex.args.map((it, index) => this.#checkExpression(scope, it, funcType.params[index]?.type));
+        const resolvedFields = List(ex.fields).toMap().mapKeys((_, it) => it.name).map(it => {
+          return new CheckedConstructEntry({
+            pos: it.pos,
+            name: it.name,
+            value: this.#checkExpression(it.value, scope, expectedFields.get(it.name)),
+          });
+        });
 
-          // make sure that all types are actually assignable
-          for (let index = 0; index < funcType.params.length; index++) {
-            const expected = funcType.params[index]!!;
-            const expectedWithGenerics = expected.type;
-            const actual = resolvedFields[index]?.type ?? ex.pos.fail('This should not happen. A function call is missing a required argument after it was already checked');
+        // TODO: constructors can't explicitly declare generics, but they should be able to
+        // now we need to confirm that the given expressions match the type we started with
+        const genericParams = baseType instanceof CheckedStructType ? baseType.typeParams : this.#genericsOfEnum(baseType);
+        const genericNames = genericParams.toSeq().map(it => it.name).toSet();
+        const actualRawGenerics = resolvedFields.reduce((sum, actual) => {
+          const expected = baseType.fields.get(actual.name)!!;
 
-            if (!this.#checkAssignable(actual, expectedWithGenerics)) {
-              // this branch is not valid. Break here and try the next branch
-              continue branchLoop;
-            }
+          return sum.concat(this.#applyGenerics(expected, actual.value.type, actual.value.pos, genericNames));
+        }, List<{ symbol: Symbol, pos: Position, type: CheckedTypeExpression }>());
+
+        const actualGenerics = actualRawGenerics.groupBy(it => it.symbol).map(list => {
+          return list.reduce<CheckedTypeExpression>((left, right) => this.#mergeTypes(left, right.type, right.pos), this.#coreTypes.nothing);
+        });
+
+        // make sure that all generics have been filled
+        const actualTypeArgs = genericParams.map(it => actualGenerics.get(it.name) ?? ex.pos.fail(`Unable to determine generic type ${it.name}`));
+
+        // make sure that all types are actually assignable
+        baseType.fields.forEach((expected, key) => {
+          const expectedWithGenerics = this.#fillGenericTypes(expected, ex.pos, actualGenerics);
+          const entry = resolvedFields.get(key)?.value ?? ex.pos.fail('This should not happen. A constructor is missing a required field after it was already checked');
+          const actual = this.#fillGenericTypes(entry.type, ex.pos, actualGenerics);
+
+          if (!this.#checkAssignable(actual, expectedWithGenerics)) {
+            entry.pos.fail(`Type ${actual} is not assignable to expected type ${expectedWithGenerics}`);
           }
+        });
 
-          return {
-            pos: ex.pos,
-            func,
-            kind: 'call',
-            args: resolvedFields,
-            typeArgs: [],
-            type: funcType.result,
-          } satisfies Typed<CallEx>;
+        const baseName = new CheckedNominalType({name: baseType.name});
+
+        const type = genericParams.isEmpty()
+          ? baseName
+          : new CheckedParameterizedType({ base: baseName, args: actualTypeArgs });
+
+        return new CheckedConstructEx({
+          pos: ex.pos,
+          base,
+          typeArgs: actualTypeArgs,
+          fields: resolvedFields.valueSeq().toList(),
+          type,
+        });
+      } else {
+        // find out what we're missing or are extra
+        const extra = actualKeys.subtract(expectedKeys);
+        const missing = expectedKeys.subtract(actualKeys);
+
+        const extraMessage = extra.isEmpty() ? '' : ` unknown fields ${extra}`;
+        const missingMessage = missing.isEmpty() ? '' : ` missing fields ${missing}`;
+
+        return ex.pos.fail(`Incompatible fields for constructor ${baseType.name} with ${extraMessage} ${missingMessage}`);
+      }
+    } else {
+      return ex.pos.fail('Attempt to construct non-constructable')
+    }
+  }
+
+  checkCall(ex: ParserCallEx, scope: Scope): CheckedCallEx {
+    const func = this.#checkExpression(ex.func, scope, undefined);
+    const funcType = func.type;
+
+    if (funcType instanceof CheckedFunctionType) {
+      // TODO: handle default arguments
+      // TODO: handle generics in the expected type, that matters
+      if (funcType.params.size === ex.args.size) {
+        // we can use any expected type information to resolve things like generics and lambdas
+        const resolvedFields = ex.args.map((it, index) => this.#checkExpression(it, scope, funcType.params.get(index)?.type));
+
+        // now we need to confirm that the given expressions match the type we started with
+        const genericParams = funcType.typeParams;
+        const genericNames = genericParams.toSeq().map(it => it.name).toSet();
+        const actualRawGenerics = resolvedFields.reduce((sum, actual, index) => {
+          const expected = funcType.params.get(index)!!.type;
+
+          return sum.concat(this.#applyGenerics(expected, actual.type, actual.pos, genericNames));
+        }, List<{ symbol: Symbol, pos: Position, type: CheckedTypeExpression }>());
+
+        const actualGenerics = actualRawGenerics.groupBy(it => it.symbol).map(list => {
+          return list.reduce<CheckedTypeExpression>((left, right) => this.#mergeTypes(left, right.type, right.pos), this.#coreTypes.nothing);
+        });
+
+        // make sure that all generics have been filled
+        const typeArgs = genericParams.map(it => actualGenerics.get(it.name) ?? ex.pos.fail(`Unable to determine generic type ${it.name}`));
+
+        // make sure that all types are actually assignable
+        funcType.params.forEach((expected, index) => {
+          const expectedWithGenerics = this.#fillGenericTypes(expected.type, ex.pos, actualGenerics);
+          const entry = resolvedFields.get(index) ?? ex.pos.fail('This should not happen. A function call is missing a required argument after it was already checked');
+          const actual = this.#fillGenericTypes(entry.type, entry.pos, actualGenerics);
+
+          if (!this.#checkAssignable(actual, expectedWithGenerics)) {
+            entry.pos.fail(`Type ${actual} is not assignable to expected type ${expectedWithGenerics}`);
+          }
+        });
+
+        return new CheckedCallEx({
+          pos: ex.pos,
+          func,
+          args: resolvedFields,
+          typeArgs,
+          type: this.#fillGenericTypes(funcType.result, ex.pos, actualGenerics),
+        });
+      } else {
+        return ex.pos.fail(`Function ${func.pos} expects ${funcType.params.size} arguments but found ${ex.args.size} arguments instead`);
+      }
+    } else if (funcType instanceof CheckedOverloadFunctionType) {
+      // overloads are not allowed to have generics
+      // this is a copy of the above code, done in a loop, with generic handling removed
+
+      // we can use any expected type information to resolve things like generics and lambdas
+      branchLoop: for (const branch of funcType.branches) {
+        const funcType = branch;
+        const resolvedFields = ex.args.map((it, index) => this.#checkExpression(it, scope, funcType.params.get(index)?.type));
+
+        // make sure that all types are actually assignable
+        for (let index = 0; index < funcType.params.size; index++) {
+          const expected = funcType.params.get(index)!!;
+          const expectedWithGenerics = expected.type;
+          const actual = resolvedFields.get(index)?.type ?? ex.pos.fail('This should not happen. A function call is missing a required argument after it was already checked');
+
+          if (!this.#checkAssignable(actual, expectedWithGenerics)) {
+            // this branch is not valid. Break here and try the next branch
+            continue branchLoop;
+          }
         }
 
-        // no branches worked, fail
-        return ex.pos.fail('No overload found for arguments');
+        return new CheckedCallEx({
+          pos: ex.pos,
+          func,
+          args: resolvedFields,
+          typeArgs: List(),
+          type: funcType.result,
+        });
+      }
+
+      // no branches worked, fail
+      return ex.pos.fail('No overload found for arguments');
+    } else if (funcType instanceof CheckedEnumTypeTupleVariant) {
+      // this is a copy of the function checking code, slightly tweaked
+      // TODO: handle default arguments
+      // TODO: handle generics in the expected type, that matters
+      if (funcType.fields.size === ex.args.size) {
+        // we can use any expected type information to resolve things like generics and lambdas
+        const resolvedFields = ex.args.map((it, index) => this.#checkExpression(it, scope, funcType.fields.get(index)));
+
+        // now we need to confirm that the given expressions match the type we started with
+        const genericParams = this.#genericsOfEnum(funcType);
+        const genericNames = genericParams.toSeq().map(it => it.name).toSet();
+        const actualRawGenerics = resolvedFields.reduce((sum, actual, index) => {
+          const expected = funcType.fields.get(index)!!;
+
+          return sum.concat(this.#applyGenerics(expected, actual.type, actual.pos, genericNames));
+        }, List<{ symbol: Symbol, pos: Position, type: CheckedTypeExpression }>());
+
+        const actualGenerics = actualRawGenerics.groupBy(it => it.symbol).map(list => {
+          return list.reduce<CheckedTypeExpression>((left, right) => this.#mergeTypes(left, right.type, right.pos), this.#coreTypes.nothing);
+        });
+
+        // make sure that all generics have been filled
+        const typeArgs = genericParams.map(it => actualGenerics.get(it.name) ?? ex.pos.fail(`Unable to determine generic type ${it.name}`));
+
+        // make sure that all types are actually assignable
+        funcType.fields.forEach((expected, index) => {
+          const expectedWithGenerics = this.#fillGenericTypes(expected, ex.pos, actualGenerics);
+          const entry = resolvedFields.get(index) ?? ex.pos.fail('This should not happen. A tuple constructor call is missing a required argument after it was already checked');
+          const actual = this.#fillGenericTypes(entry.type, entry.pos, actualGenerics);
+
+          if (!this.#checkAssignable(actual, expectedWithGenerics)) {
+            entry.pos.fail(`Type ${actual} is not assignable to expected type ${expectedWithGenerics}`);
+          }
+        });
+
+        return new CheckedCallEx({
+          pos: ex.pos,
+          func,
+          args: resolvedFields,
+          typeArgs,
+          type: this.#fillGenericTypes(funcType, ex.pos, actualGenerics),
+        });
       } else {
-        return ex.pos.fail('Attempt to call non-callable')
+        return ex.pos.fail(`Tuple ${func.pos} expects ${funcType.fields.size} arguments but found ${ex.args.size} arguments instead`);
       }
-    })
+    } else {
+      return ex.pos.fail('Attempt to call non-callable')
+    }
   }
 
-  andRule(): Rule<AndExpression> {
-    return this.#expressionRule<AndExpression>('and', (scope, ex) => {
-      const left = this.#checkExpression(scope, ex.left, this.#coreTypes.boolean);
-      const right = this.#checkExpression(scope, ex.right, this.#coreTypes.boolean);
+  checkAnd(ex: ParserAndEx, scope: Scope): CheckedAndEx {
+    const left = this.#checkExpression(ex.left, scope, this.#coreTypes.boolean);
+    const right = this.#checkExpression(ex.right, scope, this.#coreTypes.boolean);
 
-      if (!typesEqual(left.type, this.#coreTypes.boolean)) {
-        left.pos.fail(`Left side of '&&' should be a boolean but is actually '${left.type}'`);
-      }
+    if (!left.type.equals(this.#coreTypes.boolean)) {
+      left.pos.fail(`Left side of '&&' should be a boolean but is actually '${left.type}'`);
+    }
 
-      if (!typesEqual(right.type, this.#coreTypes.boolean)) {
-        right.pos.fail(`Right side of '&&' should be a boolean but is actually '${right.type}'`);
-      }
+    if (!right.type.equals(this.#coreTypes.boolean)) {
+      right.pos.fail(`Right side of '&&' should be a boolean but is actually '${right.type}'`);
+    }
 
-      return {
-        pos: ex.pos,
-        kind: 'and',
-        left,
-        right,
-        type: this.#coreTypes.boolean,
-      };
+    return new CheckedAndEx({
+      pos: ex.pos,
+      left,
+      right,
+      type: this.#coreTypes.boolean,
     });
   }
 
-  orRule(): Rule<OrExpression> {
-    return this.#expressionRule<OrExpression>('or', (scope, ex) => {
-      const left = this.#checkExpression(scope, ex.left, this.#coreTypes.boolean);
-      const right = this.#checkExpression(scope, ex.right, this.#coreTypes.boolean);
+  checkOr(ex: ParserOrEx, scope: Scope): CheckedOrEx {
+    const left = this.#checkExpression(ex.left, scope, this.#coreTypes.boolean);
+    const right = this.#checkExpression(ex.right, scope, this.#coreTypes.boolean);
 
-      if (!typesEqual(left.type, this.#coreTypes.boolean)) {
-        left.pos.fail(`Left side of '||' should be a boolean but is actually '${left.type}'`);
-      }
+    if (!left.type.equals(this.#coreTypes.boolean)) {
+      left.pos.fail(`Left side of '||' should be a boolean but is actually '${left.type}'`);
+    }
 
-      if (!typesEqual(right.type, this.#coreTypes.boolean)) {
-        right.pos.fail(`Right side of '||' should be a boolean but is actually '${right.type}'`);
-      }
+    if (!right.type.equals(this.#coreTypes.boolean)) {
+      right.pos.fail(`Right side of '||' should be a boolean but is actually '${right.type}'`);
+    }
 
-      return {
-        pos: ex.pos,
-        kind: 'or',
-        left,
-        right,
-        type: this.#coreTypes.boolean,
-      };
+    return new CheckedOrEx({
+      pos: ex.pos,
+      left,
+      right,
+      type: this.#coreTypes.boolean,
     });
   }
 
-  notRule(): Rule<NotExpression> {
-    return this.#expressionRule<NotExpression>('not', (scope, ex) => {
-      const base = this.#checkExpression(scope, ex.base, this.#coreTypes.boolean);
+  checkNot(ex: ParserNotEx, scope: Scope): CheckedNotEx {
+    const base = this.#checkExpression(ex.base, scope, this.#coreTypes.boolean);
 
-      if (!typesEqual(base.type, this.#coreTypes.boolean)) {
-        base.pos.fail(`Base of side of '!' should be a boolean but is actually '${base.type}'`);
-      }
+    if (!base.type.equals(this.#coreTypes.boolean)) {
+      base.pos.fail(`Base of side of '!' should be a boolean but is actually '${base.type}'`);
+    }
 
-      return {
-        pos: ex.pos,
-        kind: 'not',
-        base,
-        type: this.#coreTypes.boolean,
-      };
+    return new CheckedNotEx({
+      pos: ex.pos,
+      base,
+      type: this.#coreTypes.boolean,
     });
   }
 
-  ifRule(): Rule<IfEx> {
-    return this.#expressionRule('if', (scope, ex, expected) => {
-      const condition = this.#checkExpression(scope, ex.condition, this.#coreTypes.boolean);
-      const thenEx = this.#checkExpression(scope, ex.thenEx, expected);
-      const elseEx = ex.elseEx === undefined ? undefined : this.#checkExpression(scope, ex.elseEx, expected);
+  checkIf(ex: ParserIfEx, scope: Scope, expected: CheckedTypeExpression | undefined): CheckedIfEx {
+    const condition = this.#checkExpression(ex.condition, scope, this.#coreTypes.boolean);
+    const thenEx = this.#checkExpression(ex.thenEx, scope, expected);
+    const elseEx = ex.elseEx === undefined ? undefined : this.#checkExpression(ex.elseEx, scope, expected);
 
-      if (!typesEqual(condition.type, this.#coreTypes.boolean)) {
-        condition.pos.fail(`Condition of 'if' should be a boolean but is actually '${condition.type}'`);
-      }
+    if (!condition.type.equals(this.#coreTypes.boolean)) {
+      condition.pos.fail(`Condition of 'if' should be a boolean but is actually '${condition.type}'`);
+    }
 
-      return {
-        pos: ex.pos,
-        kind: 'if',
-        condition,
-        thenEx,
-        elseEx,
-        type: elseEx === undefined ? this.#coreTypes.optionOf(thenEx.type) : this.#mergeTypes(thenEx.type, elseEx.type),
-      } satisfies Typed<IfEx>;
+    return new CheckedIfEx({
+      pos: ex.pos,
+      condition,
+      thenEx,
+      elseEx,
+      type: elseEx === undefined ? this.#coreTypes.optionOf(thenEx.type) : this.#mergeTypes(thenEx.type, elseEx.type, ex.pos),
     });
   }
 
-  lambdaRule(): Rule<LambdaEx> {
-    return this.#expressionRule<LambdaEx>('function', (scope, ex, expected) => {
-      let params: Parameter[];
-      let expectedResult: TypeExpression | undefined = undefined;
+  checkLambda(ex: ParserLambdaEx, scope: Scope, expected: CheckedTypeExpression | undefined): CheckedLambdaEx {
+      let params: List<CheckedParameter>;
+      let expectedResult: CheckedTypeExpression | undefined = undefined;
 
-      if (expected !== undefined && expected.kind === 'function') {
-        if (ex.params.length !== expected.params.length) {
-          ex.pos.fail(`Wrong number of arguments, expected function with arguments '${expected.params}' but found ${ex.params.length} arguments`)
+      if (expected instanceof CheckedFunctionType) {
+        if (ex.params.size !== expected.params.size) {
+          ex.pos.fail(`Wrong number of arguments, expected function with arguments '${expected.params}' but found ${ex.params.size} arguments`)
         }
 
         // we can spot check the expected types whenever we don't have them (and only when we need to check)
@@ -503,13 +657,15 @@ export class Checker {
         expectedResult = expected.result;
         params = ex.params.map((it, index) => {
           const type = it.type === undefined
-            ? expected.params[index]!!.type // no type specified, look it up from expected
+            ? expected.params.get(index)!!.type // no type specified, look it up from expected
             : scope.qualifier.checkTypeExpression(it.type);
 
-          return {
-            ...it,
+          return new CheckedParameter({
+            pos: it.pos,
+            phase: it.phase,
+            name: it.name,
             type,
-          } satisfies Parameter;
+          });
         })
       } else {
         // our lambda had better explicitly declare all of its args or we throw up
@@ -520,10 +676,12 @@ export class Checker {
 
           const type = scope.qualifier.checkTypeExpression(it.type);
 
-          return {
-            ...it,
+          return new CheckedParameter({
+            pos: it.pos,
+            phase: it.phase,
+            name: it.name,
             type,
-          } satisfies Parameter;
+          });
         })
       }
 
@@ -535,350 +693,268 @@ export class Checker {
         childScope.set(param.name, param.type);
       }
 
-      const body = this.#checkExpression(childScope, ex.body, expectedResult);
+      const body = this.#checkExpression(ex.body, childScope, expectedResult);
 
-      return {
+      return new CheckedLambdaEx({
         pos: ex.pos,
-        kind: 'function',
         phase: ex.phase,
         params,
         body,
-        type: {
-          pos: ex.pos,
-          kind: 'function',
+        type: new CheckedFunctionType({
           phase: ex.phase,
-          typeParams: [],
+          typeParams: List(),
           params: params.map(it => {
-            return {
-              pos: it.pos,
+            return new CheckedFunctionTypeParameter({
               phase: it.phase,
               type: it.type,
-            }
+            });
           }),
-          result: body.type,
-        } satisfies FunctionType,
-      } satisfies Typed<LambdaEx>;
-    });
+          result: this.#mergeTypes(body.type, childScope.functionScope.resultType, ex.pos),
+        }),
+      });
   }
 
-  blockRule(): Rule<BlockEx> {
-    return this.#expressionRule<BlockEx>('block', (parentScope, ex, expected) => {
-      if (ex.body.length === 0) {
-        return {
-          pos: ex.pos,
-          kind: 'block',
-          body: [],
-          type: this.#coreTypes.unit,
-        }
-      }
-
-      const scope = parentScope.child();
-
-      const body: TypedStatement<Statement>[] = ex.body.map(state => {
-        switch (state.kind) {
-          case "assignment": {
-            const expectedType = state.type === undefined ? undefined : scope.qualifier.checkTypeExpression(state.type);
-            const expression = this.#checkExpression(scope, state.expression, expectedType);
-
-            if (expectedType !== undefined && !this.#checkAssignable(expression.type, expectedType)) {
-              state.expression.pos.fail(`Expected type '${expectedType}' but found type '${expression.type}'`);
-            }
-
-            const type = expectedType ?? expression.type;
-
-            scope.set(state.name, type);
-
-            return {
-              pos: state.pos,
-              kind: 'assignment',
-              phase: state.phase,
-              name: state.name,
-              expression,
-              type,
-            } satisfies TypedStatement<AssignmentStatement>;
-          }
-          case 'reassignment': {
-            const type = scope.get(state.name, state.pos);
-
-            const expression = this.#checkExpression(scope, state.expression, type);
-
-            if (!this.#checkAssignable(expression.type, type)) {
-              state.pos.fail(`Expected assignment of type '${type}' but found value of type '${expression.type}'`);
-            }
-
-            return {
-              pos: state.pos,
-              kind: 'reassignment',
-              name: state.name,
-              expression,
-              type,
-            } satisfies TypedStatement<ReassignmentStatement>;
-          }
-          case "expression": {
-            const expression = this.#checkExpression(scope, state.expression, undefined);
-
-            return {
-              pos: state.pos,
-              kind: 'expression',
-              expression,
-              type: expression.type,
-            } satisfies TypedStatement<ExpressionStatement>;
-          }
-          case "function": {
-            const symbol = scope.functionScope.symbol.child(state.name);
-            const params = state.params.map(it => {
-              if (it.type === undefined) {
-                return it.pos.fail('Unable to determine type from context!');
-              }
-
-              const type = scope.qualifier.checkTypeExpression(it.type);
-
-              return {
-                ...it,
-                type,
-              } satisfies Parameter;
-            });
-
-            const resultType = scope.qualifier.checkTypeExpression(state.resultType);
-
-            const childScope = scope.childFunction(symbol, resultType);
-
-            const typeParams = state.typeParams.map(typeParam => {
-              return {
-                pos: typeParam.pos,
-                kind: 'typeParameter',
-                name: symbol.child(typeParam.name),
-              } satisfies TypeParameterType
-            });
-
-            for (const typeParam of typeParams) {
-              childScope.set(typeParam.name.name, typeParam);
-            }
-
-            for (const param of params) {
-              childScope.set(param.name, param.type);
-            }
-
-            const body = this.#checkExpression(childScope, state.body, resultType);
-            const type = {
-              pos: state.pos,
-              kind: 'function',
-              phase: state.phase,
-              typeParams,
-              params: params.map(it => {
-                return {
-                  pos: it.pos,
-                  phase: it.phase,
-                  type: it.type,
-                }
-              }),
-              result: resultType,
-            } satisfies FunctionType;
-
-            scope.set(state.name, type);
-
-            return {
-              pos: state.pos,
-              kind: 'function',
-              phase: state.phase,
-              name: state.name,
-              typeParams,
-              params,
-              resultType,
-              body,
-              type,
-            } satisfies TypedStatement<FunctionStatement>;
-          }
-        }
-      });
-
-      return {
+  checkBlock(ex: ParserBlockEx, parentScope: Scope, expected: CheckedTypeExpression | undefined): CheckedBlockEx {
+    if (ex.body.isEmpty()) {
+      return new CheckedBlockEx({
         pos: ex.pos,
-        kind: 'block',
-        body,
-        type: this.#mergeTypes(body[body.length - 1]!!.type, scope.functionScope.resultType),
-      } satisfies Typed<BlockEx>;
+        body: List(),
+        type: this.#coreTypes.unit,
+      });
+    }
+
+    const scope = parentScope.child();
+
+    // all but the last statement
+    const initBody: List<CheckedStatement> = ex.body.shift().map(state => this.checkStatement(state, scope, undefined));
+    // the last statement is the only one that gets expected, and the only one who's type matters
+    const last = this.checkStatement(ex.body.last()!!, scope, expected);
+    const body = initBody.push(last);
+
+    return new CheckedBlockEx({
+      pos: ex.pos,
+      body,
+      type: last.type,
     });
   }
 
-  returnRule(): Rule<ReturnEx> {
-    return this.#expressionRule<ReturnEx>('return', (scope, ex) => {
-      const expression = this.#checkExpression(scope, ex.expression, scope.functionScope.resultType);
+  checkStatement(state: ParserStatement, scope: Scope, expected: CheckedTypeExpression | undefined): CheckedStatement {
+    if (state instanceof ParserAssignmentStatement) {
+      return this.checkAssignmentStatement(state, scope);
+    } else if (state instanceof ParserReassignmentStatement) {
+      return this.checkReassignmentStatement(state, scope);
+    } else if (state instanceof ParserExpressionStatement) {
+      return this.checkExpressionStatement(state, scope, expected);
+    } else {
+      return this.checkFunctionStatement(state, scope, scope.functionScope.symbol);
+    }
+  }
 
-      // check that expression is valid with scope result type, update scope result type if needed
-      scope.functionScope.resultType = this.#mergeTypes(expression.type, scope.functionScope.resultType);
+  checkAssignmentStatement(state: ParserAssignmentStatement, scope: Scope): CheckedAssignmentStatement {
+    const expectedType = state.type === undefined ? undefined : scope.qualifier.checkTypeExpression(state.type);
+    const expression = this.#checkExpression(state.expression, scope, expectedType);
 
-      return {
-        pos: ex.pos,
-        kind: 'return',
-        expression,
-        type: this.#coreTypes.nothing, // return always evaluates to nothing
-      } satisfies Typed<ReturnEx>;
+    if (expectedType !== undefined && !this.#checkAssignable(expression.type, expectedType)) {
+      state.expression.pos.fail(`Expected type '${expectedType}' but found type '${expression.type}'`);
+    }
+
+    const type = expectedType ?? expression.type;
+
+    scope.set(state.name, type);
+
+    return new CheckedAssignmentStatement({
+      pos: state.pos,
+      phase: state.phase,
+      name: state.name,
+      expression,
+      type: this.#coreTypes.unit,
     });
   }
 
-  listExpectingNoneRule(): Rule<ListLiteralEx> {
-    return this.#expressionRuleExpectNone<ListLiteralEx>('list', (scope, list) => {
-      const values = list.values.map(item => this.#checkExpression(scope, item, undefined));
-      const type = this.#mergeList(values.map(it => it.type), this.#coreTypes.nothing);
+  checkReassignmentStatement(state: ParserReassignmentStatement, scope: Scope): CheckedReassignmentStatement {
+    const type = scope.get(state.name, state.pos);
 
-      return {
-        ...list,
-        values,
-        type: this.#coreTypes.listOf(type),
+    const expression = this.#checkExpression(state.expression, scope, type);
+
+    if (!this.#checkAssignable(expression.type, type)) {
+      state.pos.fail(`Expected assignment of type '${type}' but found value of type '${expression.type}'`);
+    }
+
+    return new CheckedReassignmentStatement({
+      pos: state.pos,
+      name: state.name,
+      expression,
+      type: this.#coreTypes.unit,
+    });
+  }
+
+  checkExpressionStatement(state: ParserExpressionStatement, scope: Scope, expected: CheckedTypeExpression | undefined): CheckedExpressionStatement {
+    const expression = this.#checkExpression(state.expression, scope, expected);
+
+    return new CheckedExpressionStatement({
+      pos: state.pos,
+      expression,
+      type: expression.type,
+    });
+  }
+
+  checkFunctionStatement(state: ParserFunctionStatement, scope: Scope, parent: Symbol): CheckedFunctionStatement {
+    // TODO: use the lambda expression checker internally to cut down on duplicated logic
+    const symbol = parent.child(state.name);
+    const params = state.lambda.params.map(it => {
+      if (it.type === undefined) {
+        return it.pos.fail('Unable to determine type from context!');
       }
-    })
-  }
 
-  listExpectingSomeRule(): Rule<ListLiteralEx> {
-    return this.#expressionRuleExpectGenericType<ListLiteralEx>('list', this.#coreTypes.list, (scope, list, expected) => {
-      const values = list.values.map(item => this.#checkExpression(scope, item, expected.args[0]));
-      const type = this.#mergeList(values.map(it => it.type), expected.args[0]!!);
+      const type = scope.qualifier.checkTypeExpression(it.type);
 
-      return {
-        ...list,
-        values,
-        type: this.#coreTypes.listOf(type),
-      }
-    })
-  }
-
-  setExpectingNoneRule(): Rule<SetLiteralEx> {
-    return this.#expressionRuleExpectNone<SetLiteralEx>('set', (scope, set) => {
-      const values = set.values.map(item => this.#checkExpression(scope, item, undefined));
-      const type = this.#mergeList(values.map(it => it.type), this.#coreTypes.nothing);
-
-      return {
-        ...set,
-        values,
-        type: this.#coreTypes.setOf(type),
-      }
-    })
-  }
-
-  setExpectingSomeRule(): Rule<SetLiteralEx> {
-    return this.#expressionRuleExpectGenericType<SetLiteralEx>('set', this.#coreTypes.set, (scope, set, expected) => {
-      const values = set.values.map(item => this.#checkExpression(scope, item, expected.args[0]));
-      const type = this.#mergeList(values.map(it => it.type), expected.args[0]!!);
-
-      return {
-        ...set,
-        values,
-        type: this.#coreTypes.setOf(type),
-      }
-    })
-  }
-
-  mapExpectingNoneRule(): Rule<MapLiteralEx> {
-    return this.#expressionRuleExpectNone<MapLiteralEx>('map', (scope, map) => {
-      const entries = map.values.map(item => {
-        return {
-          key: this.#checkExpression(scope, item.key, undefined),
-          value: this.#checkExpression(scope, item.value, undefined)
-        }
-      });
-      const keyType = this.#mergeList(entries.map(it => it.key.type), this.#coreTypes.nothing);
-      const valueType = this.#mergeList(entries.map(it => it.value.type), this.#coreTypes.nothing);
-
-      return {
-        ...map,
-        values: entries,
-        type: this.#coreTypes.mapOf(keyType, valueType),
-      };
-    })
-  }
-
-  mapExpectingSomeRule(): Rule<MapLiteralEx> {
-    return this.#expressionRuleExpectGenericType<MapLiteralEx>('map', this.#coreTypes.set, (scope, map, expected) => {
-      const entries = map.values.map(item => {
-        return {
-          key: this.#checkExpression(scope, item.key, expected.args[0]),
-          value: this.#checkExpression(scope, item.value, expected.args[1])
-        }
-      });
-      const keyType = this.#mergeList(entries.map(it => it.key.type), expected.args[0]!!);
-      const valueType = this.#mergeList(entries.map(it => it.value.type), expected.args[1]!!);
-
-      return {
-        ...map,
-        values: entries,
-        type: this.#coreTypes.mapOf(keyType, valueType),
-      };
-    })
-  }
-
-  #literalRule<Expr extends Expression>(kind: Expr['kind'], type: NominalType): Rule<Expr> {
-    return this.#expressionRule(kind, (_scope, ex, _expected) => {
-      return {
-        ...ex,
+      return new CheckedParameter({
+        pos: it.pos,
+        phase: it.phase,
+        name: it.name,
         type,
-        // we know that literals don't have sub-expressions by definition
-      } as Typed<Expr>;
-    })
-  }
+      });
+    });
 
-  #expressionRule<Expr extends Expression>(kind: Expr['kind'], type: (scope: Scope, ex: Expr, expected: TypeExpression | undefined) => Typed<Expr>): Rule<Expr> {
-    return {
-      test(ex: Expression, _expected: TypeExpression | undefined): ex is Expr {
-        return ex.kind === kind;
-      },
-      type,
+    const result = scope.qualifier.checkTypeExpression(state.result);
+
+    const childScope = scope.childFunction(symbol, result);
+
+    const typeParams = state.typeParams.map(typeParam => {
+      return new CheckedTypeParameterType({
+        name: symbol.child(typeParam.name),
+      });
+    });
+
+    for (const typeParam of typeParams) {
+      childScope.set(typeParam.name.name, typeParam);
     }
-  }
 
-  #expressionRuleExpectNone<Expr extends Expression>(kind: Expr['kind'], type: (scope: Scope, ex: Expr) => Typed<Expr>): Rule<Expr> {
-    return {
-      test(ex: Expression, expected: TypeExpression | undefined): ex is Expr {
-        return ex.kind === kind && expected === undefined;
-      },
-      type,
+    for (const param of params) {
+      childScope.set(param.name, param.type);
     }
-  }
 
-  #expressionRuleExpectGenericType<Expr extends Expression>(kind: Expr['kind'], expectBase: NominalType, type: (scope: Scope, ex: Expr, expected: ParameterizedType) => Typed<Expr>): Rule<Expr> {
-    return {
-      test(ex: Expression, expected: TypeExpression | undefined): ex is Expr {
-        return ex.kind === kind && expected !== undefined && expected.kind === 'parameterized' && expected.base.name.equals(expectBase.name);
-      },
+    const body = this.#checkExpression(state.lambda.body, childScope, result);
+    const type = new CheckedFunctionType({
+      phase: state.lambda.phase,
+      typeParams,
+      params: params.map(it => {
+        return new CheckedFunctionTypeParameter({
+          phase: it.phase,
+          type: it.type,
+        });
+      }),
+      result,
+    });
+
+    scope.set(state.name, type);
+
+    return new CheckedFunctionStatement({
+      pos: state.pos,
+      lambda: new CheckedLambdaEx({
+        pos: state.pos,
+        phase: state.lambda.phase,
+        params,
+        body,
+        type,
+      }),
+      name: state.name,
+      typeParams,
+      result,
       type,
-    }
+    });
   }
 
-  #genericsOfEnum(ex: EnumTypeVariant): TypeParameterType[] {
+  checkReturn(ex: ParserReturnEx, scope: Scope): CheckedReturnEx {
+    const base = this.#checkExpression(ex.base, scope, scope.functionScope.resultType);
+
+    // check that expression is valid with scope result type, update scope result type if needed
+    scope.functionScope.resultType = this.#mergeTypes(base.type, scope.functionScope.resultType, ex.pos);
+
+    return new CheckedReturnEx({
+      pos: ex.pos,
+      base,
+      type: this.#coreTypes.nothing, // return always evaluates to nothing
+    });
+  }
+
+  checkListLiteral(ex: ParserListLiteralEx, scope: Scope, expected: CheckedTypeExpression | undefined): CheckedListLiteralEx {
+    const expectedItem = expected instanceof CheckedParameterizedType && expected.base.equals(this.#coreTypes.list) ? expected.args.first() : undefined;
+
+    const values = ex.values.map(item => this.#checkExpression(item, scope, expectedItem));
+    const type = this.#mergeList(values.map(it => it.type), expectedItem ?? this.#coreTypes.nothing, ex.pos);
+
+    return new CheckedListLiteralEx({
+      pos: ex.pos,
+      values,
+      type: this.#coreTypes.listOf(type),
+    });
+  }
+
+  checkSetLiteral(ex: ParserSetLiteralEx, scope: Scope, expected: CheckedTypeExpression | undefined): CheckedSetLiteralEx {
+    const expectedItem = expected instanceof CheckedParameterizedType && expected.base.equals(this.#coreTypes.set) ? expected.args.first() : undefined;
+
+    const values = ex.values.map(item => this.#checkExpression(item, scope, expectedItem));
+    const type = this.#mergeList(values.map(it => it.type), expectedItem ?? this.#coreTypes.nothing, ex.pos);
+
+    return new CheckedListLiteralEx({
+      pos: ex.pos,
+      values,
+      type: this.#coreTypes.listOf(type),
+    });
+  }
+
+  checkMapLiteral(ex: ParserMapLiteralEx, scope: Scope, expected: CheckedTypeExpression | undefined): CheckedMapLiteralEx {
+    const [expectedKey, expectedValue] = expected instanceof CheckedParameterizedType && expected.base.equals(this.#coreTypes.set)
+      ? [expected.args.get(0), expected.args.get(1)]
+      : [undefined, undefined];
+
+    const entries = ex.values.map(item => {
+      return new CheckedMapLiteralEntry({
+        pos: item.pos,
+        key: this.#checkExpression(item.key, scope, expectedKey),
+        value: this.#checkExpression(item.value, scope, expectedValue)
+      });
+    });
+    const keyType = this.#mergeList(entries.map(it => it.key.type), expectedKey ?? this.#coreTypes.nothing, ex.pos);
+    const valueType = this.#mergeList(entries.map(it => it.value.type), expectedValue ?? this.#coreTypes.nothing, ex.pos);
+
+    return new CheckedMapLiteralEx({
+      pos: ex.pos,
+      values: entries,
+      type: this.#coreTypes.mapOf(keyType, valueType),
+    });
+  }
+
+  #genericsOfEnum(ex: CheckedEnumTypeVariant): List<CheckedTypeParameterType> {
     const base = this.#declarations.get(ex.name.package)?.get(ex.name.parent()!!);
 
-    if (base?.type?.kind === 'enum') {
+    if (base?.type instanceof CheckedEnumType) {
       return base.type.typeParams;
     } else {
       return ex.pos.fail("Expected enum type but didn't find it.");
     }
   }
 
-  #applyGenerics(expected: TypeExpression, actual: TypeExpression, expectedGenerics: Set<Symbol>): List<{ symbol:  Symbol, type: TypeExpression}> {
-    const generics = List<{ symbol:  Symbol, type: TypeExpression}>().asMutable();
+  #applyGenerics(expected: CheckedTypeExpression, actual: CheckedTypeExpression, pos: Position, expectedGenerics: Set<Symbol>): List<{ symbol:  Symbol, pos: Position, type: CheckedTypeExpression}> {
+    const generics = List<{ symbol:  Symbol, pos: Position, type: CheckedTypeExpression}>().asMutable();
 
-    function inner(expected: TypeExpression | undefined, actual: TypeExpression | undefined): void {
+    function inner(expected: CheckedTypeExpression | undefined, actual: CheckedTypeExpression | undefined): void {
       if (expected === undefined || actual === undefined) {
         return;
-      }
-
-      switch (expected.kind) {
-        case 'typeParameter':
-          if (expectedGenerics.has(expected.name)) {
-            generics.push({symbol: expected.name, type: actual});
-          }
-          break;
-        case 'parameterized':
-          if (actual.kind === 'parameterized') {
-            zip(expected.args, actual.args).forEach(args => inner(...args));
-          }
-          break;
-        case 'function':
-          if (actual.kind === 'function') {
-            zip(expected.params, actual.params).forEach(args => inner(args[0].type, args[1].type));
-            inner(expected.result, actual.result);
-          }
-          break;
+      } else if (expected instanceof CheckedTypeParameterType) {
+        if (expectedGenerics.has(expected.name)) {
+          generics.push({symbol: expected.name, pos, type: actual});
+        }
+      } else if (expected instanceof CheckedParameterizedType) {
+        if (actual instanceof CheckedParameterizedType) {
+          expected.args.zip<CheckedTypeExpression>(actual.args).forEach(([ex, act]) => inner(ex, act));
+        }
+      } else if (expected instanceof CheckedFunctionType) {
+        if (actual instanceof CheckedFunctionType) {
+          expected.params.zip<CheckedTypeExpression>(actual.params).forEach(([ex, act]) => inner(ex, act));
+          inner(expected.result, actual.result);
+        }
       }
     }
 
@@ -887,48 +963,36 @@ export class Checker {
     return generics.asImmutable();
   }
 
-  #checkAllAssignable(actual: TypeExpression[], expected: TypeExpression[]): boolean {
-    return actual.length === expected.length && zip(actual, expected).every(([left, right]) => this.#checkAssignable(left, right));
+  #checkAllAssignable(actual: List<CheckedTypeExpression>, expected: List<CheckedTypeExpression>): boolean {
+    return actual.size === expected.size && actual.zip<CheckedTypeExpression>(expected).every(([left, right]) => this.#checkAssignable(left, right));
   }
 
-  #checkAssignable(actual: TypeExpression, expected: TypeExpression | undefined): boolean {
+  #checkAssignable(actual: CheckedTypeExpression, expected: CheckedTypeExpression | undefined): boolean {
     if (expected === undefined) {
       return true;
     }
 
+    // if they exactly match, then we're good
+    if (actual.equals(expected)) {
+      return true;
+    }
+
     // special case: 'Nothing' can be assigned to anything
-    if (actual.kind === 'nominal' && actual.name.equals(this.#coreTypes.nothing.name)) {
+    if (actual.equals(this.#coreTypes.nothing)) {
       return true;
     }
 
     // TODO: when we implement bounds, they'll need to go here
-    if (actual.kind === 'typeParameter' || expected.kind === 'typeParameter') {
+    if (actual instanceof CheckedTypeParameterType || expected instanceof CheckedTypeParameterType ) {
       return true;
     }
 
-    if (expected.kind === 'module') {
-      return actual.kind === 'module' && expected.name.equals(actual.name);
+    if (actual instanceof CheckedFunctionType && expected instanceof CheckedFunctionType) {
+      return this.#checkAssignableFunctionTypes(actual, expected);
     }
 
-    if (expected.kind === 'function') {
-      return actual.kind === 'function' && this.#checkAssignableFunctionTypes(actual, expected);
-    }
-
-    if (expected.kind === 'overloadFunction') {
-      // this should be impossible, we should never expect an overload
-      return false;
-    }
-
-    if (expected.kind === 'parameterized') {
-      return actual.kind === 'parameterized' && actual.base.name.equals(expected.base.name) && this.#checkAllAssignable(actual.args, expected.args);
-    }
-
-    if (expected.kind === 'enum') {
-      if (actual.kind === 'enum') {
-        return actual.name.equals(expected.name);
-      }
-
-      if (actual.kind === 'enumAtom' || actual.kind === 'enumTuple' || actual.kind === 'enumStruct') {
+    if (expected instanceof CheckedEnumType) {
+      if (actual instanceof CheckedEnumTypeStructVariant || actual instanceof CheckedEnumTypeTupleVariant || actual instanceof CheckedEnumTypeAtomVariant) {
         const parent = actual.name.parent();
 
         if (parent === undefined) {
@@ -943,36 +1007,12 @@ export class Checker {
       return false;
     }
 
-    if (expected.kind === 'struct') {
-      return actual.kind === 'struct' && expected.name.equals(actual.name);
-    }
-
-    if (expected.kind === 'enumStruct') {
-      return actual.kind === 'enumStruct' && expected.name.equals(actual.name);
-    }
-
-    if (expected.kind === 'enumTuple') {
-      return actual.kind === 'enumTuple' && expected.name.equals(actual.name);
-    }
-
-    if (expected.kind === 'enumAtom') {
-      return actual.kind === 'enumAtom' && expected.name.equals(actual.name);
-    }
-
-    if (expected.kind === 'nominal') {
-      if (actual.kind === 'nominal') {
-        return expected.name.equals(actual.name);
-      }
-
-      return false;
-    }
-
     // no matching case
     return false;
   }
 
-  #mergeList(items: TypeExpression[], init: TypeExpression): TypeExpression {
-    return items.reduce((sum, next) => this.#mergeTypes(sum, next), init);
+  #mergeList(items: List<CheckedTypeExpression>, init: CheckedTypeExpression, pos: Position): CheckedTypeExpression {
+    return items.reduce((sum, next) => this.#mergeTypes(sum, next, pos), init);
   }
 
   /**
@@ -981,38 +1021,33 @@ export class Checker {
    * For example: `[1, 2.3]` contains an int and a float. The final list should correctly count as `float`
    * The other use case is for enum variants
    * TODO: if we have any other polymorphism (aka: type classes), that will have to be handled here too
-   *
-   * @param left
-   * @param right
-   * @private
-   * @returns undefined if there is no overload
    */
-  #mergeTypes(left: TypeExpression, right: TypeExpression): TypeExpression {
-    if (typesEqual(left, right)) {
+  #mergeTypes(left: CheckedTypeExpression, right: CheckedTypeExpression, pos: Position): CheckedTypeExpression {
+    if (left.equals(right)) {
       return left;
     }
 
-    if (left.kind === 'nominal' && left.name.equals(this.#coreTypes.nothing.name)) {
+    if (left.equals(this.#coreTypes.nothing)) {
       return right;
-    } else if (right.kind === 'nominal' && right.name.equals(this.#coreTypes.nothing.name)) {
+    } else if (right.equals(this.#coreTypes.nothing)) {
       return left;
     } else if (this.#checkAssignable(left, right)) {
       return right;
     } else if (this.#checkAssignable(right, left)) {
       return left;
     } else {
-      return right.pos.fail(`Incompatible with other type declared at ${left.pos.describe()}`)
+      return pos.fail(`Incompatible with other type`)
     }
   }
 
-  #checkAssignableFunctionTypes(actual: FunctionType, expected: FunctionType): boolean {
+  #checkAssignableFunctionTypes(actual: CheckedFunctionType, expected: CheckedFunctionType): boolean {
     // results are checked backwards because of contravariance
-    return actual.phase === expected.phase && this.#checkAssignable(expected.result, actual.result) && actual.params.length === expected.params.length &&
+    return actual.phase === expected.phase && this.#checkAssignable(expected.result, actual.result) && actual.params.size === expected.params.size &&
       // TODO: consider how to compare phases. For now demand they are exactly equal
-      zip(actual.params, expected.params).every(([left, right]) => (left.phase ?? 'val') === (right.phase ?? 'val') && this.#checkAssignable(left.type!!, right.type));
+      actual.params.zip<CheckedFunctionTypeParameter>(expected.params).every(([left, right]) => (left.phase ?? 'val') === (right.phase ?? 'val') && this.#checkAssignable(left.type!!, right.type));
   }
 
-  #typeSymbolToTypeExpression(symbol: Symbol, pos: Position): TypeExpression {
+  #typeSymbolToTypeExpression(symbol: Symbol, pos: Position): CheckedTypeExpression {
     const pack = this.#declarations.get(symbol.package);
 
     if (pack === undefined) {
@@ -1029,65 +1064,62 @@ export class Checker {
     return record.type;
   }
 
-  #processAccess(type: TypeExpression, id: IdentifierEx): TypeExpression {
-    switch (type.kind) {
-      case "struct":
-      case 'enumStruct':
-        return type.fields.get(id.name) ?? id.pos.fail(`Not able to find field ${id.name} on type ${type.name}`);
-      case 'enumTuple':
-        if (id.name.startsWith('v')) {
-          const num = Number.parseInt(id.name.substring(1));
+  #processAccess(type: CheckedTypeExpression, id: ParserIdentifierEx): CheckedTypeExpression {
+    if (type instanceof CheckedStructType || type instanceof CheckedEnumTypeStructVariant) {
+      return type.fields.get(id.name) ?? id.pos.fail(`Not able to find field ${id.name} on type ${type.name}`);
+    } else if (type instanceof CheckedEnumTypeTupleVariant) {
+      if (id.name.startsWith('v')) {
+        const num = Number.parseInt(id.name.substring(1));
 
-          if (Number.isSafeInteger(num) && num < type.fields.length) {
-            return type.fields[num]!!;
-          }
+        if (Number.isSafeInteger(num) && num < type.fields.size) {
+          return type.fields.get(num)!!;
         }
-
-        return id.pos.fail('Invalid field of tuple value');
-      case "enumAtom":
-        return id.pos.fail('Atom type has no fields');
-      case 'module':
-        return id.pos.fail('Module type has no fields');
-      case 'function':
-      case "overloadFunction":
-        return id.pos.fail('Function type has no fields');
-      case 'enum':
-        return id.pos.fail('Enum type has no fields');
-      case 'typeParameter':
-        // TODO: someday we'll have bounds, and when we do this will need to be changed to allow field access to valid bounds
-        return id.pos.fail('Unknown type has no fields');
-      case 'nominal': {
-        const realType = this.#declarations.get(type.name.package)?.get(type.name)?.type;
-
-        if (realType === undefined) {
-          // this should not happen, since the verifier should have detected this
-          return type.pos.fail('Unable to find type information');
-        }
-
-        return this.#processAccess(realType, id);
       }
-      case 'parameterized': {
-        const realType = this.#declarations.get(type.base.name.package)?.get(type.base.name)?.type;
 
-        if (realType === undefined) {
-          // this should not happen, since the verifier should have detected this
-          return type.pos.fail('Unable to find type information');
+      return id.pos.fail('Invalid field of tuple value');
+    } else if (type instanceof CheckedEnumTypeAtomVariant) {
+      return id.pos.fail('Atom type has no fields');
+    } else if (type instanceof CheckedModuleType) {
+      return id.pos.fail('Module type has no fields');
+    } else if (type instanceof CheckedFunctionType || type instanceof CheckedOverloadFunctionType) {
+      return id.pos.fail('Function type has no fields');
+    } else if (type instanceof CheckedFunctionTypeParameter) {
+      return id.pos.fail('Something is wrong, it should be impossible to access this');
+    } else if (type instanceof CheckedEnumType) {
+      return id.pos.fail('Enum type has no fields');
+    } else if (type instanceof CheckedTypeParameterType) {
+      // TODO: someday we'll have bounds, and when we do this will need to be changed to allow field access to valid bounds
+      return id.pos.fail('Unknown type has no fields');
+    } else if (type instanceof CheckedNominalType) {
+      const realType = this.#declarations.get(type.name.package)?.get(type.name)?.type;
+
+      if (realType === undefined) {
+        // this should not happen, since the verifier should have detected this
+        return id.pos.fail('Unable to find type information');
+      }
+
+      return this.#processAccess(realType, id);
+    } else {
+      const realType = this.#declarations.get(type.base.name.package)?.get(type.base.name)?.type;
+
+      if (realType === undefined) {
+        // this should not happen, since the verifier should have detected this
+        return id.pos.fail('Unable to find type information');
+      }
+
+      if (realType instanceof CheckedStructType) {
+        // only a struct both has type params and fields, at least right now
+
+        if (realType.typeParams.size !== type.args.size) {
+          return id.pos.fail(`Incorrect number of type params. Expected ${realType.typeParams.size} but found ${type.args.size}`);
         }
 
-        if (realType.kind === 'struct') {
-          // only a struct both has type params and fields, at least right now
+        const generics = Map(realType.typeParams.map(it => it.name).zip<CheckedTypeExpression>(type.args));
+        const field = realType.fields.get(id.name) ?? id.pos.fail(`Not able to find field ${id.name} on type ${realType.name}`);
 
-          if (realType.typeParams.length !== type.args.length) {
-            return type.pos.fail(`Incorrect number of type params. Expected ${realType.typeParams.length} but found ${type.args.length}`);
-          }
-
-          const generics = Map(zip(realType.typeParams.map(it => it.name), type.args));
-          const field = realType.fields.get(id.name) ?? id.pos.fail(`Not able to find field ${id.name} on type ${realType.name}`);
-
-          return this.#fillGenericTypes(field, generics);
-        } else {
-          return type.pos.fail("Parameterized type has no fields");
-        }
+        return this.#fillGenericTypes(field, id.pos, generics);
+      } else {
+        return id.pos.fail("Parameterized type has no fields");
       }
     }
   }
@@ -1113,71 +1145,44 @@ export class Checker {
    * at this use case it's known that `A` is `Int`.
    *
    * This method should then return just `Int`.
-   *
-   * @param ex
-   * @param generics
-   * @private
    */
-  #fillGenericTypes(ex: TypeExpression, generics: Map<Symbol, TypeExpression>): TypeExpression {
+  #fillGenericTypes(ex: CheckedTypeExpression, pos: Position, generics: Map<Symbol, CheckedTypeExpression>): CheckedTypeExpression {
     const self = this;
 
-    function fill(ex: TypeExpression): TypeExpression {
-      switch (ex.kind) {
-        case "struct":
-          return {
-            ...ex,
-            fields: ex.fields.map(fill),
-          } satisfies StructType;
-        case 'enumStruct':
-          return {
-            ...ex,
-            fields: ex.fields.map(fill),
-          } satisfies EnumTypeStructVariant;
-        case 'enumTuple':
-          return {
-            ...ex,
-            fields: ex.fields.map(fill),
-          } satisfies EnumTypeTupleVariant;
-        case 'enumAtom':
-        case "module":
-          return ex;
-        case 'enum':
-          return {
-            ...ex,
-            variants: ex.variants.map(fill) as Map<string, EnumTypeVariant>,
-          } satisfies EnumType;
-        case 'function':
-          return {
-            ...ex,
-            params: ex.params.map(it => {
-              return {
-                ...it,
-                type: fill(it.type),
-              } satisfies FunctionTypeParameter
-            })
-          } satisfies FunctionType;
-        case 'overloadFunction':
-          return {
-            ...ex,
-            branches: ex.branches.map(fill) as FunctionType[],
-          } satisfies OverloadFunctionType;
-        case "parameterized":
-          return {
-            ...ex,
-            args: ex.args.map(fill),
-          } satisfies ParameterizedType;
-        case 'nominal':
-          const realType = self.#declarations.get(ex.name.package)?.get(ex.name)?.type;
+    function fill(ex: CheckedTypeExpression): CheckedTypeExpression {
+      if (ex instanceof CheckedStructType) {
+        return ex.set('fields', ex.fields.map(fill));
+      } else if (ex instanceof CheckedEnumTypeStructVariant) {
+        return ex.set('fields', ex.fields.map(fill));
+      } else if (ex instanceof CheckedEnumTypeTupleVariant) {
+        return ex.set('fields', ex.fields.map(fill));
+      } else if (ex instanceof CheckedEnumTypeAtomVariant) {
+        return ex;
+      } else if (ex instanceof CheckedModuleType) {
+        return ex;
+      } else if (ex instanceof CheckedEnumType) {
+        return ex.set('variants', ex.variants.map(fill) as Map<string, CheckedEnumTypeVariant>);
+      } else if (ex instanceof CheckedFunctionType) {
+        return ex.set('params', ex.params.map(it => it.set('type', fill(it.type)))).set('result', fill(ex.result));
+      } else if (ex instanceof CheckedFunctionTypeParameter) {
+        return ex.set('type', fill(ex.type));
+      } else if (ex instanceof CheckedOverloadFunctionType) {
+        // overload functions are not allowed to be generic
+        return ex;
+      } else if (ex instanceof CheckedParameterizedType) {
+        return ex.set('args', ex.args.map(fill));
+      } else if (ex instanceof CheckedNominalType) {
+        const realType = self.#declarations.get(ex.name.package)?.get(ex.name)?.type;
 
-          if (realType === undefined) {
-            // this should not happen, since the verifier should have detected this
-            return ex.pos.fail('Unable to find type information');
-          }
+        if (realType === undefined) {
+          // this should not happen, since the verifier should have detected this
+          return pos.fail('Unable to find type information');
+        }
 
-          return ex;
-        case 'typeParameter':
-          // the magic happens here
-          return generics.get(ex.name) ?? ex.pos.fail(`Unable to find generic type parameter with name ${ex.name}`);
+        return ex;
+      } else {
+        // the magic happens here
+        return generics.get(ex.name) ?? pos.fail(`Unable to find generic type parameter with name ${ex.name}`);
       }
     }
 
@@ -1188,26 +1193,25 @@ export class Checker {
 
 class FunctionScope {
 
-  constructor(readonly symbol: Symbol, public resultType: TypeExpression) {
+  constructor(readonly symbol: Symbol, public resultType: CheckedTypeExpression) {
   }
-
 
 }
 
 export class Scope {
   readonly #parent: Scope | undefined;
-  readonly #symbols: Map<string, TypeExpression>;
+  readonly #symbols: Map<string, CheckedTypeExpression>;
   readonly qualifier: Qualifier;
   readonly functionScope: FunctionScope;
 
-  private constructor(parent: Scope | undefined, declared: Map<string, TypeExpression> | undefined, qualifier: Qualifier, functionScope: FunctionScope) {
+  private constructor(parent: Scope | undefined, declared: Map<string, CheckedTypeExpression> | undefined, qualifier: Qualifier, functionScope: FunctionScope) {
     this.#parent = parent;
-    this.#symbols = (declared ?? Map<string, TypeExpression>()).asMutable();
+    this.#symbols = (declared ?? Map<string, CheckedTypeExpression>()).asMutable();
     this.qualifier = qualifier;
     this.functionScope = functionScope;
   }
 
-  static init(declared: Map<string, TypeExpression>, qualifier: Qualifier, symbol: Symbol, resultType: TypeExpression): Scope {
+  static init(declared: Map<string, CheckedTypeExpression>, qualifier: Qualifier, symbol: Symbol, resultType: CheckedTypeExpression): Scope {
     return new Scope(undefined, declared, qualifier, new FunctionScope(symbol, resultType));
   }
 
@@ -1215,11 +1219,11 @@ export class Scope {
     return new Scope(this, undefined, this.qualifier, this.functionScope);
   }
 
-  childFunction(symbol: Symbol, resultType: TypeExpression): Scope {
+  childFunction(symbol: Symbol, resultType: CheckedTypeExpression): Scope {
     return new Scope(this, undefined, this.qualifier, new FunctionScope(symbol, resultType));
   }
 
-  get(name: string, pos: Position): TypeExpression {
+  get(name: string, pos: Position): CheckedTypeExpression {
     const maybe = this.#symbols.get(name);
 
     if (maybe !== undefined) {
@@ -1233,13 +1237,7 @@ export class Scope {
     return pos.fail(`Could not find '${name}' in scope`);
   }
 
-  set(name: string, type: TypeExpression): void {
+  set(name: string, type: CheckedTypeExpression): void {
     this.#symbols.set(name, type);
   }
-}
-
-export interface Rule<Ex extends Expression> {
-  test(ex: Expression, expected: TypeExpression | undefined): ex is Ex;
-
-  type(scope: Scope, ex: Ex, expected: TypeExpression | undefined): Typed<Ex>;
 }

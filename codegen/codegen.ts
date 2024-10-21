@@ -1,0 +1,821 @@
+/**
+ * Here we have a mini library for generating code for all of the ASTs we have to deal with in the compiler
+ */
+import { List, Map, Seq, Set } from "immutable";
+import { createWriteStream } from 'node:fs';
+import { Stream } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+import { resolve } from 'node:path';
+import { Position, Symbol } from "../src/ast.js";
+import { type } from "node:os";
+
+type Type
+  = { kind: 'lib', package: string, name: string }
+  | { kind: 'local', name: string }
+  | { kind: 'util', name: string }
+  | { kind: 'list', item: Type }
+  | { kind: 'map', key: Type, value: Type }
+  | { kind: 'optional', base: Type }
+  | { kind: 'native', name: string }
+  ;
+
+interface Record {
+  name: string;
+  fields: { [key: string]: Type };
+}
+
+
+function list(item: Type): Type {
+  return {
+    kind: 'list',
+    item,
+  };
+}
+
+function map(key: Type, value: Type): Type {
+  return {
+    kind: 'map',
+    key,
+    value,
+  };
+}
+
+function optional(base: Type): Type {
+  return {
+    kind: 'optional',
+    base,
+  };
+}
+
+function util(name: string): Type {
+  return {
+    kind: 'util',
+    name,
+  };
+}
+
+function native(name: 'string' | 'boolean' | 'number'): Type {
+  return {
+    kind: 'native',
+    name,
+  };
+}
+
+const pos = util('Position');
+const symbol = util('Symbol');
+const access = util('Access');
+
+
+class Generator {
+  private readonly records = List<Record>().asMutable();
+  private readonly imports = Map<string, Set<string>>().asMutable();
+  private readonly types = Map<string, List<string>>().asMutable();
+
+  constructor(private readonly prefix: string) {
+    this.imports.set('immutable', Set.of('Map', 'List', 'Record'));
+  }
+
+  type(name: string, member?: { kind: 'local', name: string }): { kind: 'local', name: string } {
+    const newName = this.prefix + name;
+    this.types.set(newName, List());
+
+    if (member !== undefined) {
+      this.types.update(member.name, prev => prev?.push(newName) ?? List());
+    }
+
+    return {kind: 'local', name: newName};
+  }
+
+  add(name: string, fields: { [key: string]: Type }, member?: { kind: 'local', name: string }): { kind: 'local', name: string } {
+    const newName = this.prefix + name;
+    this.records.push({name: newName, fields});
+
+    if (member !== undefined) {
+      this.types.update(member.name, prev => prev?.push(newName) ?? List());
+    }
+
+    for (const [, value] of Seq.Keyed(fields)) {
+      this.#loadImports(value);
+    }
+
+    return {kind: 'local', name: newName};
+  }
+
+  #loadImports(type: Type): void {
+    switch (type.kind) {
+        case 'lib':
+          this.imports.update(type.package, prev => (prev ?? Set<string>()).add(type.name));
+          break;
+        case 'util':
+          this.imports.update('../ast.js', prev => (prev ?? Set<string>()).add(type.name));
+          break;
+      case 'optional':
+        this.#loadImports(type.base);
+        break;
+      case 'list':
+        this.#loadImports(type.item);
+        break;
+      case 'map':
+        this.#loadImports(type.key);
+        this.#loadImports(type.value);
+        break;
+    }
+  }
+
+  *generate(): IterableIterator<string> {
+    for (const [pack, values] of this.imports) {
+      yield `import { `;
+      for (const value of values) {
+        yield value;
+        yield `, `;
+      }
+      yield ` } from '${pack}';\n`
+    }
+    yield '\n';
+
+    for (const [name, members] of this.types) {
+      yield `export type ${name}\n`
+      yield `  = ${members.first()}\n`
+      for (const member of members.toSeq().skip(1)) {
+        yield `  | ${member}\n`;
+      }
+      yield `  ;\n\n`;
+    }
+
+    for (const {name, fields} of this.records) {
+      yield `interface Mutable${name} {\n`;
+      for (const [key, value] of Seq.Keyed(fields)) {
+        yield `  ${key}: ${this.#localName(value)};\n`;
+      }
+      yield `}\n`;
+      yield `export class ${name} extends Record<Mutable${name}>({\n`;
+      for (const [key, value] of Seq.Keyed(fields)) {
+        yield `  ${key}: undefined as unknown as ${this.#localName(value)},\n`;
+      }
+      yield `}) {\n`;
+      yield `  constructor(props: Mutable${name}) {\n`;
+      yield `    super(props);\n`;
+      yield `  }\n`;
+      yield `}\n\n`;
+    }
+  }
+
+  #localName(type: Type): string {
+    switch (type.kind) {
+      case "lib":
+      case "util":
+      case 'native':
+      case "local":
+        return type.name;
+      case "list":
+        return `List<${this.#localName(type.item)}>`;
+      case "map":
+        return `Map<${this.#localName(type.key)}, ${this.#localName(type.value)}>`;
+      case "optional":
+        return `${this.#localName(type.base)} | undefined`;
+    }
+  }
+}
+
+function parser(): Generator {
+  const gen = new Generator('Parser');
+
+  const typeExpression = gen.type('TypeExpression');
+
+  const expression = gen.type('Expression');
+
+  for (const [name, lit] of [['Boolean', 'boolean'], ['Int', 'number'], ['Float', 'number'], ['String', 'string']] as const) {
+    gen.add(`${name}LiteralEx`, {
+      pos,
+      value: native(lit),
+    }, expression);
+  }
+
+  const identifierEx = gen.add('IdentifierEx', {
+    pos,
+    name: native('string'),
+  }, expression);
+
+  const nominalType = gen.add('NominalType', {
+    pos,
+    name: list(identifierEx),
+  }, typeExpression);
+
+  gen.add('ParameterizedType', {
+    pos,
+    base: nominalType,
+    args: list(typeExpression),
+  }, typeExpression);
+
+  const functionTypeParameterType = gen.add('FunctionTypeParameter', {
+    pos,
+    phase: optional(util('ExpressionPhase')),
+    type: typeExpression,
+  }, typeExpression);
+
+  gen.add('FunctionType', {
+    pos,
+    phase: util('FunctionPhase'),
+    params: list(functionTypeParameterType),
+    result: typeExpression,
+  }, typeExpression);
+
+  const typeParameterType = gen.add('TypeParameterType', {
+    pos,
+    name: native('string'),
+  }, typeExpression);
+
+  gen.add('ListLiteralEx', {
+    pos,
+    values: list(expression),
+  }, expression);
+
+  gen.add('SetLiteralEx', {
+    pos,
+    values: list(expression),
+  }, expression);
+
+  const mapEntry = gen.add('MapLiteralEntry', {
+    pos,
+    key: expression,
+    value: expression,
+  });
+
+  gen.add('MapLiteralEx', {
+    pos,
+    values: list(mapEntry),
+  }, expression);
+
+  gen.add('IsEx', {
+    pos,
+    not: native('boolean'),
+    base: expression,
+    check: typeExpression,
+  }, expression);
+
+  gen.add('NotEx', {
+    pos,
+    base: expression,
+  }, expression);
+
+  gen.add('OrEx', {
+    pos,
+    left: expression,
+    right: expression,
+  }, expression);
+
+  gen.add('AndEx', {
+    pos,
+    left: expression,
+    right: expression,
+  }, expression);
+
+  gen.add('AccessEx', {
+    pos,
+    base: expression,
+    field: identifierEx,
+  }, expression);
+
+  gen.add('StaticAccessEx', {
+    pos,
+    path: list(identifierEx),
+  }, expression);
+
+  const constructEntry = gen.add('ConstructEntry', {
+    pos,
+    name: native('string'),
+    value: expression,
+  });
+
+  gen.add('ConstructEx', {
+    pos,
+    base: expression,
+    typeArgs: list(typeExpression),
+    fields: list(constructEntry),
+  }, expression);
+
+  const lambdaParameter = gen.add('Parameter', {
+    pos,
+    name: native('string'),
+    phase: optional(util('ExpressionPhase')),
+    type: optional(typeExpression),
+  });
+
+  const lambda = gen.add('LambdaEx', {
+    pos,
+    phase: util('FunctionPhase'),
+    params: list(lambdaParameter),
+    body: expression,
+  }, expression);
+
+  const statement = gen.type('Statement');
+
+  gen.add('BlockEx', {
+    pos,
+    body: list(statement),
+  }, expression);
+
+  gen.add('ExpressionStatement', {
+    pos,
+    expression,
+  }, statement);
+
+  gen.add('AssignmentStatement', {
+    pos,
+    name: native('string'),
+    phase: util('ExpressionPhase'),
+    type: optional(typeExpression),
+    expression,
+  }, statement);
+
+  gen.add('ReassignmentStatement', {
+    pos,
+    name: native('string'),
+    expression,
+  }, statement);
+
+  const func = gen.add('FunctionStatement', {
+    pos,
+    name: native('string'),
+    typeParams: list(typeParameterType),
+    result: typeExpression,
+    lambda,
+  }, statement);
+
+  gen.add('CallEx', {
+    pos,
+    func: expression,
+    typeArgs: list(typeExpression),
+    args: list(expression),
+  }, expression);
+
+  gen.add('IfEx', {
+    pos,
+    condition: expression,
+    thenEx: expression,
+    elseEx: optional(expression),
+  }, expression);
+
+  gen.add('ReturnEx', {
+    pos,
+    base: expression,
+  }, expression);
+
+  const declare = gen.type('Declaration');
+  const importEx = gen.type('ImportExpression');
+
+  const nominalImportEx = gen.add('NominalImportExpression', {
+    pos,
+    name: native('string'),
+  }, importEx);
+
+  gen.add('NestedImportExpression', {
+    pos,
+    base: nominalImportEx,
+    children: list(importEx),
+  }, importEx);
+
+  gen.add('ImportDeclaration', {
+    pos,
+    package: nominalImportEx,
+    ex: importEx,
+  }, declare);
+
+  gen.add('FunctionDeclare', {
+    pos,
+    extern: native('boolean'),
+    access: util('Access'),
+    symbol,
+    func,
+  }, declare);
+
+  const structField = gen.add('StructField', {
+    pos,
+    type: typeExpression,
+    default: optional(expression),
+  });
+
+  gen.add('StructDeclare', {
+    pos,
+    access,
+    symbol,
+    name: native('string'),
+    typeParams: list(typeParameterType),
+    fields: map(native('string'), structField),
+  }, declare);
+
+  const enumVariant = gen.type('EnumVariant');
+
+  gen.add('EnumStructVariant', {
+    pos,
+    symbol,
+    fields: map(native('string'), structField),
+  }, enumVariant);
+
+  gen.add('EnumTupleVariant', {
+    pos,
+    symbol,
+    fields: list(typeExpression),
+  }, enumVariant);
+
+  gen.add('EnumAtomVariant', {
+    pos,
+    symbol,
+  }, enumVariant);
+
+  gen.add('EnumDeclare', {
+    pos,
+    access,
+    symbol,
+    name: native('string'),
+    typeParams: list(typeParameterType),
+    variants: map(native('string'), enumVariant),
+  }, declare);
+
+  gen.add('ConstantDeclare', {
+    pos,
+    access,
+    symbol,
+    name: native('string'),
+    expression,
+    type: typeExpression,
+  }, declare);
+
+  const file = gen.add('File', {
+    src: native('string'),
+    module: symbol,
+    declarations: list(declare),
+  });
+
+  const accessRecord = gen.add('AccessRecord', {
+    access,
+    module: symbol,
+    type: typeExpression,
+  });
+
+  gen.add('Package', {
+    name: util('PackageName'),
+    files: list(file),
+    declarations: map(symbol, accessRecord),
+  });
+
+  return gen;
+}
+
+function checker(): Generator {
+  const gen = new Generator('Checked');
+
+  const typeExpression = gen.type('TypeExpression');
+
+  const expression = gen.type('Expression');
+
+  for (const [name, lit] of [['Boolean', 'boolean'], ['Int', 'number'], ['Float', 'number'], ['String', 'string']] as const) {
+    gen.add(`${name}LiteralEx`, {
+      pos,
+      value: native(lit),
+      type: typeExpression,
+    }, expression);
+  }
+
+  const identifierEx = gen.add('IdentifierEx', {
+    pos,
+    name: native('string'),
+    type: typeExpression,
+  }, expression);
+
+  const nominalType = gen.add('NominalType', {
+    name: symbol,
+  }, typeExpression);
+
+  gen.add('ParameterizedType', {
+    base: nominalType,
+    args: list(typeExpression),
+  }, typeExpression);
+
+  const functionTypeParameterType = gen.add('FunctionTypeParameter', {
+    phase: optional(util('ExpressionPhase')),
+    type: typeExpression,
+  }, typeExpression);
+
+  const typeParameterType = gen.add('TypeParameterType', {
+    name: symbol,
+    // TODO: someday we'll have bounds and this is where they'll be declared
+  }, typeExpression);
+
+  const functionType = gen.add('FunctionType', {
+    phase: util('FunctionPhase'),
+    typeParams: list(typeParameterType),
+    params: list(functionTypeParameterType),
+    result: typeExpression,
+  }, typeExpression);
+
+  gen.add('OverloadFunctionType', {
+    branches: list(functionType),
+  }, typeExpression);
+
+  gen.add('ModuleType', {
+    name: symbol,
+  }, typeExpression);
+
+  gen.add('StructType', {
+    pos,
+    name: symbol,
+    typeParams: list(typeParameterType),
+    fields: map(native('string'), typeExpression),
+  }, typeExpression);
+
+  const enumTypeVariant = gen.type('EnumTypeVariant', typeExpression);
+
+  gen.add('EnumType', {
+    pos,
+    name: symbol,
+    typeParams: list(typeParameterType),
+    variants: map(native('string'), enumTypeVariant),
+  }, typeExpression);
+
+  gen.add('EnumTypeStructVariant', {
+    pos,
+    name: symbol,
+    fields: map(native('string'), typeExpression),
+  }, enumTypeVariant);
+
+  gen.add('EnumTypeTupleVariant', {
+    pos,
+    name: symbol,
+    fields: list(typeExpression),
+  }, enumTypeVariant);
+
+  gen.add('EnumTypeAtomVariant', {
+    pos,
+    name: symbol,
+  }, enumTypeVariant);
+
+  gen.add('ListLiteralEx', {
+    pos,
+    values: list(expression),
+    type: typeExpression,
+  }, expression);
+
+  gen.add('SetLiteralEx', {
+    pos,
+    values: list(expression),
+    type: typeExpression,
+  }, expression);
+
+  const mapEntry = gen.add('MapLiteralEntry', {
+    pos,
+    key: expression,
+    value: expression,
+  });
+
+  gen.add('MapLiteralEx', {
+    pos,
+    values: list(mapEntry),
+    type: typeExpression,
+  }, expression);
+
+  gen.add('IsEx', {
+    pos,
+    not: native('boolean'),
+    base: expression,
+    check: typeExpression,
+    type: typeExpression,
+  }, expression);
+
+  gen.add('NotEx', {
+    pos,
+    base: expression,
+    type: typeExpression,
+  }, expression);
+
+  gen.add('OrEx', {
+    pos,
+    left: expression,
+    right: expression,
+    type: typeExpression,
+  }, expression);
+
+  gen.add('AndEx', {
+    pos,
+    left: expression,
+    right: expression,
+    type: typeExpression,
+  }, expression);
+
+  gen.add('AccessEx', {
+    pos,
+    base: expression,
+    field: identifierEx,
+    type: typeExpression,
+  }, expression);
+
+  gen.add('StaticAccessEx', {
+    pos,
+    path: list(identifierEx),
+    type: typeExpression,
+  }, expression);
+
+  const constructEntry = gen.add('ConstructEntry', {
+    pos,
+    name: native('string'),
+    value: expression,
+  });
+
+  gen.add('ConstructEx', {
+    pos,
+    base: expression,
+    typeArgs: list(typeExpression),
+    fields: list(constructEntry),
+    type: typeExpression,
+  }, expression);
+
+  const lambdaParameter = gen.add('Parameter', {
+    pos,
+    name: native('string'),
+    phase: optional(util('ExpressionPhase')),
+    type: typeExpression,
+  });
+
+  const lambda = gen.add('LambdaEx', {
+    pos,
+    phase: util('FunctionPhase'),
+    params: list(lambdaParameter),
+    body: expression,
+    type: typeExpression,
+  }, expression);
+
+  const statement = gen.type('Statement');
+
+  gen.add('BlockEx', {
+    pos,
+    body: list(statement),
+    type: typeExpression,
+  }, expression);
+
+  gen.add('ExpressionStatement', {
+    pos,
+    expression,
+    type: typeExpression,
+  }, statement);
+
+  gen.add('AssignmentStatement', {
+    pos,
+    name: native('string'),
+    phase: util('ExpressionPhase'),
+    type: typeExpression,
+    expression,
+  }, statement);
+
+  gen.add('ReassignmentStatement', {
+    pos,
+    name: native('string'),
+    type: typeExpression,
+    expression,
+  }, statement);
+
+  const func = gen.add('FunctionStatement', {
+    pos,
+    name: native('string'),
+    typeParams: list(typeParameterType),
+    result: typeExpression,
+    lambda,
+    type: typeExpression,
+  }, statement);
+
+  gen.add('CallEx', {
+    pos,
+    func: expression,
+    typeArgs: list(typeExpression),
+    args: list(expression),
+    type: typeExpression,
+  }, expression);
+
+  gen.add('IfEx', {
+    pos,
+    condition: expression,
+    thenEx: expression,
+    elseEx: optional(expression),
+    type: typeExpression,
+  }, expression);
+
+  gen.add('ReturnEx', {
+    pos,
+    base: expression,
+    type: typeExpression,
+  }, expression);
+
+  const declare = gen.type('Declaration');
+  const importEx = gen.type('ImportExpression');
+
+  const nominalImportEx = gen.add('NominalImportExpression', {
+    pos,
+    name: native('string'),
+  }, importEx);
+
+  gen.add('NestedImportExpression', {
+    pos,
+    base: nominalImportEx,
+    children: list(importEx),
+  }, importEx);
+
+  gen.add('ImportDeclaration', {
+    pos,
+    package: nominalImportEx,
+    ex: importEx,
+  }, declare);
+
+  gen.add('FunctionDeclare', {
+    pos,
+    extern: native('boolean'),
+    access: util('Access'),
+    symbol,
+    func,
+  }, declare);
+
+  const structField = gen.add('StructField', {
+    pos,
+    type: typeExpression,
+    default: optional(expression),
+  });
+
+  gen.add('StructDeclare', {
+    pos,
+    access,
+    symbol,
+    name: native('string'),
+    typeParams: list(typeParameterType),
+    fields: map(native('string'), structField),
+  }, declare);
+
+  const enumVariant = gen.type('EnumVariant');
+
+  gen.add('EnumStructVariant', {
+    pos,
+    symbol,
+    fields: map(native('string'), structField),
+  }, enumVariant);
+
+  gen.add('EnumTupleVariant', {
+    pos,
+    symbol,
+    fields: list(typeExpression),
+  }, enumVariant);
+
+  gen.add('EnumAtomVariant', {
+    pos,
+    symbol,
+  }, enumVariant);
+
+  gen.add('EnumDeclare', {
+    pos,
+    access,
+    symbol,
+    name: native('string'),
+    typeParams: list(typeParameterType),
+    variants: map(native('string'), enumVariant),
+  }, declare);
+
+  gen.add('ConstantDeclare', {
+    pos,
+    access,
+    symbol,
+    name: native('string'),
+    expression,
+    type: typeExpression,
+  }, declare);
+
+  const file = gen.add('File', {
+    src: native('string'),
+    module: symbol,
+    declarations: list(declare),
+  });
+
+  const accessRecord = gen.add('AccessRecord', {
+    access,
+    module: symbol,
+    type: typeExpression,
+  });
+
+  gen.add('Package', {
+    name: util('PackageName'),
+    files: list(file),
+    declarations: map(symbol, accessRecord),
+  });
+
+  return gen;
+}
+
+const outputs = [
+  ['../src/parser/parserAst.ts', parser],
+  ['../src/checker/checkerAst.ts', checker],
+] as const;
+
+
+for (const [targetFile, func] of outputs) {
+  const out = createWriteStream(resolve(targetFile));
+
+  await pipeline(
+    Stream.Readable.from(func().generate()),
+    out,
+  )
+}

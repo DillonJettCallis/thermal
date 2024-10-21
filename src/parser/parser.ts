@@ -1,59 +1,67 @@
+import { isKind, Kind, Lexer, Token } from "./lexer.js";
 import {
   Access,
-  AccessExpression,
-  AndExpression,
-  AssignmentStatement,
-  BlockEx,
-  BooleanLiteralEx,
-  CallEx,
-  ConstantDeclaration,
-  ConstructExpression,
-  ConstructFieldExpression,
-  Declaration,
-  EnumAtomVariant,
-  EnumDeclaration,
-  EnumStructVariant,
-  EnumTupleVariant,
-  Expression,
   ExpressionPhase,
-  File,
-  FloatLiteralEx,
-  FunctionDeclaration,
   FunctionPhase,
-  FunctionStatement,
-  IdentifierEx,
-  IfEx,
-  ImportDeclaration,
-  ImportExpression,
-  IntLiteralEx,
   isAccess,
-  IsExpression,
   isExpressionPhase,
   isFunctionPhase,
-  LambdaEx,
-  ListLiteralEx,
-  MapLiteralEx,
-  NominalImportExpression,
-  NotExpression,
-  OrExpression,
   Position,
-  ReturnEx,
-  SetLiteralEx,
-  Statement,
-  StaticAccessExpression,
-  StringLiteralEx,
-  StructDeclaration,
-  StructField,
-  Symbol,
-  UncheckedFunctionTypeParameter,
-  UncheckedNominalType,
-  UncheckedParameter,
-  UncheckedParameterizedType,
-  UncheckedTypeExpression,
-  UncheckedTypeParameterType
-} from "./ast.js";
-import { isKind, Kind, Lexer, Token } from "./lexer.js";
-import { Map, Seq, Set } from 'immutable';
+  Symbol
+} from '../ast.js';
+import { List, Map, Set } from 'immutable';
+import {
+  ParserAccessEx,
+  ParserAndEx,
+  ParserAssignmentStatement,
+  ParserBlockEx,
+  ParserBooleanLiteralEx,
+  ParserCallEx,
+  ParserConstantDeclare,
+  ParserConstructEntry,
+  ParserConstructEx,
+  ParserDeclaration,
+  ParserEnumAtomVariant,
+  ParserEnumDeclare,
+  ParserEnumStructVariant,
+  ParserEnumTupleVariant,
+  ParserEnumVariant,
+  ParserExpression,
+  ParserExpressionStatement,
+  ParserFile,
+  ParserFloatLiteralEx,
+  ParserFunctionDeclare,
+  ParserFunctionStatement,
+  ParserFunctionType,
+  ParserFunctionTypeParameter,
+  ParserIdentifierEx,
+  ParserIfEx,
+  ParserImportDeclaration,
+  ParserImportExpression,
+  ParserIntLiteralEx,
+  ParserIsEx,
+  ParserLambdaEx,
+  ParserListLiteralEx,
+  ParserMapLiteralEntry,
+  ParserMapLiteralEx,
+  ParserNestedImportExpression,
+  ParserNominalImportExpression,
+  ParserNominalType,
+  ParserNotEx,
+  ParserOrEx,
+  ParserParameter,
+  ParserParameterizedType,
+  ParserReassignmentStatement,
+  ParserReturnEx,
+  ParserSetLiteralEx,
+  ParserStatement,
+  ParserStaticAccessEx,
+  ParserStringLiteralEx,
+  ParserStructDeclare,
+  ParserStructField,
+  ParserTypeExpression,
+  ParserTypeParameterType
+} from "./parserAst.js";
 
 export class Parser {
 
@@ -69,15 +77,15 @@ export class Parser {
     this.#module = module;
   }
 
-  static parseFile(path: string, module: Symbol): File {
-    return {
+  static parseFile(path: string, module: Symbol): ParserFile {
+    return new ParserFile({
       src: path,
       module,
       declarations: new Parser(Lexer.lexFile(path), module).#parseFile(),
-    }
+    });
   }
 
-  static parseExpression(path: string, content: string, module: Symbol): Expression {
+  static parseExpression(path: string, content: string, module: Symbol): ParserExpression {
     return new Parser(Lexer.lexString(path, content), module).#parseExpression();
   }
 
@@ -179,8 +187,8 @@ export class Parser {
     }
   }
 
-  #parseFile(): Declaration[] {
-    const decs: Declaration[] = [];
+  #parseFile(): List<ParserDeclaration> {
+    const decs = List<ParserDeclaration>().asMutable();
     // until we reach the end of the file
 
     while (!this.#endOfFile()) {
@@ -192,10 +200,10 @@ export class Parser {
       }
     }
 
-    return decs;
+    return decs.asImmutable();
   }
 
-  #parseDeclaration(): Declaration {
+  #parseDeclaration(): ParserDeclaration {
     const first = this.#assertKind('keyword');
 
     if (first.value === 'import') {
@@ -234,55 +242,51 @@ export class Parser {
     }
   }
 
-  #parseImportDeclare(pos: Position): ImportDeclaration {
+  #parseImportDeclare(pos: Position): ParserImportDeclaration {
     // we've already parsed the 'import' keyword
     const pack = this.#parseNominalImport();
     this.#assertSymbol('/');
     const ex = this.#parseImportExpression();
 
-    return {
+    return new ParserImportDeclaration({
       pos,
-      kind: 'import',
       package: pack,
       ex,
-    }
+    });
   }
 
-  #parseImportExpression(): ImportExpression {
+  #parseImportExpression(): ParserImportExpression {
     const base = this.#parseNominalImport();
 
     if (this.#checkSymbol('::')) {
       if (this.#checkSymbol('{')) {
-        return {
+        return new ParserNestedImportExpression({
           pos: base.pos,
-          kind: 'nested',
           base,
           children: this.#parseList('}', true, () => this.#parseImportExpression()),
-        }
+        });
       } else {
-        return {
+        return new ParserNestedImportExpression({
           pos: base.pos,
-          kind: 'nested',
           base,
-          children: [this.#parseImportExpression()],
-        }
+          children: List.of(this.#parseImportExpression()),
+        });
       }
     } else {
       return base;
     }
   }
 
-  #parseNominalImport(): NominalImportExpression {
+  #parseNominalImport(): ParserNominalImportExpression {
     const name = this.#assertKind('identifier');
 
-    return {
+    return new ParserNominalImportExpression({
       pos: name.pos,
-      kind: 'nominal',
       name: name.value,
-    };
+    });
   }
 
-  #parseConstDeclare(access: Access, pos: Position): ConstantDeclaration {
+  #parseConstDeclare(access: Access, pos: Position): ParserConstantDeclare {
     // we've already parsed the 'const' keyword and the access modifier
 
     const nameToken = this.#assertKind('identifier');
@@ -291,54 +295,52 @@ export class Parser {
     this.#assertSymbol('=');
     const expression = this.#parseExpression();
 
-    return {
+    return new ParserConstantDeclare({
       pos,
-      kind: 'const',
       access,
       symbol: this.#module.child(nameToken.value),
       name: nameToken.value,
       type,
       expression,
-    }
+    });
   }
 
-  #parseFunctionDeclare(extern: boolean, access: Access, phase: FunctionPhase, pos: Position): FunctionDeclaration {
+  #parseFunctionDeclare(extern: boolean, access: Access, phase: FunctionPhase, pos: Position): ParserFunctionDeclare {
     const func = this.#parseFunctionStatement(phase, pos);
 
-    return {
-      ...func,
+    return new ParserFunctionDeclare({
+      func,
       extern,
       access,
       symbol: this.#module.child(func.name),
       pos,
-    };
+    });
   }
 
-  #parseStructDeclare(access: Access, pos: Position): StructDeclaration {
+  #parseStructDeclare(access: Access, pos: Position): ParserStructDeclare {
     const name = this.#assertKind('identifier').value;
     const typeParams = this.#parseTypeParams();
 
     this.#assertSymbol('{');
-    const fields: Map<string, StructField> = Map(this.#parseList('}', true, () => this.#parseStructField()));
+    const fields: Map<string, ParserStructField> = Map(this.#parseList('}', true, () => this.#parseStructField()));
 
-    return {
+    return new ParserStructDeclare({
       pos,
-      kind: 'struct',
       access,
       symbol: this.#module.child(name),
       name,
       typeParams,
       fields,
-    }
+    });
   }
 
-  #parseEnumDeclare(access: Access, pos: Position): EnumDeclaration {
+  #parseEnumDeclare(access: Access, pos: Position): ParserEnumDeclare {
     const name = this.#assertKind('identifier').value;
     const typeParams = this.#parseTypeParams();
     this.#assertSymbol('{');
     const symbol = this.#module.child(name);
 
-    const variants = Seq(this.#parseList('}', true, () => {
+    const variants = Map(this.#parseList<[string, ParserEnumVariant]>('}', true, () => {
       const nameToken = this.#assertKind('identifier');
       const name = nameToken.value;
       const pos = nameToken.pos;
@@ -346,37 +348,32 @@ export class Parser {
 
       switch (next.value) {
         case '{': {
-          const fields: Map<string, StructField> = Map(this.#parseList('}', true, () => this.#parseStructField()));
+          const fields: Map<string, ParserStructField> = Map(this.#parseList('}', true, () => this.#parseStructField()));
 
-          return [name, { pos, kind: 'struct', symbol: symbol.child(name), fields } satisfies EnumStructVariant] as const;
+          return [name, new ParserEnumStructVariant({ pos, symbol: symbol.child(name), fields })] as const;
         }
         case '(': {
-          const fields: UncheckedTypeExpression[] = this.#parseList(')', false, () => {
-            return this.#parseTypeExpression();
-          });
-          return [name, { pos, kind: 'tuple', fields, symbol: symbol.child(name) } satisfies EnumTupleVariant] as const;
+          const fields = this.#parseList(')', false, () => this.#parseTypeExpression());
+          return [name, new ParserEnumTupleVariant({ pos, fields, symbol: symbol.child(name) })] as const;
         }
         default:
-          return [name, { pos, kind: 'atom', symbol: symbol.child(name) } satisfies EnumAtomVariant] as const;
+          return [name, new ParserEnumAtomVariant({ pos, symbol: symbol.child(name) })] as const;
       }
-    })).toKeyedSeq()
-      .mapKeys((_, pair) => pair[0])
-      .map(pair => pair[1])
-      .toMap();
+    }));
 
-    return {
+    return new ParserEnumDeclare({
       pos,
-      kind: 'enum',
       access,
       symbol,
       name,
       typeParams,
       variants,
-    }
+    });
   }
 
-  #parseStructField(): [string, StructField] {
-    const name = this.#assertKind('identifier').value;
+  #parseStructField(): [string, ParserStructField] {
+    const id = this.#assertKind('identifier');
+    const name = id.value;
     this.#assertSymbol(':');
     const type = this.#parseTypeExpression();
 
@@ -386,14 +383,15 @@ export class Parser {
 
     return [
       name,
-      {
+      new ParserStructField({
+        pos: id.pos,
         type,
         default: defaultEx,
-      }
+      }),
     ]
   }
 
-  #parseFunctionStatement(phase: FunctionPhase, pos: Position): FunctionStatement {
+  #parseFunctionStatement(phase: FunctionPhase, pos: Position): ParserFunctionStatement {
     // the word 'fun' has already been parsed by this point
     const name = this.#assertKind('identifier').value;
     const typeParams = this.#parseTypeParams();
@@ -406,28 +404,28 @@ export class Parser {
         const name = this.#assertKind('identifier').value;
         this.#assertSymbol(':');
         const type = this.#parseTypeExpression();
-        return {
+        return new ParserParameter({
           pos: first.pos,
           phase,
           name,
           type,
-        } satisfies UncheckedParameter;
+        });
       } else if (first.kind === 'identifier') {
         const name = first.value;
         this.#assertSymbol(':');
         const type = this.#parseTypeExpression();
-        return {
+        return new ParserParameter({
           pos: first.pos,
           phase: undefined,
           name,
           type,
-        } satisfies UncheckedParameter;
+        });
       } else {
         return first.pos.fail(`Expected parameter, found ${first.kind} '${first.value}'`);
       }
     });
     this.#assertSymbol(':');
-    const resultType = this.#parseTypeExpression();
+    const result = this.#parseTypeExpression();
 
     const final = this.#assertKind('symbol');
     const body = final.value === '='
@@ -436,19 +434,21 @@ export class Parser {
         ? this.#parseBlockExpression(final.pos)
         : final.pos.fail('Expected function body');
 
-    return {
-      kind: 'function',
+    return new ParserFunctionStatement({
       pos,
       name,
-      phase,
       typeParams,
-      params,
-      resultType,
-      body,
-    }
+      result,
+      lambda: new ParserLambdaEx({
+        pos,
+        phase,
+        params,
+        body,
+      })
+    });
   }
 
-  #parseExpression(): Expression {
+  #parseExpression(): ParserExpression {
     const first = this.#peek();
 
     if (first.kind === 'symbol' && first.value === '{') {
@@ -468,13 +468,12 @@ export class Parser {
     }
   }
 
-  #parseLambda(phase: FunctionPhase, pos: Position): LambdaEx {
+  #parseLambda(phase: FunctionPhase, pos: Position): ParserLambdaEx {
     // the opening phase has already been parsed
     this.#assertSymbol('{');
 
-    return {
+    return new ParserLambdaEx({
       pos,
-      kind: 'function',
       phase,
       params: this.#parseList('=>', false, () => {
         const first = this.#next();
@@ -483,26 +482,26 @@ export class Parser {
           : [undefined, first];
 
         if (this.#checkSymbol(':')) {
-          return {
+          return new ParserParameter({
             pos: name.pos,
             phase,
             name: name.value,
             type: this.#parseTypeExpression(),
-          } satisfies UncheckedParameter;
+          });
         } else {
-          return {
+          return new ParserParameter({
             pos: name.pos,
             phase,
             name: name.value,
             type: undefined,
-          } satisfies UncheckedParameter;
+          });
         }
       }),
       body: this.#parseBlockExpression(pos),
-    }
+    });
   }
 
-  #parseIfExpression(pos: Position): IfEx {
+  #parseIfExpression(pos: Position): ParserIfEx {
     // the 'if' has already been parsed
     this.#assertSymbol('(');
     const condition = this.#parseExpression();
@@ -512,51 +511,47 @@ export class Parser {
       ? this.#parseExpression()
       : undefined;
 
-    return {
+    return new ParserIfEx({
       pos,
-      kind: 'if',
       condition,
       thenEx,
       elseEx,
-    }
+    });
   }
 
-  #parseReturnExpression(pos: Position): ReturnEx {
+  #parseReturnExpression(pos: Position): ParserReturnEx {
     // the 'return' has already been parsed
-    return {
+    return new ParserReturnEx({
       pos,
-      kind: 'return',
-      expression: this.#parseExpression(),
-    }
+      base: this.#parseExpression(),
+    });
   }
 
-  #parseBinaryExpression(): Expression {
+  #parseBinaryExpression(): ParserExpression {
     const start = this.#parseIsExpression.bind(this);
     const prod = this.#parseBinaryExpSet(Set.of('*', '/'), start);
     const sum = this.#parseBinaryExpSet(Set.of("+", "-"), prod)
     const compare = this.#parseBinaryExpSet(Set.of(">", ">=", "<", "<="), sum)
     const equal = this.#parseBinaryExpSet(Set.of("==", "!="), compare)
     const and = this.#parseBinaryExpSet(Set.of("&&"), equal, (pos, left, right) => {
-      return {
+      return new ParserAndEx({
         pos,
-        kind: 'and',
         left,
         right,
-      } satisfies AndExpression;
+      });
     });
     const or = this.#parseBinaryExpSet(Set.of("||"), and, (pos, left, right) => {
-      return {
+      return new ParserOrEx({
         pos,
-        kind: 'or',
         left,
         right,
-      } satisfies OrExpression;
+      });
     });
     return or()
   }
 
-  #parseBinaryExpSet(ops: Set<string>, tail: () => Expression, handler?: (pos: Position, left: Expression, right: Expression) => Expression): () => Expression {
-    const recurse = (): Expression => {
+  #parseBinaryExpSet(ops: Set<string>, tail: () => ParserExpression, handler?: (pos: Position, left: ParserExpression, right: ParserExpression) => ParserExpression): () => ParserExpression {
+    const recurse = (): ParserExpression => {
       const left = tail();
 
       if (this.#endOfFile()) {
@@ -573,20 +568,18 @@ export class Parser {
           return handler(next.pos, left, right);
         }
 
-        return {
+        return new ParserCallEx({
           pos: next.pos,
-          kind: 'call',
-          func: {
+          func: new ParserIdentifierEx({
             pos: next.pos,
-            kind: 'identifier',
             name: next.value,
-          } satisfies IdentifierEx,
-          typeArgs: undefined,
-          args: [
+          }),
+          typeArgs: List(),
+          args: List.of(
             left,
             right,
-          ]
-        } satisfies CallEx;
+          ),
+        });
       } else {
         return left;
       }
@@ -595,7 +588,7 @@ export class Parser {
     return recurse;
   }
 
-  #parseIsExpression(): Expression {
+  #parseIsExpression(): ParserExpression {
     const base = this.#parseCallExpression();
 
     if (this.#endOfFile()) {
@@ -606,32 +599,30 @@ export class Parser {
 
     if (next.value === 'is' || next.value === '!is') {
 
-      return {
+      return new ParserIsEx({
         pos: next.pos,
-        kind: 'is',
         not: next.value === '!is',
         base,
         check: this.#parseTypeExpression(),
-      } satisfies IsExpression;
+      });
     } else {
       return base;
     }
   }
 
-  #parseCallExpression(): Expression {
+  #parseCallExpression(): ParserExpression {
     const base = this.#parseConstruct();
     const typeArgs = this.#parseFunctionTypeArguments();
 
     if (this.#checkSymbol('(')) {
       const args = this.#parseList(')', true, () => this.#parseExpression());
 
-      return {
+      return new ParserCallEx({
         pos: base.pos,
-        kind: 'call',
         func: base,
-        typeArgs: undefined,
+        typeArgs: List(),
         args,
-      } satisfies CallEx;
+      });
     } else {
       if (typeArgs !== undefined) {
         base.pos.fail('Found generics but no function call');
@@ -641,7 +632,7 @@ export class Parser {
     }
   }
 
-  #parseFunctionTypeArguments(): UncheckedTypeExpression[] | undefined {
+  #parseFunctionTypeArguments(): List<ParserTypeExpression> | undefined {
     if (this.#checkSymbol('[')) {
       return this.#parseList(']', false, () => this.#parseTypeExpression());
     } else {
@@ -649,7 +640,7 @@ export class Parser {
     }
   }
 
-  #parseConstruct(): Expression {
+  #parseConstruct(): ParserExpression {
     const base = this.#parseAccessExpression();
 
     if (this.#checkSymbol('{')) {
@@ -659,213 +650,195 @@ export class Parser {
         if (this.#checkSymbol(':')) {
           const value = this.#parseExpression();
 
-          return {
+          return new ParserConstructEntry({
             pos: name.pos,
             name: name.value,
             value,
-          } satisfies ConstructFieldExpression;
+          });
         } else {
-          return {
+          return new ParserConstructEntry({
             pos: name.pos,
             name: name.value,
-            value: {
+            value: new ParserIdentifierEx({
               pos: name.pos,
-              kind: 'identifier',
               name: name.value,
-            }
-          } satisfies ConstructFieldExpression;
+            })
+          });
         }
       });
 
-      return {
+      return new ParserConstructEx({
         pos: base.pos,
-        kind: 'construct',
         base,
+        typeArgs: List(), // TODO: parse type arguments for a struct
         fields,
-      } satisfies ConstructExpression;
+      });
     } else {
       return base;
     }
   }
 
-  #parseAccessExpression(): Expression {
+  #parseAccessExpression(): ParserExpression {
     let base = this.#parseCollectionLiteral();
 
     while (this.#checkSymbol('.')) {
       const pos = this.#prev().pos;
       const field = this.#assertKind('identifier');
-      base = {
+      base = new ParserAccessEx({
         pos,
-        kind: 'access',
         base,
-        field: {
+        field: new ParserIdentifierEx({
           pos: field.pos,
-          kind: 'identifier',
           name: field.value,
-        },
-      } satisfies AccessExpression;
+        }),
+      });
     }
 
     return base;
   }
 
-  #parseCollectionLiteral(): Expression {
+  #parseCollectionLiteral(): ParserExpression {
     const next = this.#peek();
 
     switch (next.value) {
       case '[':
         this.#skip();
-        return {
+        return new ParserListLiteralEx({
           pos: next.pos,
-          kind: 'list',
           values: this.#parseList(']', true, () => this.#parseExpression()),
-        } satisfies ListLiteralEx;
+        });
       case '%[':
         this.#skip();
-        return {
+        return new ParserSetLiteralEx({
           pos: next.pos,
-          kind: 'set',
           values: this.#parseList(']', true, () => this.#parseExpression()),
-        } satisfies SetLiteralEx;
+        });
       case '#[':
         this.#skip();
-        return {
+        return new ParserMapLiteralEx({
           pos: next.pos,
-          kind: 'map',
           values: this.#parseList(']', true, () => {
             const key = this.#parseExpression();
             this.#assertSymbol(':');
             const value = this.#parseExpression();
-            return {
+            return new ParserMapLiteralEntry({
+              pos: key.pos,
               key,
               value,
-            };
+            });
           }),
-        } satisfies MapLiteralEx;
+        });
       default:
         return this.#parseNot();
     }
   }
 
-  #parseNot(): Expression {
+  #parseNot(): ParserExpression {
     const next = this.#peek();
 
     if (next.value === '!') {
       this.#skip();
 
-      return {
+      return new ParserNotEx({
         pos: next.pos,
-        kind: 'not',
         base: this.#parseNegate(),
-      } satisfies NotExpression;
+      });
     } else {
       return this.#parseNegate();
     }
   }
 
-  #parseNegate(): Expression {
+  #parseNegate(): ParserExpression {
     const next = this.#peek();
 
     if (next.value === '-') {
       this.#skip();
 
-      return {
+      return new ParserCallEx({
         pos: next.pos,
-        kind: 'call',
-        func: {
+        func: new ParserStaticAccessEx({
           pos: next.pos,
-          kind: 'staticAccess',
-          path: [
-            {
+          path: List.of(
+            new ParserIdentifierEx({
               pos: next.pos,
-              kind: 'identifier',
               name: 'core'
-            }, {
+            }), new ParserIdentifierEx({
               pos: next.pos,
-              kind: 'identifier',
               name: 'math'
-            }, {
+            }), new ParserIdentifierEx({
               pos: next.pos,
-              kind: 'identifier',
               name: 'negate'
-            }
-          ],
-        } satisfies StaticAccessExpression,
-        typeArgs: [],
-        args: [
+            }),
+          ),
+        }),
+        typeArgs: List(),
+        args: List.of(
           this.#parseStaticAccessExpression(),
-        ],
-      } satisfies CallEx;
+        ),
+      });
     } else {
       return this.#parseStaticAccessExpression();
     }
   }
 
-  #parseStaticAccessExpression(): Expression {
+  #parseStaticAccessExpression(): ParserExpression {
     let base = this.#parseTerm();
 
-    if (base.kind === 'identifier' && this.#checkSymbol('::')) {
-      const path = [base] as IdentifierEx[];
+    if (base instanceof ParserIdentifierEx && this.#checkSymbol('::')) {
+      const path = List.of<ParserIdentifierEx>(base).asMutable();
       const pos = this.#prev().pos;
 
       do {
         const field = this.#assertKind('identifier');
 
-        path.push({
+        path.push(new ParserIdentifierEx({
           pos: field.pos,
-          kind: 'identifier',
           name: field.value,
-        });
+        }));
       } while (this.#checkSymbol('::'));
 
-      return {
+      return new ParserStaticAccessEx({
         pos,
-        kind: 'staticAccess',
-        path,
-      } satisfies StaticAccessExpression;
+        path: path.asImmutable(),
+      });
     }
 
     return base;
   }
 
-  #parseTerm(): Expression {
+  #parseTerm(): ParserExpression {
     const next = this.#next();
 
     if (next.kind === 'string') {
-      return {
+      return new ParserStringLiteralEx({
         pos: next.pos,
-        kind: 'stringLiteral',
         value: next.value,
-      } satisfies StringLiteralEx;
+      });
     } else if (next.kind === 'number') {
       // TODO: there is more to number literals than this
       const num = Number.parseFloat(next.value)
 
       if (Number.isSafeInteger(num)) {
-        return {
+        return new ParserIntLiteralEx({
           pos: next.pos,
-          kind: 'intLiteral',
           value: num,
-        } satisfies IntLiteralEx;
+        });
       } else {
-        return {
+        return new ParserFloatLiteralEx({
           pos: next.pos,
-          kind: 'floatLiteral',
           value: num,
-        } satisfies FloatLiteralEx;
+        });
       }
     } else if (next.kind === 'keyword' && (next.value === 'true' || next.value === 'false')) {
-      return {
+      return new ParserBooleanLiteralEx({
         pos: next.pos,
-        kind: 'booleanLiteral',
         value: next.value === 'true',
-      } satisfies BooleanLiteralEx;
+      });
     } else if (next.kind === 'identifier') {
-      return {
+      return new ParserIdentifierEx({
         pos: next.pos,
-        kind: 'identifier',
         name: next.value,
-      } satisfies IdentifierEx;
+      });
     } else {
       return next.pos.fail(`Expected term, found ${next.kind} '${next.value}'`);
     }
@@ -873,9 +846,9 @@ export class Parser {
 
   static readonly #reassignmentOps = Set.of('=', '+=', '-=', '*=', '/=');
 
-  #parseBlockExpression(pos: Position): BlockEx {
+  #parseBlockExpression(pos: Position): ParserBlockEx {
     // the opening brace has already been parsed
-    const body = [] as Statement[];
+    const body = List<ParserStatement>().asMutable();
 
     while (!this.#checkSymbol('}')) {
       const first = this.#peek();
@@ -893,59 +866,51 @@ export class Parser {
         const expression = this.#parseExpression();
         const possibleAssignment = this.#peek();
 
-        if (expression.kind === 'identifier' && possibleAssignment.kind === 'symbol' && Parser.#reassignmentOps.has(possibleAssignment.value)) {
+        if (expression instanceof ParserIdentifierEx && possibleAssignment.kind === 'symbol' && Parser.#reassignmentOps.has(possibleAssignment.value)) {
           this.#skip();
           const content = this.#parseExpression();
 
           if (possibleAssignment.value === '=') {
-            body.push({
-              kind: 'reassignment',
+            body.push(new ParserReassignmentStatement({
               pos,
               name: expression.name,
               expression: content,
-            })
+            }));
           } else {
             // desugar +=, -=, *= and /= into normal assignments calling their operator functions
-            body.push({
-              kind: 'reassignment',
+            body.push(new ParserReassignmentStatement({
               pos,
               name: expression.name,
-              expression: {
-                kind: 'call',
+              expression: new ParserCallEx({
                 pos: possibleAssignment.pos,
-                func: {
-                  kind: 'identifier',
+                func: new ParserIdentifierEx({
                   pos: possibleAssignment.pos,
                   name: possibleAssignment.value[0]!!,
-                },
-                typeArgs: undefined,
-                args: [
+                }),
+                typeArgs: List(),
+                args: List.of(
                   expression,
                   content,
-                ]
-              },
-            });
+                )
+              }),
+            }));
           }
-
-
         } else {
-          body.push({
-            kind: 'expression',
+          body.push(new ParserExpressionStatement({
             pos,
             expression,
-          });
+          }));
         }
       }
     }
 
-    return {
+    return new ParserBlockEx({
       pos,
-      kind: 'block',
-      body,
-    }
+      body: body.asImmutable(),
+    });
   }
 
-  #parseAssignment(phase: ExpressionPhase, pos: Position): AssignmentStatement {
+  #parseAssignment(phase: ExpressionPhase, pos: Position): ParserAssignmentStatement {
     // the initial keyword has already been parsed
     const name = this.#assertKind('identifier').value;
     const type = this.#checkSymbol(':')
@@ -955,21 +920,20 @@ export class Parser {
     this.#assertSymbol('=');
     const expression = this.#parseExpression();
 
-    return {
-      kind: 'assignment',
+    return new ParserAssignmentStatement({
       pos,
       phase,
       name,
       type,
       expression,
-    };
+    });
   }
 
   /**
    * Parse a comma seperated list of anything
    */
-  #parseList<Item>(close: string, trailingComma: boolean, parseItem: () => Item): Item[] {
-    const items = [] as Item[];
+  #parseList<Item>(close: string, trailingComma: boolean, parseItem: () => Item): List<Item> {
+    const items = List<Item>().asMutable();
 
     while (!this.#checkSymbol(close)) {
       items.push(parseItem());
@@ -992,49 +956,48 @@ export class Parser {
       }
     }
 
-    return items;
+    return items.asImmutable();
   }
 
-  #parseTypeParams(): UncheckedTypeParameterType[] {
+  #parseTypeParams(): List<ParserTypeParameterType> {
     if (this.#checkSymbol('<')) {
       return this.#parseList('>', false, () => {
         const id = this.#assertKind('identifier');
 
-        return {
+        return new ParserTypeParameterType({
           pos: id.pos,
-          kind: 'typeParameter',
           name: id.value,
-        } satisfies UncheckedTypeParameterType;
+        });
       });
     } else {
-      return [] as UncheckedTypeParameterType[];
+      return List();
     }
   }
 
-  #functionTypeParameter(): UncheckedFunctionTypeParameter {
+  #functionTypeParameter(): ParserFunctionTypeParameter {
     const next = this.#peek();
 
     if (next.kind === 'keyword' && isExpressionPhase(next.value)) {
       this.#skip();
-      return {
+      return new ParserFunctionTypeParameter({
         pos: next.pos,
         phase: next.value,
         type: this.#parseFunctionTypeExpression(),
-      }
+      });
     } else {
-      return {
+      return new ParserFunctionTypeParameter({
         pos: next.pos,
         phase: undefined,
         type: this.#parseFunctionTypeExpression(),
-      }
+      });
     }
   }
 
-  #parseTypeExpression(): UncheckedTypeExpression {
+  #parseTypeExpression(): ParserTypeExpression {
     return this.#parseFunctionTypeExpression();
   }
 
-  #parseFunctionTypeExpression(): UncheckedTypeExpression {
+  #parseFunctionTypeExpression(): ParserTypeExpression {
     const next = this.#peek();
 
     if (next.kind === 'keyword' && isFunctionPhase(next.value)) {
@@ -1043,64 +1006,59 @@ export class Parser {
       const params = this.#parseList('->', false, () => this.#functionTypeParameter());
       const result = this.#parseTypeExpression();
       this.#assertSymbol('}');
-      return {
+      return new ParserFunctionType({
         pos: next.pos,
-        kind: 'function',
         phase: next.value,
         params,
         result,
-      }
+      });
     } else if (this.#checkSymbol('{')) {
       const params = this.#parseList('->', false, () => this.#functionTypeParameter());
       const result = this.#parseTypeExpression();
       this.#assertSymbol('}');
-      return {
+      return new ParserFunctionType({
         pos: next.pos,
-        kind: 'function',
         phase: 'fun',
         params,
         result,
-      }
+      });
     } else {
       return this.#parseParameterizedTypeExpression();
     }
   }
 
-  #parseParameterizedTypeExpression(): UncheckedTypeExpression {
+  #parseParameterizedTypeExpression(): ParserTypeExpression {
     const base = this.#parseNominalTypeExpression();
 
     if (this.#checkSymbol('<')) {
       const args = this.#parseList('>', false, () => this.#parseTypeExpression());
 
-      return {
+      return new ParserParameterizedType({
         pos: base.pos,
-        kind: 'parameterized',
         base,
         args,
-      } satisfies UncheckedParameterizedType;
+      });
     } else {
       return base;
     }
   }
 
-  #parseNominalTypeExpression(): UncheckedNominalType {
+  #parseNominalTypeExpression(): ParserNominalType {
     const pos = this.#peek().pos;
-    const name: IdentifierEx[] = [];
+    const name = List<ParserIdentifierEx>().asMutable();
 
     do {
       const next = this.#assertKind('identifier');
 
-      name.push({
+      name.push(new ParserIdentifierEx({
         pos: next.pos,
-        kind: 'identifier',
         name: next.value,
-      });
+      }));
     } while (!this.#endOfFile() && this.#checkSymbol('::'))
 
-    return {
+    return new ParserNominalType({
       pos,
-      kind: 'nominal',
-      name,
-    }
+      name: name.asImmutable(),
+    });
   }
 }

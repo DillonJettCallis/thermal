@@ -1,32 +1,28 @@
-import {
-  AccessRecord,
-  BlockEx,
-  BooleanLiteralEx,
-  CallEx,
-  DependencyDictionary,
-  Expression,
-  ExpressionStatement,
-  FloatLiteralEx,
-  IdentifierEx,
-  IntLiteralEx,
-  LambdaEx,
-  ListLiteralEx,
-  PackageName,
-  Position,
-  ReturnEx,
-  StaticAccessExpression,
-  StringLiteralEx,
-  Symbol,
-  TypeExpression, typesEqual,
-  UncheckedNominalType,
-  Version
-} from "../ast.js";
+import { DependencyDictionary, PackageName, Position, Symbol, Version } from "../ast.js";
 import { coreLib } from "../lib.js";
-import { Map } from "immutable";
-import { Checker, Rule, Scope } from "../checker/checker.js";
-import { deepStrictEqual, ok } from "node:assert";
+import { List, Map } from "immutable";
+import { Checker, Scope } from "../checker/checker.js";
+import { ok } from "node:assert";
 import { Qualifier } from "../checker/collector.js";
 import { describe, it } from "node:test";
+import { CheckedAccessRecord, CheckedFunctionType, CheckedFunctionTypeParameter } from "../checker/checkerAst.js";
+import {
+  ParserBlockEx,
+  ParserBooleanLiteralEx,
+  ParserCallEx,
+  ParserExpression,
+  ParserExpressionStatement,
+  ParserFloatLiteralEx,
+  ParserIdentifierEx,
+  ParserIntLiteralEx,
+  ParserLambdaEx,
+  ParserListLiteralEx,
+  ParserNominalType,
+  ParserParameter,
+  ParserReturnEx,
+  ParserStaticAccessEx,
+  ParserStringLiteralEx
+} from "../parser/parserAst.js";
 
 const version = new Version(0, 1, 0);
 const packageName = new PackageName('sample', 'sample', version);
@@ -39,317 +35,257 @@ const {package: corePackage, preamble, coreTypes} = coreLib();
 depDict.addManager(corePackage.name);
 rootManager.addDependency(corePackage.name);
 
-const checker = new Checker(rootManager, Map<PackageName, Map<Symbol, AccessRecord>>().set(corePackage.name, corePackage.declarations), coreTypes, preamble);
+const checker = new Checker(rootManager, Map<PackageName, Map<Symbol, CheckedAccessRecord>>().set(corePackage.name, corePackage.declarations), coreTypes, preamble);
 const qualifier = new Qualifier(preamble);
 const preambleScope = preamble.map(name => corePackage.declarations.get(name)!!.type);
 
-function testStandalone({ex, rule, expected}: {
-  ex: Expression,
-  rule: Rule<Expression>,
-  expected?: TypeExpression | undefined
-}): TypeExpression {
-  ok(rule.test(ex, expected), 'rule does not apply');
-
-  return rule.type(Scope.init(preambleScope, qualifier, root, coreTypes.unit), ex, expected).type;
+function testScope(): Scope {
+  return Scope.init(preambleScope, qualifier, root, coreTypes.unit);
 }
 
 describe('Checker', () => {
   it('should typecheck a plain integer literal', () => {
-    const actual = testStandalone({
-      ex: {
-        pos,
-        kind: 'intLiteral',
-        value: 1,
-      } satisfies IntLiteralEx,
-      rule: checker.intRule(),
-    });
+    const actual = checker.checkIntLiteral(new ParserIntLiteralEx({
+      pos,
+      value: 1,
+    }));
 
-    deepStrictEqual(actual, coreTypes.int);
+    ok(actual.type.equals(coreTypes.int));
   });
 
   it('should typecheck a plain float literal', () => {
-    const actual = testStandalone({
-      ex: {
-        pos,
-        kind: 'floatLiteral',
-        value: 1.5,
-      } satisfies FloatLiteralEx,
-      rule: checker.floatRule(),
-    });
+    const actual = checker.checkFloatLiteral(new ParserFloatLiteralEx({
+      pos,
+      value: 1.5,
+    }));
 
-    deepStrictEqual(actual, coreTypes.float);
+    ok(actual.type.equals(coreTypes.float));
   });
 
   it('should typecheck a plain boolean literal', () => {
-    const actual = testStandalone({
-      ex: {
-        pos,
-        kind: 'booleanLiteral',
-        value: true,
-      } satisfies BooleanLiteralEx,
-      rule: checker.booleanRule(),
-    });
+    const actual = checker.checkBooleanLiteral(new ParserBooleanLiteralEx({
+      pos,
+      value: true,
+    }));
 
-    deepStrictEqual(actual, coreTypes.boolean);
+    ok(actual.type.equals(coreTypes.boolean));
   });
 
   it('should typecheck a plain string literal', () => {
-    const actual = testStandalone({
-      ex: {
-        pos,
-        kind: 'stringLiteral',
-        value: 'test',
-      } satisfies StringLiteralEx,
-      rule: checker.stringRule(),
-    });
+    const actual = checker.checkStringLiteral(new ParserStringLiteralEx({
+      pos,
+      value: 'test',
+    }));
 
-    deepStrictEqual(actual, coreTypes.string);
+    ok(actual.type.equals(coreTypes.string));
   });
 
   it('should typecheck a plain int addition operation', () => {
-    const actual = testStandalone({
-      ex: {
+    const actual = checker.checkCall(new ParserCallEx({
+      pos,
+      func: new ParserIdentifierEx({
         pos,
-        kind: 'call',
-        func: {
+        name: '+',
+      }),
+      typeArgs: List(),
+      args: List.of(
+        new ParserIntLiteralEx({
           pos,
-          kind: 'identifier',
-          name: '+',
-        } satisfies IdentifierEx,
-        typeArgs: [],
-        args: [
-          {
-            pos,
-            kind: 'intLiteral',
-            value: 1,
-          } satisfies IntLiteralEx,
-          {
-            pos,
-            kind: 'intLiteral',
-            value: 1,
-          } satisfies IntLiteralEx,
-        ],
-      } satisfies CallEx,
-      rule: checker.callRule(),
-    });
+          value: 1,
+        }),
+        new ParserIntLiteralEx({
+          pos,
+          value: 1,
+        }),
+      ),
+    }), testScope());
 
-    deepStrictEqual(actual, coreTypes.int);
+    ok(actual.type.equals(coreTypes.int));
   });
 
   it('should typecheck a plain float addition operation', () => {
-    const actual = testStandalone({
-      ex: {
+    const actual = checker.checkCall(new ParserCallEx({
+      pos,
+      func: new ParserIdentifierEx({
         pos,
-        kind: 'call',
-        func: {
+        name: '+',
+      }),
+      typeArgs: List(),
+      args: List.of(
+        new ParserFloatLiteralEx({
           pos,
-          kind: 'identifier',
-          name: '+',
-        } satisfies IdentifierEx,
-        typeArgs: [],
-        args: [
-          {
-            pos,
-            kind: 'floatLiteral',
-            value: 1.5,
-          } satisfies FloatLiteralEx,
-          {
-            pos,
-            kind: 'floatLiteral',
-            value: 1.5,
-          } satisfies FloatLiteralEx,
-        ],
-      } satisfies CallEx,
-      rule: checker.callRule(),
-    });
+          value: 1.5,
+        }),
+        new ParserFloatLiteralEx({
+          pos,
+          value: 1.5,
+        }),
+      ),
+    }), testScope());
 
-    deepStrictEqual(actual, coreTypes.float);
+    ok(actual.type.equals(coreTypes.float));
   });
 
   it('should typecheck a list get operation', () => {
-    const actual = testStandalone({
-      ex: {
+    const actual = checker.checkCall(new ParserCallEx({
+      pos,
+      func: new ParserStaticAccessEx({
         pos,
-        kind: 'call',
-        func: {
-          pos,
-          kind: 'staticAccess',
-          path: [{
+        path: List.of(
+          new ParserIdentifierEx({
             pos,
-            kind: 'identifier',
             name: 'core',
-          }, {
+          }), new ParserIdentifierEx({
             pos,
-            kind: 'identifier',
             name: 'list',
-          }, {
+          }), new ParserIdentifierEx({
             pos,
-            kind: 'identifier',
             name: 'get',
-          }],
-        } satisfies StaticAccessExpression,
-        typeArgs: [],
-        args: [
-          {
-            pos,
-            kind: 'list',
-            values: [
-              {
-                pos,
-                kind: 'intLiteral',
-                value: 1,
-              } satisfies IntLiteralEx,
-            ],
-          } satisfies ListLiteralEx,
-          {
-            pos,
-            kind: 'intLiteral',
-            value: 0,
-          } satisfies IntLiteralEx,
-        ],
-      } satisfies CallEx,
-      rule: checker.callRule(),
-    });
+          })
+        ),
+      }),
+      typeArgs: List(),
+      args: List.of<ParserExpression>(
+        new ParserListLiteralEx({
+          pos,
+          values: List.of(
+            new ParserIntLiteralEx({
+              pos,
+              value: 1,
+            }),
+          ),
+        }),
+        new ParserIntLiteralEx({
+          pos,
+          value: 0,
+        }),
+      ),
+    }), testScope());
 
-    deepStrictEqual(actual, coreTypes.int);
+    ok(actual.type.equals(coreTypes.int));
   });
 
   it('should typecheck a return from a lambda', () => {
     // { x: Int => return x }
 
     // this whole AST just to represent the code above
-    const actual = testStandalone({
-      ex: {
-        pos,
-        phase: 'fun',
-        kind: 'function',
-        params: [
-          {
-            pos,
-            name: 'x',
-            phase: undefined,
-            type: {
-              pos,
-              kind: 'nominal',
-              name: [
-                {
-                  pos,
-                  kind: 'identifier',
-                  name: 'Int',
-                }
-              ]
-            } satisfies UncheckedNominalType,
-          }
-        ],
-        body: {
+    const actual = checker.checkLambda(new ParserLambdaEx({
+      pos,
+      phase: 'fun',
+      params: List.of(
+        new ParserParameter({
           pos,
-          kind: 'block',
-          body: [
-            {
-              pos,
-              kind: 'expression',
-              expression: {
+          name: 'x',
+          phase: undefined,
+          type: new ParserNominalType({
+            pos,
+            name: List.of(
+              new ParserIdentifierEx({
                 pos,
-                kind: 'return',
-                expression: {
-                  pos,
-                  kind: 'identifier',
-                  name: 'x',
-                } satisfies IdentifierEx,
-              } satisfies ReturnEx,
-            } satisfies ExpressionStatement,
-          ],
-        } satisfies BlockEx,
-      } satisfies LambdaEx,
-      rule: checker.lambdaRule(),
+                name: 'Int',
+              })
+            )
+          }),
+        })
+      ),
+      body: new ParserBlockEx({
+        pos,
+        body: List.of(
+          new ParserExpressionStatement({
+            pos,
+            expression: new ParserReturnEx({
+              pos,
+              base: new ParserIdentifierEx({
+                pos,
+                name: 'x',
+              }),
+            }),
+          }),
+        ),
+      }),
+    }), testScope(), undefined);
+
+    const expected = new CheckedFunctionType({
+      phase: 'fun',
+      typeParams: List(),
+      params: List.of(new CheckedFunctionTypeParameter({
+        phase: undefined,
+        type: coreTypes.int,
+      })),
+      result: coreTypes.int,
     });
 
-    ok(actual.kind === 'function', 'type of lambda is not a function');
-    ok(typesEqual(actual.result, coreTypes.int), 'lambda return type is wrong.');
+    ok(actual.type.equals(expected), 'lambda return type is wrong.');
   });
 
   it('should typecheck a call to List::map with a lambda literal', () => {
     // core::list::map([1, 2, 3], { x => toString(x) })
 
     // this whole AST just to represent the code above
-    const actual = testStandalone({
-      ex: {
+    const actual = checker.checkCall(new ParserCallEx({
+      pos,
+      func: new ParserStaticAccessEx({
         pos,
-        kind: 'call',
-        func: {
-          pos,
-          kind: 'staticAccess',
-          path: [{
+        path: List.of(
+          new ParserIdentifierEx({
             pos,
-            kind: 'identifier',
             name: 'core',
-          },{
+          }), new ParserIdentifierEx({
             pos,
-            kind: 'identifier',
             name: 'list',
-          }, {
+          }), new ParserIdentifierEx({
             pos,
-            kind: 'identifier',
             name: 'map'
-          }],
-        } satisfies StaticAccessExpression,
-        typeArgs: [],
-        args: [
-          {
+          })
+        ),
+      }),
+      typeArgs: List(),
+      args: List.of<ParserExpression>(
+        new ParserListLiteralEx({
+          pos,
+          values: List.of(
+            new ParserIntLiteralEx({
+              pos,
+              value: 1,
+            }), new ParserIntLiteralEx({
+              pos,
+              value: 2,
+            }), new ParserIntLiteralEx({
+              pos,
+              value: 3
+            }),
+          ),
+        }),
+        new ParserLambdaEx({
+          pos,
+          phase: 'fun',
+          params: List.of(
+            new ParserParameter({
+              pos,
+              name: 'x',
+              phase: undefined,
+              type: undefined, // the type is not declared
+            })
+          ),
+          body: new ParserCallEx({
             pos,
-            kind: 'list',
-            values: [
-              {
-                pos,
-                kind: 'intLiteral',
-                value: 1,
-              } satisfies IntLiteralEx, {
-                pos,
-                kind: 'intLiteral',
-                value: 2,
-              } satisfies IntLiteralEx, {
-                pos,
-                kind: 'intLiteral',
-                value: 3
-              } satisfies IntLiteralEx,
-            ]
-          } satisfies ListLiteralEx,
-          {
-            pos,
-            phase: 'fun',
-            kind: 'function',
-            params: [
-              {
+            func: new ParserIdentifierEx({
+              pos,
+              name: 'toString'
+            }),
+            typeArgs: List(),
+            args: List.of(
+              new ParserIdentifierEx({
                 pos,
                 name: 'x',
-                phase: undefined,
-                type: undefined, // the type is not declared
-              }
-            ],
-            body: {
-              pos,
-              kind: 'call',
-              func: {
-                pos,
-                kind: "identifier",
-                name: 'toString'
-              } satisfies IdentifierEx,
-              typeArgs: [],
-              args: [
-                {
-                  pos,
-                  kind: 'identifier',
-                  name: 'x',
-                } satisfies IdentifierEx,
-              ]
-            } satisfies CallEx,
-          } satisfies LambdaEx,
-        ]
-      } satisfies CallEx,
-      rule: checker.callRule(),
-    });
+              }),
+            )
+          }),
+        }),
+      ),
+    }), testScope());
 
-    ok(typesEqual(actual, coreTypes.listOf(coreTypes.string)), 'call does not return a list of strings like it should');
+    ok(actual.type.equals(coreTypes.listOf(coreTypes.string)), 'call does not return a list of strings like it should');
   });
 });
 

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { Set } from 'immutable';
-import { Position } from "./ast.js";
+import { Position } from "../ast.js";
 
 const whitespace = Set(' \t\r\n');
 const digits = Set('0123456789');

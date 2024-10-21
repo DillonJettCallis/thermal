@@ -1,23 +1,23 @@
-import {
-  EnumTypeVariant,
-  FunctionPhase,
-  UncheckedFunctionType,
-  Package,
-  UncheckedNominalType,
-  Position,
-  Symbol,
-  UncheckedTypeExpression,
-  Version,
-  TypeExpression,
-  Access,
-  NominalType,
-  FunctionType,
-  FunctionTypeParameter,
-  AccessRecord,
-  PackageName,
-  ParameterizedType, TypeParameterType, ModuleType
-} from "./ast.js";
+import { FunctionPhase, PackageName, Position, Symbol, Version } from "./ast.js";
 import { List, Map } from 'immutable';
+import {
+  CheckedAccessRecord,
+  CheckedEnumType,
+  CheckedEnumTypeAtomVariant,
+  CheckedEnumTypeStructVariant,
+  CheckedEnumTypeTupleVariant,
+  CheckedEnumTypeVariant,
+  CheckedFunctionType,
+  CheckedFunctionTypeParameter,
+  CheckedModuleType,
+  CheckedNominalType,
+  CheckedOverloadFunctionType,
+  CheckedPackage,
+  CheckedParameterizedType,
+  CheckedStructType,
+  CheckedTypeExpression,
+  CheckedTypeParameterType
+} from "./checker/checkerAst.js";
 
 const coreVersion = new Version(0, 1, 0);
 const corePackageName = new PackageName('core', 'core', coreVersion);
@@ -25,8 +25,8 @@ const coreSymbol = new Symbol(corePackageName);
 
 const pos = new Position('<native>', 0, 0);
 
-export function coreLib(): { package: Package, coreTypes: CoreTypes, preamble: Map<string, Symbol> } {
-  const declarations = Map<Symbol, AccessRecord>().asMutable();
+export function coreLib(): { package: CheckedPackage, coreTypes: CoreTypes, preamble: Map<string, Symbol> } {
+  const declarations = Map<Symbol, CheckedAccessRecord>().asMutable();
 
   const coreTypes: CoreTypes = {
     any: createStructType(coreSymbol, declarations, 'Any', [], {}),
@@ -36,65 +36,53 @@ export function coreLib(): { package: Package, coreTypes: CoreTypes, preamble: M
     float: createStructType(coreSymbol.child('math'), declarations, 'Float', [], {}),
     string: createStructType(coreSymbol.child('string'), declarations, 'String', [], {}),
     option: createEnumType(coreSymbol.child('option'), declarations, 'Option', ['Item'], {
-      Some: {
+      Some: new CheckedEnumTypeTupleVariant({
         pos,
-        kind: 'enumTuple',
         name: coreSymbol.child('option').child('Option').child('Some'),
-        fields: [
-          {
-            kind: 'nominal',
-            pos,
+        fields: List.of(
+          new CheckedNominalType({
             name: coreSymbol.child('option').child('Option').child('Item'),
-          }
-        ]
-      },
-      None: {
+          }),
+        ),
+      }),
+      None: new CheckedEnumTypeAtomVariant({
         pos,
-        kind: 'enumAtom',
         name: coreSymbol.child('option').child('Option').child('None'),
-      }
+      }),
     }),
     unit: createStructType(coreSymbol, declarations, 'Unit', [], {}),
-    optionOf(content: TypeExpression): TypeExpression {
-      return {
-        pos,
-        kind: 'parameterized',
+    optionOf(content: CheckedTypeExpression): CheckedTypeExpression {
+      return new CheckedParameterizedType({
         base: this.option,
-        args: [
+        args: List.of(
           content,
-        ]
-      };
+        )
+      });
     },
     list: createStructType(coreSymbol.child('list'), declarations, 'List', ['Item'], {}),
-    listOf(content: TypeExpression): TypeExpression {
-      return {
-        pos,
-        kind: 'parameterized',
+    listOf(content: CheckedTypeExpression): CheckedTypeExpression {
+      return new CheckedParameterizedType({
         base: this.list,
-        args: [
+        args: List.of(
           content,
-        ],
-      }
+        ),
+      });
     },
     set: createStructType(coreSymbol.child('set'), declarations, 'Set', ['Item'], {}),
-    setOf(content: TypeExpression): TypeExpression {
-      return {
-        pos,
-        kind: 'parameterized',
+    setOf(content: CheckedTypeExpression): CheckedTypeExpression {
+      return new CheckedParameterizedType({
         base: this.set,
-        args: [
+        args: List.of(
           content,
-        ],
-      }
+        ),
+      });
     },
     map: createStructType(coreSymbol.child('map'), declarations, 'Map', ['Key', 'Value'], {}),
-    mapOf(key: TypeExpression, value: TypeExpression): TypeExpression {
-      return {
-        pos,
-        kind: 'parameterized',
+    mapOf(key: CheckedTypeExpression, value: CheckedTypeExpression): CheckedTypeExpression {
+      return new CheckedParameterizedType({
         base: this.map,
-        args: [key, value],
-      }
+        args: List.of(key, value),
+      });
     }
   }
 
@@ -115,194 +103,172 @@ export function coreLib(): { package: Package, coreTypes: CoreTypes, preamble: M
   preamble.set('Unit', coreTypes.unit.name);
   preamble.set('List', coreTypes.list.name);
 
-  declarations.set(coreSymbol, {
+  declarations.set(coreSymbol, new CheckedAccessRecord({
     access: 'public',
     module: coreSymbol,
-    type: {
-      pos,
-      kind: 'module',
+    type: new CheckedModuleType({
       name: coreSymbol,
-    } satisfies ModuleType
-  });
+    }),
+  }));
   preamble.set('core', coreSymbol);
 
   return {
-    package: {
+    package: new CheckedPackage({
       name: corePackageName,
-      files: [],
+      files: List(),
       declarations,
-    },
+    }),
     coreTypes,
     preamble: preamble.asImmutable(),
   }
 }
 
 export interface CoreTypes {
-  any: NominalType;
-  nothing: NominalType;
-  boolean: NominalType;
-  string: NominalType;
-  int: NominalType;
-  float: NominalType;
-  unit: NominalType;
+  any: CheckedNominalType;
+  nothing: CheckedNominalType;
+  boolean: CheckedNominalType;
+  string: CheckedNominalType;
+  int: CheckedNominalType;
+  float: CheckedNominalType;
+  unit: CheckedNominalType;
 
-  list: NominalType;
-  set: NominalType;
-  map: NominalType;
-  option: NominalType;
+  list: CheckedNominalType;
+  set: CheckedNominalType;
+  map: CheckedNominalType;
+  option: CheckedNominalType;
 
-  optionOf(content: TypeExpression): TypeExpression;
-  listOf(content: TypeExpression): TypeExpression;
-  setOf(content: TypeExpression): TypeExpression;
-  mapOf(key: TypeExpression, value: TypeExpression): TypeExpression;
+  optionOf(content: CheckedTypeExpression): CheckedTypeExpression;
+  listOf(content: CheckedTypeExpression): CheckedTypeExpression;
+  setOf(content: CheckedTypeExpression): CheckedTypeExpression;
+  mapOf(key: CheckedTypeExpression, value: CheckedTypeExpression): CheckedTypeExpression;
 }
 
-function boolLib(declarations: Map<Symbol, AccessRecord>, coreTypes: CoreTypes, preamble: Map<string, Symbol>): void {
+function boolLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: CoreTypes, preamble: Map<string, Symbol>): void {
   const boolSymbol = coreSymbol.child('bool');
 
-  declarations.set(boolSymbol.child('&&'), {
+  declarations.set(boolSymbol.child('&&'), new CheckedAccessRecord({
     access: 'public',
     module: boolSymbol,
     type: unphasedFunction([coreTypes.boolean, coreTypes.boolean], coreTypes.boolean),
-  });
+  }));
   preamble.set('&&', boolSymbol.child('&&'));
 
-  declarations.set(boolSymbol.child('||'), {
+  declarations.set(boolSymbol.child('||'), new CheckedAccessRecord({
     access: 'public',
     module: boolSymbol,
     type: unphasedFunction([coreTypes.boolean, coreTypes.boolean], coreTypes.boolean),
-  });
+  }));
   preamble.set('||', boolSymbol.child('||'));
 
-  declarations.set(boolSymbol.child('!'), {
+  declarations.set(boolSymbol.child('!'), new CheckedAccessRecord({
     access: 'public',
     module: boolSymbol,
     type: unphasedFunction([coreTypes.boolean], coreTypes.boolean),
-  });
+  }));
   preamble.set('!', boolSymbol.child('!'));
 
-  declarations.set(boolSymbol.child('=='), {
+  declarations.set(boolSymbol.child('=='), new CheckedAccessRecord({
     access: 'public',
     module: boolSymbol,
-    type: {
-      pos,
-      kind: 'overloadFunction',
-      branches: [
+    type: new CheckedOverloadFunctionType({
+      branches: List.of(
         unphasedFunction([coreTypes.boolean, coreTypes.boolean], coreTypes.boolean),
         unphasedFunction([coreTypes.int, coreTypes.int], coreTypes.boolean),
+        unphasedFunction([coreTypes.float, coreTypes.float], coreTypes.boolean),
         unphasedFunction([coreTypes.string, coreTypes.string], coreTypes.boolean),
-      ]
-    }
-  });
+      )
+    }),
+  }));
   preamble.set('==', boolSymbol.child('=='));
 
-  declarations.set(boolSymbol.child('!='), {
+  declarations.set(boolSymbol.child('!='), new CheckedAccessRecord({
     access: 'public',
     module: boolSymbol,
-    type: {
-      pos,
-      kind: 'overloadFunction',
-      branches: [
+    type: new CheckedOverloadFunctionType({
+      branches: List.of(
         unphasedFunction([coreTypes.boolean, coreTypes.boolean], coreTypes.boolean),
         unphasedFunction([coreTypes.int, coreTypes.int], coreTypes.boolean),
+        unphasedFunction([coreTypes.float, coreTypes.float], coreTypes.boolean),
         unphasedFunction([coreTypes.string, coreTypes.string], coreTypes.boolean),
-      ]
-    }
-  });
+      )
+    }),
+  }));
   preamble.set('!=', boolSymbol.child('!='));
 }
 
-function mathLib(declarations: Map<Symbol, AccessRecord>, coreTypes: CoreTypes, preamble: Map<string, Symbol>): void {
+function mathLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: CoreTypes, preamble: Map<string, Symbol>): void {
   const mathSymbol = coreSymbol.child('math');
 
   const intType = coreTypes.int;
   const floatType = coreTypes.float;
 
-  declarations.set(mathSymbol.child('+'), {
+  declarations.set(mathSymbol.child('+'), new CheckedAccessRecord({
     access: 'public',
     module: mathSymbol,
-    type: {
-      pos,
-      kind: 'overloadFunction',
-      branches: [
+    type: new CheckedOverloadFunctionType({
+      branches: List.of(
         unphasedFunction([intType, intType], intType),
-        unphasedFunction([floatType, intType], floatType),
-        unphasedFunction([intType, floatType], floatType),
         unphasedFunction([floatType, floatType], floatType),
-      ]
-    }
-  });
+      ),
+    })
+  }));
   preamble.set('+', mathSymbol.child('+'));
 
-  declarations.set(mathSymbol.child('-'), {
+  declarations.set(mathSymbol.child('-'), new CheckedAccessRecord({
     access: 'public',
     module: mathSymbol,
-    type: {
-      pos,
-      kind: 'overloadFunction',
-      branches: [
+    type: new CheckedOverloadFunctionType({
+      branches: List.of(
         // unary versions
         unphasedFunction([intType], intType),
         unphasedFunction([floatType], floatType),
 
         // binary versions
         unphasedFunction([intType, intType], intType),
-        unphasedFunction([floatType, intType], floatType),
-        unphasedFunction([intType, floatType], floatType),
         unphasedFunction([floatType, floatType], floatType),
-      ]
-    }
-  });
+      )
+    }),
+  }));
   preamble.set('-', mathSymbol.child('-'));
 
-  declarations.set(mathSymbol.child('*'), {
+  declarations.set(mathSymbol.child('*'), new CheckedAccessRecord({
     access: 'public',
     module: mathSymbol,
-    type: {
-      pos,
-      kind: 'overloadFunction',
-      branches: [
+    type: new CheckedOverloadFunctionType({
+      branches: List.of(
         unphasedFunction([intType, intType], intType),
-        unphasedFunction([floatType, intType], floatType),
-        unphasedFunction([intType, floatType], floatType),
         unphasedFunction([floatType, floatType], floatType),
-      ]
-    }
-  });
+      )
+    }),
+  }));
   preamble.set('*', mathSymbol.child('*'));
 
-  declarations.set(mathSymbol.child('/'), {
+  declarations.set(mathSymbol.child('/'), new CheckedAccessRecord({
     access: 'public',
     module: mathSymbol,
-    type: {
-      pos,
-      kind: 'overloadFunction',
-      branches: [
+    type: new CheckedOverloadFunctionType({
+      branches: List.of(
         unphasedFunction([intType, intType], floatType),
-        unphasedFunction([floatType, intType], floatType),
-        unphasedFunction([intType, floatType], floatType),
         unphasedFunction([floatType, floatType], floatType),
-      ]
-    }
-  });
+      )
+    }),
+  }));
   preamble.set('/', mathSymbol.child('/'));
 
   // all compare ops work on all number type combinations
   ['>', '>=', '<', '<='].forEach(op => {
-    declarations.set(mathSymbol.child(op), {
+    declarations.set(mathSymbol.child(op), new CheckedAccessRecord({
       access: 'public',
       module: mathSymbol,
-      type: {
-        pos,
-        kind: 'overloadFunction',
-        branches: [
+      type: new CheckedOverloadFunctionType({
+        branches: List.of(
           unphasedFunction([intType, intType], coreTypes.boolean),
           unphasedFunction([floatType, intType], coreTypes.boolean),
           unphasedFunction([intType, floatType], coreTypes.boolean),
           unphasedFunction([floatType, floatType], coreTypes.boolean),
-        ]
-      }
-    });
+        ),
+      }),
+    }));
     preamble.set(op, mathSymbol.child(op));
   })
 
@@ -311,252 +277,234 @@ function mathLib(declarations: Map<Symbol, AccessRecord>, coreTypes: CoreTypes, 
     remainder: intType,
   });
 
-  declarations.set(mathSymbol.child('integerDivision'), {
+  declarations.set(mathSymbol.child('integerDivision'), new CheckedAccessRecord({
     access: 'public',
     module: mathSymbol,
     type: unphasedFunction([intType, intType], integerDivisionResultType),
-  });
-  declarations.set(mathSymbol.child('remainder'), {
+  }));
+  declarations.set(mathSymbol.child('remainder'), new CheckedAccessRecord({
     access: 'public',
     module: mathSymbol,
     type: unphasedFunction([intType, intType], intType),
-  });
+  }));
 }
 
-function stringLib(declarations: Map<Symbol, AccessRecord>, coreTypes: CoreTypes, preamble: Map<string, Symbol>): void {
+function stringLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: CoreTypes, preamble: Map<string, Symbol>): void {
   const stringSymbol = coreSymbol.child('string');
 
-  declarations.set(stringSymbol.child('toString'), {
+  declarations.set(stringSymbol.child('toString'), new CheckedAccessRecord({
     access: 'public',
     module: stringSymbol,
-    type: {
-      pos,
-      kind: 'overloadFunction',
-      branches: [
+    type: new CheckedOverloadFunctionType({
+      branches: List.of(
         unphasedFunction([coreTypes.boolean], coreTypes.string),
         unphasedFunction([coreTypes.int], coreTypes.string),
         unphasedFunction([coreTypes.float], coreTypes.string),
-      ]
-    }
-  });
+      )
+    }),
+  }));
   preamble.set('toString', stringSymbol.child('toString'));
 }
 
-function domLib(declarations: Map<Symbol, AccessRecord>, coreTypes: CoreTypes): void {
+function domLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: CoreTypes): void {
   const domSymbol = coreSymbol.child('dom');
-  declarations.set(domSymbol, {
+  declarations.set(domSymbol, new CheckedAccessRecord({
     access: 'public',
     module: domSymbol,
-    type: { pos, kind: 'module', name: domSymbol },
-  });
+    type: new CheckedModuleType({ name: domSymbol }),
+  }));
 
   const attributeType = createStructType(domSymbol, declarations, 'Attribute', [], {});
   const elementSymbol = domSymbol.child('Element');
-  const elementType: NominalType = {
-    pos,
-    kind: 'nominal',
+  const elementType = new CheckedNominalType({
     name: elementSymbol,
-  };
+  });
 
   createEnumType(domSymbol, declarations, 'Element', [], {
-    Tag: {
+    Tag: new CheckedEnumTypeStructVariant({
       pos,
-      kind: 'enumStruct',
       name: elementSymbol.child('Tag'),
       fields: Map({
         name: coreTypes.string,
         attributes: coreTypes.mapOf(coreTypes.string, attributeType),
         body: coreTypes.listOf(elementType),
       }),
-    },
-    Text: {
+    }),
+    Text: new CheckedEnumTypeTupleVariant({
       pos,
-      kind: 'enumTuple',
       name: elementSymbol.child('Text'),
-      fields: [
+      fields: List.of(
         coreTypes.string,
-      ]
-    }
+      ),
+    }),
   });
 
   const elemSymbol = domSymbol.child('elem');
 
   ['a', 'button', 'div', 'label'].forEach(tag => {
-    declarations.set(elemSymbol.child(tag), {
+    declarations.set(elemSymbol.child(tag), new CheckedAccessRecord({
       access: 'public',
       module: elemSymbol,
-      type: {
-        pos,
-        kind: 'function',
+      type: new CheckedFunctionType({
         phase: 'fun',
-        typeParams: [],
-        params: [{
-          pos,
-          phase: undefined,
-          type: coreTypes.listOf(attributeType),
-        }, {
-          pos,
-          phase: undefined,
-          type: coreTypes.listOf(elementType),
-        }],
+        typeParams: List(),
+        params: List.of(
+          new CheckedFunctionTypeParameter({
+            phase: undefined,
+            type: coreTypes.listOf(attributeType),
+          }),
+          new CheckedFunctionTypeParameter({
+            phase: undefined,
+            type: coreTypes.listOf(elementType),
+          }),
+        ),
         result: elementType,
-      }
-    })
+      }),
+    }));
   });
 
-  declarations.set(elemSymbol.child('text'), {
+  declarations.set(elemSymbol.child('text'), new CheckedAccessRecord({
     access: 'public',
     module: elemSymbol,
-    type: {
-      pos,
-      kind: 'function',
+    type: new CheckedFunctionType({
       phase: 'fun',
-      typeParams: [],
-      params: [{
-        pos,
-        phase: undefined,
-        type: coreTypes.string,
-      }],
+      typeParams: List(),
+      params: List.of(
+        new CheckedFunctionTypeParameter({
+          phase: undefined,
+          type: coreTypes.string,
+        })
+      ),
       result: elementType,
-    }
-  });
+    }),
+  }));
 
-  declarations.set(elemSymbol, {
+  declarations.set(elemSymbol, new CheckedAccessRecord({
     access: 'public',
     module: elemSymbol,
-    type: { pos, kind: 'module', name: elemSymbol },
-  });
+    type: new CheckedModuleType({ name: elemSymbol }),
+  }));
 
   const styleSymbol = domSymbol.child('style');
-  declarations.set(styleSymbol, {
+  declarations.set(styleSymbol, new CheckedAccessRecord({
     access: 'public',
     module: styleSymbol,
-    type: { pos, kind: 'module', name: styleSymbol },
-  });
+    type: new CheckedModuleType({ name: styleSymbol }),
+  }));
 
   const displayEnumType = createEnumType(styleSymbol, declarations, 'Display', [], Object.fromEntries(['Block', 'InlineBlock', 'Flex'].map(variant => {
-    return [variant, {
+    return [variant, new CheckedEnumTypeAtomVariant({
       pos,
-      kind: 'enumAtom',
       name: styleSymbol.child('Display').child(variant)
-    }] as const
+    })] as const
   })));
 
-  declarations.set(styleSymbol.child('display'), {
+  declarations.set(styleSymbol.child('display'), new CheckedAccessRecord({
     access: 'public',
     module: styleSymbol,
-    type: {
-      pos,
-      kind: 'function',
+    type: new CheckedFunctionType({
       phase: 'fun',
-      typeParams: [],
-      params: [{
-        pos,
-        phase: undefined,
-        type: displayEnumType,
-      }],
+      typeParams: List(),
+      params: List.of(
+        new CheckedFunctionTypeParameter({
+          phase: undefined,
+          type: displayEnumType,
+        }),
+      ),
       result: attributeType,
-    }
-  });
+    }),
+  }));
 
   const flexDirectionEnumType = createEnumType(styleSymbol, declarations, 'FlexDirection', [], Object.fromEntries(['Row', 'Column'].map(variant => {
-    return [variant, {
+    return [variant, new CheckedEnumTypeAtomVariant({
       pos,
-      kind: 'enumAtom',
       name: styleSymbol.child('FlexDirection').child(variant)
-    }] as const
+    })] as const
   })));
 
-  declarations.set(styleSymbol.child('flexDirection'), {
+  declarations.set(styleSymbol.child('flexDirection'), new CheckedAccessRecord({
     access: 'public',
     module: styleSymbol,
-    type: {
-      pos,
-      kind: 'function',
+    type: new CheckedFunctionType({
       phase: 'fun',
-      typeParams: [],
-      params: [{
-        pos,
-        phase: undefined,
-        type: flexDirectionEnumType,
-      }],
+      typeParams: List(),
+      params: List.of(
+        new CheckedFunctionTypeParameter({
+          phase: undefined,
+          type: flexDirectionEnumType,
+        }),
+      ),
       result: attributeType,
-    }
-  });
+    }),
+  }));
 
   const scalarType = createEnumType(styleSymbol, declarations, 'Scalar', [], {
-    Px: {
+    Px: new CheckedEnumTypeTupleVariant({
       pos,
-      kind: "enumTuple",
       name: styleSymbol.child('Scalar').child('Px'),
-      fields: [coreTypes.int],
-    }
+      fields: List.of(coreTypes.int),
+    }),
   });
 
-  declarations.set(styleSymbol.child('px'), {
+  declarations.set(styleSymbol.child('px'), new CheckedAccessRecord({
     access: 'public',
     module: styleSymbol,
-    type: {
-      pos,
-      kind: 'function',
+    type: new CheckedFunctionType({
       phase: 'fun',
-      typeParams: [],
-      params: [{
-        pos,
-        phase: undefined,
-        type: coreTypes.int,
-      }],
+      typeParams: List(),
+      params: List.of(
+        new CheckedFunctionTypeParameter({
+          phase: undefined,
+          type: coreTypes.int,
+        }),
+      ),
       result: scalarType,
-    }
-  });
+    }),
+  }));
 
-  declarations.set(styleSymbol.child('gap'), {
+  declarations.set(styleSymbol.child('gap'), new CheckedAccessRecord({
     access: 'public',
     module: styleSymbol,
-    type: {
-      pos,
-      kind: 'function',
+    type: new CheckedFunctionType({
       phase: 'fun',
-      typeParams: [],
-      params: [{
-        pos,
-        phase: undefined,
-        type: scalarType,
-      }],
+      typeParams: List(),
+      params: List.of(
+        new CheckedFunctionTypeParameter({
+          phase: undefined,
+          type: scalarType,
+        }),
+      ),
       result: attributeType,
-    }
-  });
+    }),
+  }));
 
   const attrSymbol = domSymbol.child('attr');
-  declarations.set(attrSymbol, {
+  declarations.set(attrSymbol, new CheckedAccessRecord({
     access: 'public',
     module: attrSymbol,
-    type: { pos, kind: 'module', name: attrSymbol },
-  });
+    type: new CheckedModuleType({ name: attrSymbol }),
+  }));
 
-  declarations.set(attrSymbol.child('onClick'), {
+  declarations.set(attrSymbol.child('onClick'), new CheckedAccessRecord({
     access: 'public',
     module: styleSymbol,
-    type: {
-      pos,
-      kind: 'function',
+    type: new CheckedFunctionType({
       phase: 'fun',
-      typeParams: [],
-      params: [{
-        pos,
-        phase: undefined,
-        type: {
-          pos,
-          kind: 'function',
-          phase: 'sig',
-          typeParams: [],
-          params: [],
-          result: coreTypes.boolean,
-        },
-      }],
+      typeParams: List(),
+      params: List.of(
+        new CheckedFunctionTypeParameter({
+          phase: undefined,
+          type: new CheckedFunctionType({
+            phase: 'sig',
+            typeParams: List(),
+            params: List(),
+            result: coreTypes.boolean,
+          }),
+        }),
+      ),
       result: attributeType,
-    }
-  });
+    }),
+  }));
 
   const headType = createStructType(domSymbol, declarations, 'Head', [], {
     title: coreTypes.string,
@@ -572,164 +520,140 @@ function domLib(declarations: Map<Symbol, AccessRecord>, coreTypes: CoreTypes): 
   });
 }
 
-function listLib(declarations: Map<Symbol, AccessRecord>, coreTypes: CoreTypes): void {
+function listLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: CoreTypes): void {
   const listSymbol =  coreSymbol.child('list');
   const itemSymbol = listSymbol.child('item');
-  const itemTypeParam = {
-    pos,
-    kind: 'typeParameter',
+  const itemTypeParam = new CheckedTypeParameterType({
     name: itemSymbol,
-  } satisfies TypeParameterType;
+  });
 
-  declarations.set(listSymbol, {
+  declarations.set(listSymbol, new CheckedAccessRecord({
     access: 'public',
     module: listSymbol,
-    type: {
-      pos,
-      kind: 'module',
+    type: new CheckedModuleType({
       name: listSymbol,
-    } satisfies ModuleType,
-  });
+    }),
+  }));
 
-  declarations.set(listSymbol.child('get'), {
+  declarations.set(listSymbol.child('get'), new CheckedAccessRecord({
     access: 'public',
     module: listSymbol,
-    type: {
-      pos,
-      kind: 'function',
+    type: new CheckedFunctionType({
       phase: 'fun',
-      typeParams: [itemTypeParam],
-      params: [{
-        pos,
-        phase: undefined,
-        type: coreTypes.listOf(itemTypeParam),
-      }, {
-        pos,
-        phase: undefined,
-        type: coreTypes.int,
-      }],
+      typeParams: List.of(itemTypeParam),
+      params: List.of(
+        new CheckedFunctionTypeParameter({
+          phase: undefined,
+          type: coreTypes.listOf(itemTypeParam),
+        }), new CheckedFunctionTypeParameter({
+          phase: undefined,
+          type: coreTypes.int,
+        }),
+      ),
       result: itemTypeParam,
-    }
-  });
+    }),
+  }));
 
   const mapSymbol = listSymbol.child('map');
   const mapOutSymbol = mapSymbol.child('Out');
-  const mapOutTypeParam = {
-    pos,
-    kind: 'typeParameter',
+  const mapOutTypeParam = new CheckedTypeParameterType({
     name: mapOutSymbol,
-  } satisfies TypeParameterType;
+  });
 
-  declarations.set(mapSymbol, {
+  declarations.set(mapSymbol, new CheckedAccessRecord({
     access: 'public',
     module: listSymbol,
-    type: {
-      pos,
-      kind: 'function',
+    type: new CheckedFunctionType({
       phase: 'fun',
-      typeParams: [itemTypeParam, mapOutTypeParam],
-      params: [{
-        pos,
-        phase: undefined,
-        type: coreTypes.listOf(itemTypeParam),
-      }, {
-        pos,
-        phase: undefined,
-        type: {
-          pos,
-          kind: 'function',
-          phase: 'fun',
-          typeParams: [],
-          params: [{
-            pos,
-            phase: 'val',
-            type: itemTypeParam,
-          }],
-          result: mapOutTypeParam,
-        } satisfies FunctionType,
-      }],
+      typeParams: List.of(itemTypeParam, mapOutTypeParam),
+      params: List.of(
+        new CheckedFunctionTypeParameter({
+          phase: undefined,
+          type: coreTypes.listOf(itemTypeParam),
+        }), new CheckedFunctionTypeParameter({
+          phase: undefined,
+          type: new CheckedFunctionType({
+            phase: 'fun',
+            typeParams: List(),
+            params: List.of(
+              new CheckedFunctionTypeParameter({
+                phase: 'val',
+                type: itemTypeParam,
+              }),
+            ),
+            result: mapOutTypeParam,
+          }),
+        }),
+      ),
       result: coreTypes.listOf(mapOutTypeParam),
-    } satisfies FunctionType,
-  });
+    }),
+  }));
 }
 
-function createStructType(parent: Symbol, declarations: Map<Symbol, AccessRecord>, baseName: string, typeParams: string[], fields: {
-  [key: string]: TypeExpression
-}): NominalType {
+function createStructType(parent: Symbol, declarations: Map<Symbol, CheckedAccessRecord>, baseName: string, typeParams: string[], fields: {
+  [key: string]: CheckedTypeExpression
+}): CheckedNominalType {
   const name = parent.child(baseName);
 
-  const type: NominalType = {
-    pos,
-    kind: 'nominal',
+  const type = new CheckedNominalType({
     name,
-  };
+  });
 
-  declarations.set(name, {
+  declarations.set(name, new CheckedAccessRecord({
     access: 'public',
     module: parent,
-    type: {
+    type: new CheckedStructType({
       pos,
-      kind: 'struct',
       name,
-      typeParams: typeParams.map(it => {
-        return {
-          pos,
-          kind: 'typeParameter',
+      typeParams: List(typeParams).map(it => {
+        return new CheckedTypeParameterType({
           name: name.child(it),
-        };
+        });
       }),
       fields: Map(fields),
-    }
-  });
+    }),
+  }));
 
   return type;
 }
 
-function createEnumType(parent: Symbol, declarations: Map<Symbol, AccessRecord>, baseName: string, typeParams: string[], variants: {
-  [key: string]: EnumTypeVariant
-}): NominalType {
+function createEnumType(parent: Symbol, declarations: Map<Symbol, CheckedAccessRecord>, baseName: string, typeParams: string[], variants: {
+  [key: string]: CheckedEnumTypeVariant
+}): CheckedNominalType {
   const name = parent.child(baseName);
 
-  const type: NominalType = {
-    pos,
-    kind: 'nominal',
+  const type = new CheckedNominalType({
     name,
-  };
+  });
 
-  declarations.set(name, {
+  declarations.set(name, new CheckedAccessRecord({
     access: 'public',
     module: parent,
-    type: {
+    type: new CheckedEnumType({
       pos,
-      kind: 'enum',
       name,
-      typeParams: typeParams.map(it => {
-        return {
-          pos,
-          kind: 'typeParameter',
+      typeParams: List(typeParams).map(it => {
+        return new CheckedTypeParameterType({
           name: name.child(it),
-        };
+        });
       }),
       variants: Map(variants),
-    }
-  });
+    }),
+  }));
 
   return type;
 }
 
-function unphasedFunction(args: TypeExpression[], result: TypeExpression, phase: FunctionPhase = 'fun'): FunctionType {
-  return {
-    pos,
-    kind: 'function',
+function unphasedFunction(args: CheckedTypeExpression[], result: CheckedTypeExpression, phase: FunctionPhase = 'fun'): CheckedFunctionType {
+  return new CheckedFunctionType({
     phase,
-    typeParams: [],
-    params: args.map(type => {
-      return {
-        pos,
+    typeParams: List(),
+    params: List(args).map(type => {
+      return new CheckedFunctionTypeParameter({
         phase: undefined,
         type,
-      };
+      });
     }),
     result,
-  }
+  });
 }
