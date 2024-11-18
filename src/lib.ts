@@ -588,6 +588,37 @@ function listLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: Core
       result: coreTypes.listOf(mapOutTypeParam),
     }),
   }));
+
+  const flatMapSymbol = listSymbol.child('flatMap');
+  declarations.set(flatMapSymbol, new CheckedAccessRecord({
+    access: 'public',
+    module: listSymbol,
+    type: new CheckedFunctionType({
+      phase: 'fun',
+      typeParams: List.of(itemTypeParam, mapOutTypeParam),
+      params: List.of(
+        new CheckedFunctionTypeParameter({
+          phase: undefined,
+          type: coreTypes.listOf(itemTypeParam),
+        }),
+        new CheckedFunctionTypeParameter({
+          phase: undefined,
+          type: new CheckedFunctionType({
+            phase: 'fun',
+            typeParams: List(),
+            params: List.of(
+              new CheckedFunctionTypeParameter({
+                phase: 'val',
+                type: itemTypeParam,
+              }),
+            ),
+            result: coreTypes.listOf(mapOutTypeParam),
+          }),
+        }),
+      ),
+      result: coreTypes.listOf(mapOutTypeParam),
+    }),
+  }));
 }
 
 function createStructType(parent: Symbol, declarations: Map<Symbol, CheckedAccessRecord>, baseName: string, typeParams: string[], fields: {

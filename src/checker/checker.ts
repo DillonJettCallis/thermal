@@ -85,6 +85,7 @@ import {
   ParserMapLiteralEx,
   ParserNotEx,
   ParserOrEx,
+  ParserParameter,
   ParserReassignmentStatement,
   ParserReturnEx,
   ParserSetLiteralEx,
@@ -376,54 +377,36 @@ export class Checker {
           : Map<string, CheckedTypeExpression>()
         ;
 
-        // we can use any expected type information to resolve things like generics and lambdas
-        const resolvedFields = List(ex.fields).toMap().mapKeys((_, it) => it.name).map(it => {
-          return new CheckedConstructEntry({
-            pos: it.pos,
-            name: it.name,
-            value: this.#checkExpression(it.value, scope, expectedFields.get(it.name)),
-          });
-        });
+        const actualFields = ex.fields.toOrderedMap().mapKeys((_, it) => it.name);
 
         // TODO: constructors can't explicitly declare generics, but they should be able to
         // now we need to confirm that the given expressions match the type we started with
         const genericParams = baseType instanceof CheckedStructType ? baseType.typeParams : this.#genericsOfEnum(baseType);
-        const genericNames = genericParams.toSeq().map(it => it.name).toSet();
-        const actualRawGenerics = resolvedFields.reduce((sum, actual) => {
-          const expected = baseType.fields.get(actual.name)!!;
-
-          return sum.concat(this.#applyGenerics(expected, actual.value.type, actual.value.pos, genericNames));
-        }, List<{ symbol: Symbol, pos: Position, type: CheckedTypeExpression }>());
-
-        const actualGenerics = actualRawGenerics.groupBy(it => it.symbol).map(list => {
-          return list.reduce<CheckedTypeExpression>((left, right) => this.#mergeTypes(left, right.type, right.pos), this.#coreTypes.nothing);
+        const namesToPairs = actualFields.map((constructEntry, name) => {
+          const expected = expectedFields.get(name) ?? ex.pos.fail('This should not happen. A constructor is missing a required field after it was already checked');
+          return {
+            actual: constructEntry.value,
+            expected,
+          };
         });
 
-        // make sure that all generics have been filled
-        const actualTypeArgs = genericParams.map(it => actualGenerics.get(it.name) ?? ex.pos.fail(`Unable to determine generic type ${it.name}`));
-
-        // make sure that all types are actually assignable
-        baseType.fields.forEach((expected, key) => {
-          const expectedWithGenerics = this.#fillGenericTypes(expected, ex.pos, actualGenerics);
-          const entry = resolvedFields.get(key)?.value ?? ex.pos.fail('This should not happen. A constructor is missing a required field after it was already checked');
-          const actual = this.#fillGenericTypes(entry.type, ex.pos, actualGenerics);
-
-          if (!this.#checkAssignable(actual, expectedWithGenerics)) {
-            entry.pos.fail(`Type ${actual} is not assignable to expected type ${expectedWithGenerics}`);
-          }
-        });
+       const { typeArgs, args } = this.#fullChecking(namesToPairs, scope, ex.pos, genericParams);
 
         const baseName = new CheckedNominalType({name: baseType.name});
 
         const type = genericParams.isEmpty()
           ? baseName
-          : new CheckedParameterizedType({ base: baseName, args: actualTypeArgs });
+          : new CheckedParameterizedType({ base: baseName, args: typeArgs });
 
         return new CheckedConstructEx({
           pos: ex.pos,
           base,
-          typeArgs: actualTypeArgs,
-          fields: resolvedFields.valueSeq().toList(),
+          typeArgs,
+          fields: ex.fields.map(it => {
+            const ex = args.get(it.name) ?? it.pos.fail("This should never happen, an argument was provided but not returned from fullChecking");
+
+            return new CheckedConstructEntry({name: it.name, value: ex, pos: ex.pos});
+          }),
           type,
         });
       } else {
@@ -449,42 +432,20 @@ export class Checker {
       // TODO: handle default arguments
       // TODO: handle generics in the expected type, that matters
       if (funcType.params.size === ex.args.size) {
-        // we can use any expected type information to resolve things like generics and lambdas
-        const resolvedFields = ex.args.map((it, index) => this.#checkExpression(it, scope, funcType.params.get(index)?.type));
+        const rawArgs = funcType.params.zipWith((expected: CheckedFunctionTypeParameter, actual: ParserExpression) => ({expected: expected.type, actual}), ex.args).toOrderedMap()
 
-        // now we need to confirm that the given expressions match the type we started with
-        const genericParams = funcType.typeParams;
-        const genericNames = genericParams.toSeq().map(it => it.name).toSet();
-        const actualRawGenerics = resolvedFields.reduce((sum, actual, index) => {
-          const expected = funcType.params.get(index)!!.type;
-
-          return sum.concat(this.#applyGenerics(expected, actual.type, actual.pos, genericNames));
-        }, List<{ symbol: Symbol, pos: Position, type: CheckedTypeExpression }>());
-
-        const actualGenerics = actualRawGenerics.groupBy(it => it.symbol).map(list => {
-          return list.reduce<CheckedTypeExpression>((left, right) => this.#mergeTypes(left, right.type, right.pos), this.#coreTypes.nothing);
-        });
-
-        // make sure that all generics have been filled
-        const typeArgs = genericParams.map(it => actualGenerics.get(it.name) ?? ex.pos.fail(`Unable to determine generic type ${it.name}`));
-
-        // make sure that all types are actually assignable
-        funcType.params.forEach((expected, index) => {
-          const expectedWithGenerics = this.#fillGenericTypes(expected.type, ex.pos, actualGenerics);
-          const entry = resolvedFields.get(index) ?? ex.pos.fail('This should not happen. A function call is missing a required argument after it was already checked');
-          const actual = this.#fillGenericTypes(entry.type, entry.pos, actualGenerics);
-
-          if (!this.#checkAssignable(actual, expectedWithGenerics)) {
-            entry.pos.fail(`Type ${actual} is not assignable to expected type ${expectedWithGenerics}`);
-          }
-        });
+        const { typeArgs, args } = this.#fullChecking(rawArgs, scope, ex.pos, funcType.typeParams)
+        const typeParams = funcType.typeParams.toOrderedMap()
+          .mapEntries(([index, value]) => {
+            return [value.name, typeArgs.get(index)!];
+          });
 
         return new CheckedCallEx({
           pos: ex.pos,
           func,
-          args: resolvedFields,
+          args: ex.args.map((_, index) => args.get(index) ?? ex.pos.fail("This should never happen, `fullChecking` didn't return an argument")),
           typeArgs,
-          type: this.#fillGenericTypes(funcType.result, ex.pos, actualGenerics),
+          type: this.#fillGenericTypes(funcType.result, ex.pos, typeParams),
         });
       } else {
         return ex.pos.fail(`Function ${func.pos} expects ${funcType.params.size} arguments but found ${ex.args.size} arguments instead`);
@@ -526,42 +487,21 @@ export class Checker {
       // TODO: handle default arguments
       // TODO: handle generics in the expected type, that matters
       if (funcType.fields.size === ex.args.size) {
-        // we can use any expected type information to resolve things like generics and lambdas
-        const resolvedFields = ex.args.map((it, index) => this.#checkExpression(it, scope, funcType.fields.get(index)));
-
-        // now we need to confirm that the given expressions match the type we started with
         const genericParams = this.#genericsOfEnum(funcType);
-        const genericNames = genericParams.toSeq().map(it => it.name).toSet();
-        const actualRawGenerics = resolvedFields.reduce((sum, actual, index) => {
-          const expected = funcType.fields.get(index)!!;
+        const rawArgs = funcType.fields.zipWith((expected, actual: ParserExpression) => ({expected, actual}), ex.args).toOrderedMap()
 
-          return sum.concat(this.#applyGenerics(expected, actual.type, actual.pos, genericNames));
-        }, List<{ symbol: Symbol, pos: Position, type: CheckedTypeExpression }>());
-
-        const actualGenerics = actualRawGenerics.groupBy(it => it.symbol).map(list => {
-          return list.reduce<CheckedTypeExpression>((left, right) => this.#mergeTypes(left, right.type, right.pos), this.#coreTypes.nothing);
-        });
-
-        // make sure that all generics have been filled
-        const typeArgs = genericParams.map(it => actualGenerics.get(it.name) ?? ex.pos.fail(`Unable to determine generic type ${it.name}`));
-
-        // make sure that all types are actually assignable
-        funcType.fields.forEach((expected, index) => {
-          const expectedWithGenerics = this.#fillGenericTypes(expected, ex.pos, actualGenerics);
-          const entry = resolvedFields.get(index) ?? ex.pos.fail('This should not happen. A tuple constructor call is missing a required argument after it was already checked');
-          const actual = this.#fillGenericTypes(entry.type, entry.pos, actualGenerics);
-
-          if (!this.#checkAssignable(actual, expectedWithGenerics)) {
-            entry.pos.fail(`Type ${actual} is not assignable to expected type ${expectedWithGenerics}`);
-          }
-        });
+        const { typeArgs, args } = this.#fullChecking(rawArgs, scope, ex.pos, genericParams)
+        const typeParams = genericParams.toOrderedMap()
+          .mapEntries(([index, value]) => {
+            return [value.name, typeArgs.get(index)!];
+          });
 
         return new CheckedCallEx({
           pos: ex.pos,
           func,
-          args: resolvedFields,
+          args: ex.args.map((_, index) => args.get(index) ?? ex.pos.fail("This should never happen, `fullChecking` didn't return an argument")),
           typeArgs,
-          type: this.#fillGenericTypes(funcType, ex.pos, actualGenerics),
+          type: this.#fillGenericTypes(funcType, ex.pos, typeParams),
         });
       } else {
         return ex.pos.fail(`Tuple ${func.pos} expects ${funcType.fields.size} arguments but found ${ex.args.size} arguments instead`);
@@ -643,75 +583,78 @@ export class Checker {
     });
   }
 
-  checkLambda(ex: ParserLambdaEx, scope: Scope, expected: CheckedTypeExpression | undefined): CheckedLambdaEx {
-      let params: List<CheckedParameter>;
-      let expectedResult: CheckedTypeExpression | undefined = undefined;
+  #checkLambdaBody(ex: ParserLambdaEx, scope: Scope, params: List<CheckedParameter>, expectedResult: CheckedTypeExpression | undefined): CheckedLambdaEx {
+    // TODO: I'm not sure if 'Nothing' is actually going to work here, make sure to test that
+    // TODO: create a system to give annon lambdas names
+    const childScope = scope.childFunction(scope.functionScope.symbol.child('<lambda>'), expectedResult ?? this.#coreTypes.nothing);
 
-      if (expected instanceof CheckedFunctionType) {
-        if (ex.params.size !== expected.params.size) {
-          ex.pos.fail(`Wrong number of arguments, expected function with arguments '${expected.params}' but found ${ex.params.size} arguments`)
+    for (const param of params) {
+      childScope.set(param.name, param.type);
+    }
+
+    const body = this.#checkExpression(ex.body, childScope, expectedResult);
+
+    return new CheckedLambdaEx({
+      pos: ex.pos,
+      phase: ex.phase,
+      params,
+      body,
+      type: new CheckedFunctionType({
+        phase: ex.phase,
+        typeParams: List(),
+        params: params.map(it => {
+          return new CheckedFunctionTypeParameter({
+            phase: it.phase,
+            type: it.type,
+          });
+        }),
+        result: this.#mergeTypes(body.type, childScope.functionScope.resultType, ex.pos),
+      }),
+    });
+  }
+
+  checkLambda(ex: ParserLambdaEx, scope: Scope, expected: CheckedTypeExpression | undefined): CheckedLambdaEx {
+    if (expected instanceof CheckedFunctionType) {
+      if (ex.params.size !== expected.params.size) {
+        ex.pos.fail(`Wrong number of arguments, expected function with arguments '${expected.params}' but found ${ex.params.size} arguments`)
+      }
+
+      // we can spot check the expected types whenever we don't have them (and only when we need to check)
+
+      const expectedResult = expected.result;
+      const params = ex.params.map((it, index) => {
+        const type = it.type === undefined
+          ? expected.params.get(index)!!.type // no type specified, look it up from expected
+          : scope.qualifier.checkTypeExpression(it.type);
+
+        return new CheckedParameter({
+          pos: it.pos,
+          phase: it.phase,
+          name: it.name,
+          type,
+        });
+      });
+
+      return this.#checkLambdaBody(ex, scope, params, expectedResult);
+    } else {
+      // our lambda had better explicitly declare all of its args or we throw up
+      const params = ex.params.map(it => {
+        if (it.type === undefined) {
+          return it.pos.fail('Unable to determine type from context!');
         }
 
-        // we can spot check the expected types whenever we don't have them (and only when we need to check)
+        const type = scope.qualifier.checkTypeExpression(it.type);
 
-        expectedResult = expected.result;
-        params = ex.params.map((it, index) => {
-          const type = it.type === undefined
-            ? expected.params.get(index)!!.type // no type specified, look it up from expected
-            : scope.qualifier.checkTypeExpression(it.type);
-
-          return new CheckedParameter({
-            pos: it.pos,
-            phase: it.phase,
-            name: it.name,
-            type,
-          });
-        })
-      } else {
-        // our lambda had better explicitly declare all of its args or we throw up
-        params = ex.params.map(it => {
-          if (it.type === undefined) {
-            return it.pos.fail('Unable to determine type from context!');
-          }
-
-          const type = scope.qualifier.checkTypeExpression(it.type);
-
-          return new CheckedParameter({
-            pos: it.pos,
-            phase: it.phase,
-            name: it.name,
-            type,
-          });
-        })
-      }
-
-      // TODO: I'm not sure if 'Nothing' is actually going to work here, make sure to test that
-      // TODO: create a system to give annon lambdas names
-      const childScope = scope.childFunction(scope.functionScope.symbol.child('<lambda>'), expectedResult ?? this.#coreTypes.nothing);
-
-      for (const param of params) {
-        childScope.set(param.name, param.type);
-      }
-
-      const body = this.#checkExpression(ex.body, childScope, expectedResult);
-
-      return new CheckedLambdaEx({
-        pos: ex.pos,
-        phase: ex.phase,
-        params,
-        body,
-        type: new CheckedFunctionType({
-          phase: ex.phase,
-          typeParams: List(),
-          params: params.map(it => {
-            return new CheckedFunctionTypeParameter({
-              phase: it.phase,
-              type: it.type,
-            });
-          }),
-          result: this.#mergeTypes(body.type, childScope.functionScope.resultType, ex.pos),
-        }),
+        return new CheckedParameter({
+          pos: it.pos,
+          phase: it.phase,
+          name: it.name,
+          type,
+        });
       });
+
+      return this.#checkLambdaBody(ex, scope, params, undefined);
+    }
   }
 
   checkBlock(ex: ParserBlockEx, parentScope: Scope, expected: CheckedTypeExpression | undefined): CheckedBlockEx {
@@ -936,31 +879,109 @@ export class Checker {
     }
   }
 
-  #applyGenerics(expected: CheckedTypeExpression, actual: CheckedTypeExpression, pos: Position, expectedGenerics: Set<Symbol>): List<{ symbol:  Symbol, pos: Position, type: CheckedTypeExpression}> {
-    const generics = List<{ symbol:  Symbol, pos: Position, type: CheckedTypeExpression}>().asMutable();
-
-    function inner(expected: CheckedTypeExpression | undefined, actual: CheckedTypeExpression | undefined): void {
+  #recursiveGenericsLookup(expected: CheckedTypeExpression | undefined, actual: CheckedTypeExpression | undefined, expectedGenerics: Set<Symbol>, collector: (symbol: Symbol, type: CheckedTypeExpression) => void): void {
       if (expected === undefined || actual === undefined) {
         return;
       } else if (expected instanceof CheckedTypeParameterType) {
         if (expectedGenerics.has(expected.name)) {
-          generics.push({symbol: expected.name, pos, type: actual});
+          collector(expected.name, actual);
         }
       } else if (expected instanceof CheckedParameterizedType) {
         if (actual instanceof CheckedParameterizedType) {
-          expected.args.zip<CheckedTypeExpression>(actual.args).forEach(([ex, act]) => inner(ex, act));
+          expected.args.zip<CheckedTypeExpression>(actual.args).forEach(([ex, act]) => this.#recursiveGenericsLookup(ex, act, expectedGenerics, collector));
         }
       } else if (expected instanceof CheckedFunctionType) {
         if (actual instanceof CheckedFunctionType) {
-          expected.params.zip<CheckedTypeExpression>(actual.params).forEach(([ex, act]) => inner(ex, act));
-          inner(expected.result, actual.result);
+          expected.params.zip<CheckedTypeExpression>(actual.params).forEach(([ex, act]) => this.#recursiveGenericsLookup(ex, act, expectedGenerics, collector));
+          this.#recursiveGenericsLookup(expected.result, actual.result, expectedGenerics, collector);
         }
       }
     }
 
-    inner(expected, actual);
+  //TODO: someday have a way to handle default values, meaning optional actual values
+  #fullChecking<MapKey extends number | string>(pairs: Map<MapKey, { actual: ParserExpression, expected: CheckedTypeExpression}>, scope: Scope, pos: Position, genericParams: List<CheckedTypeParameterType>): { typeArgs: List<CheckedTypeExpression>, args: Map<MapKey, CheckedExpression> } {
+    if (genericParams.isEmpty()) {
+      return {
+        typeArgs: List(),
+        args: pairs.map(({actual, expected}) => this.#checkExpression(actual, scope, expected)),
+      }
+    }
 
-    return generics.asImmutable();
+    const expectedGenerics = genericParams.map(it => it.name).toSet();
+    const resolvedGenerics = List<{ symbol: Symbol, pos: Position, type: CheckedTypeExpression}>().asMutable();
+    const checkedArgs = Map<MapKey, CheckedExpression>().asMutable();
+
+    // check all non-lambdas, use lambda known types
+    pairs.forEach(({actual, expected}, key) => {
+      if (actual instanceof ParserLambdaEx) {
+        if (expected instanceof CheckedFunctionType) {
+          expected.params.zip<ParserParameter>(actual.params).forEach(([ex, act]) => {
+            const type = act.type;
+
+            if (type !== undefined) {
+              this.#recursiveGenericsLookup(ex, scope.qualifier.checkTypeExpression(type), expectedGenerics, (symbol, type) => {
+                resolvedGenerics.push({symbol, pos: act.pos, type});
+              });
+            }
+          });
+          // TODO: when we add syntax for explicit lambda return values, use that data here too
+        }
+      } else {
+        const checkedEx = this.#checkExpression(actual, scope, expected);
+
+        this.#recursiveGenericsLookup(expected, checkedEx.type, expectedGenerics, (symbol, type) => resolvedGenerics.push({symbol, type, pos: checkedEx.pos}));
+        checkedArgs.set(key, checkedEx);
+      }
+    });
+
+    // generics before we've checked lambdas
+    const actualGenericsPreLambda = resolvedGenerics.groupBy(it => it.symbol).map(list => {
+      return list.reduce<CheckedTypeExpression>((left, right) => this.#mergeTypes(left, right.type, right.pos), this.#coreTypes.nothing);
+    });
+
+    // check lambdas
+    pairs.forEach(({actual, expected}, key) => {
+      if (actual instanceof ParserLambdaEx && expected instanceof CheckedFunctionType) {
+        const actualGenericsPlusHoles = actualGenericsPreLambda.asMutable()
+        expectedGenerics.forEach(name => {
+          if (!actualGenericsPlusHoles.has(name)) {
+            // fill in holes with `Nothing`
+            actualGenericsPlusHoles.set(name, this.#coreTypes.nothing);
+          }
+        });
+
+        const expectedType = this.#fillGenericTypes(expected, pos, actualGenericsPlusHoles.asImmutable());
+        const checkedEx = this.checkLambda(actual, scope, expectedType);
+
+        this.#recursiveGenericsLookup(expected, checkedEx.type, expectedGenerics, (symbol, type) => resolvedGenerics.push({symbol, type, pos: checkedEx.pos}));
+        checkedArgs.set(key, checkedEx);
+      }
+    });
+
+    // generics with lambdas included
+    const actualGenerics = resolvedGenerics.groupBy(it => it.symbol).map(list => {
+      return list.reduce<CheckedTypeExpression>((left, right) => this.#mergeTypes(left, right.type, right.pos), this.#coreTypes.nothing);
+    });
+
+    // make sure that all generics have been filled
+    const actualTypeArgs = genericParams.map(it => actualGenerics.get(it.name) ?? pos.fail(`Unable to determine generic type ${it.name}`));
+
+    // make sure that all types are actually assignable
+    pairs.forEach(({actual, expected}, key) => {
+      const expectedWithGenerics = this.#fillGenericTypes(expected, pos, actualGenerics);
+      const checkedActual = checkedArgs.get(key) ?? pos.fail(`No checked value found for key ${key}, this should not be possible!`);
+
+      if (!this.#checkAssignable(checkedActual.type, expectedWithGenerics)) {
+        return actual.pos.fail(`Type ${actual} is not assignable to expected type ${expectedWithGenerics}`);
+      } else {
+        return checkedActual;
+      }
+    });
+
+    return {
+      typeArgs: actualTypeArgs,
+      args: checkedArgs,
+    }
   }
 
   #checkAllAssignable(actual: List<CheckedTypeExpression>, expected: List<CheckedTypeExpression>): boolean {
@@ -989,6 +1010,10 @@ export class Checker {
 
     if (actual instanceof CheckedFunctionType && expected instanceof CheckedFunctionType) {
       return this.#checkAssignableFunctionTypes(actual, expected);
+    }
+
+    if (actual instanceof CheckedParameterizedType && expected instanceof CheckedParameterizedType) {
+      return actual.base.name.equals(expected.base.name) && this.#checkAllAssignable(actual.args, expected.args)
     }
 
     if (expected instanceof CheckedEnumType) {

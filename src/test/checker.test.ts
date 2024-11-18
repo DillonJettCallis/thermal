@@ -285,7 +285,90 @@ describe('Checker', () => {
       ),
     }), testScope());
 
-    ok(actual.type.equals(coreTypes.listOf(coreTypes.string)), 'call does not return a list of strings like it should');
+    ok(actual.type.equals(coreTypes.listOf(coreTypes.string)), 'call does not return a List of Strings like it should');
+  });
+
+  it('should typecheck a call to List::flatMap with a lambda literal', () => {
+    // core::list::flatMap([1, 2, 3], { x => [x, x * 2] })
+
+    // this whole AST just to represent the code above
+    const actual = checker.checkCall(new ParserCallEx({
+      pos,
+      func: new ParserStaticAccessEx({
+        pos,
+        path: List.of(
+          new ParserIdentifierEx({
+            pos,
+            name: 'core',
+          }), new ParserIdentifierEx({
+            pos,
+            name: 'list',
+          }), new ParserIdentifierEx({
+            pos,
+            name: 'flatMap'
+          })
+        ),
+      }),
+      typeArgs: List(),
+      args: List.of<ParserExpression>(
+        new ParserListLiteralEx({
+          pos,
+          values: List.of(
+            new ParserIntLiteralEx({
+              pos,
+              value: 1,
+            }), new ParserIntLiteralEx({
+              pos,
+              value: 2,
+            }), new ParserIntLiteralEx({
+              pos,
+              value: 3
+            }),
+          ),
+        }),
+        new ParserLambdaEx({
+          pos,
+          phase: 'fun',
+          params: List.of(
+            new ParserParameter({
+              pos,
+              name: 'x',
+              phase: undefined,
+              type: undefined, // the type is not declared
+            })
+          ),
+          body: new ParserListLiteralEx({
+            pos,
+            values: List.of<ParserExpression>(
+              new ParserIdentifierEx({
+                pos,
+                name: 'x',
+              }),
+              new ParserCallEx({
+                pos,
+                func: new ParserIdentifierEx({
+                  pos,
+                  name: '+',
+                }),
+                typeArgs: List(),
+                args: List.of<ParserExpression>(
+                  new ParserIdentifierEx({
+                    pos,
+                    name: 'x',
+                  }),
+                  new ParserIntLiteralEx({
+                    pos,
+                    value: 2,
+                  }),
+                ),
+              })
+            )
+          })
+        }),
+      ),
+    }), testScope());
+
+    ok(actual.type.equals(coreTypes.listOf(coreTypes.int)), 'call does not return a List of Ints like it should');
   });
 });
 
