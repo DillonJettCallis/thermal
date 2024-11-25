@@ -1,14 +1,15 @@
-import { Map } from "immutable";
-import { Access, DependencyManager, PackageName, Symbol } from "../ast.js";
-import { CheckedAccessRecord } from "./checkerAst.js";
-import { ParserFile, ParserImportDeclaration } from "../parser/parserAst.js";
+import type { Map } from 'immutable';
+import type { Access, DependencyManager, PackageName, Symbol } from '../ast.js';
+import type { CheckedAccessRecord } from './checkerAst.js';
+import type { ParserFile} from '../parser/parserAst.js';
+import { ParserImportDeclaration } from '../parser/parserAst.js';
 
 /**
  * Check this file and make sure everything it imports actually exists.
  *
  * Does not check anything about the uses of the imports, just that they point to real things that can be found.
  */
-export function verifyImports(files: ParserFile[], manager: DependencyManager, declarations: Map<PackageName, Map<Symbol, CheckedAccessRecord>>): void {
+export function verifyImports(files: Array<ParserFile>, manager: DependencyManager, declarations: Map<PackageName, Map<Symbol, CheckedAccessRecord>>): void {
   files.forEach(file => {
     file.declarations.forEach(dec => {
       if (dec instanceof ParserImportDeclaration) {
@@ -26,26 +27,26 @@ export function verifyImports(files: ParserFile[], manager: DependencyManager, d
           }
         });
       }
-    })
+    });
   });
 }
 
 
 function checkImport(access: Access, from: Symbol, to: Symbol): boolean {
   switch (access) {
-    case "private":
+    case 'private':
       // the modules have to match exactly
       return from.equals(to);
-    case "protected":
+    case 'protected':
       // `isParent` also checks the package
       return to.parent()?.isParent(from) ?? false;
-    case "package":
+    case 'package':
       // are we in the same package together?
       return from.package.equals(to.package);
     case 'internal':
       // does everything but the name match?
       return from.package.set('name', '').equals(to.package.set('name', ''));
-    case "public":
+    case 'public':
       // doesn't matter the connection, everything public is always good
       return true;
   }

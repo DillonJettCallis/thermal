@@ -1,4 +1,7 @@
-import { isKind, type Kind, Lexer, type Token } from "./lexer.ts";
+import { isKind, type Kind, Lexer, type Token } from './lexer.ts';
+import type {
+  Position,
+  Symbol} from '../ast.ts';
 import {
   type Access,
   type ExpressionPhase,
@@ -6,8 +9,6 @@ import {
   isAccess,
   isExpressionPhase,
   isFunctionPhase,
-  Position,
-  Symbol
 } from '../ast.ts';
 import { List, Map, Set } from 'immutable';
 import {
@@ -60,8 +61,8 @@ import {
   ParserStructDeclare,
   ParserStructField,
   type ParserTypeExpression,
-  ParserTypeParameterType
-} from "./parserAst.ts";
+  ParserTypeParameterType,
+} from './parserAst.ts';
 
 export class Parser {
 
@@ -69,9 +70,9 @@ export class Parser {
   readonly #limit: number;
   readonly #module: Symbol;
 
-  #index: number = 0;
+  #index = 0;
 
-  private constructor(tokens: Token[], module: Symbol) {
+  private constructor(tokens: Array<Token>, module: Symbol) {
     this.#tokens = tokens;
     this.#limit = tokens.length;
     this.#module = module;
@@ -97,7 +98,7 @@ export class Parser {
     if (this.#endOfFile()) {
       throw new Error('Out of bounds');
     } else {
-      return this.#tokens[this.#index]!!;
+      return this.#tokens[this.#index]!;
     }
   }
 
@@ -109,7 +110,7 @@ export class Parser {
     if (this.#index === 0) {
       throw new Error('Out of bounds');
     } else {
-      return this.#tokens[this.#index - 1]!!;
+      return this.#tokens[this.#index - 1]!;
     }
   }
 
@@ -117,17 +118,6 @@ export class Parser {
     const result = this.#peek();
     this.#skip();
     return result;
-  }
-
-  #checkKind<Test extends Kind>(kind: Test): { pos: Position, kind: Test, value: string } | undefined {
-    const next = this.#peek();
-
-    if (isKind(next, kind)) {
-      this.#skip();
-      return next as { pos: Position, kind: Test, value: string };
-    } else {
-      return undefined;
-    }
   }
 
   #assertKind<Test extends Kind>(kind: Test): { pos: Position, kind: Test, value: string } {
@@ -152,16 +142,6 @@ export class Parser {
     }
   }
 
-  #assertKeyword(keyword: string): void {
-    const next = this.#peek();
-
-    if (isKind(next, 'keyword') && next.value === keyword) {
-      this.#skip();
-    } else {
-      next.pos.fail(`Expected keyword ${keyword} but found ${next.kind} '${next.value}'`)
-    }
-  }
-
   #checkSymbol(symbol: string): boolean {
     if (this.#endOfFile()) {
       return false;
@@ -183,7 +163,7 @@ export class Parser {
     if (isKind(next, 'symbol') && next.value === symbol) {
       this.#skip();
     } else {
-      next.pos.fail(`Expected symbol ${symbol} but found ${next.kind} '${next.value}'`)
+      next.pos.fail(`Expected symbol ${symbol} but found ${next.kind} '${next.value}'`);
     }
   }
 
@@ -219,7 +199,7 @@ export class Parser {
     switch (keyword.value) {
       case 'const':
         if (extern) {
-          keyword.pos.fail(`Structs cannot be 'extern'`);
+          keyword.pos.fail('Structs cannot be \'extern\'');
         }
         return this.#parseConstDeclare(access, first.pos);
       case 'fun':
@@ -228,12 +208,12 @@ export class Parser {
         return this.#parseFunctionDeclare(extern, access, keyword.value, first.pos);
       case 'struct':
         if (extern) {
-          keyword.pos.fail(`Structs cannot be 'extern'`);
+          keyword.pos.fail('Structs cannot be \'extern\'');
         }
         return this.#parseStructDeclare(access, first.pos);
       case 'enum':
         if (extern) {
-          keyword.pos.fail(`Enums cannot be 'extern'`);
+          keyword.pos.fail('Enums cannot be \'extern\'');
         }
         return this.#parseEnumDeclare(access, first.pos);
       case 'import':
@@ -388,7 +368,7 @@ export class Parser {
         type,
         default: defaultEx,
       }),
-    ]
+    ];
   }
 
   #parseFunctionStatement(functionPhase: FunctionPhase, phase: ExpressionPhase, pos: Position): ParserFunctionStatement {
@@ -445,7 +425,7 @@ export class Parser {
         functionPhase,
         params,
         body,
-      })
+      }),
     });
   }
 
@@ -531,24 +511,24 @@ export class Parser {
   #parseBinaryExpression(): ParserExpression {
     const start = this.#parseIsExpression.bind(this);
     const prod = this.#parseBinaryExpSet(Set.of('*', '/'), start);
-    const sum = this.#parseBinaryExpSet(Set.of("+", "-"), prod)
-    const compare = this.#parseBinaryExpSet(Set.of(">", ">=", "<", "<="), sum)
-    const equal = this.#parseBinaryExpSet(Set.of("==", "!="), compare)
-    const and = this.#parseBinaryExpSet(Set.of("&&"), equal, (pos, left, right) => {
+    const sum = this.#parseBinaryExpSet(Set.of('+', '-'), prod);
+    const compare = this.#parseBinaryExpSet(Set.of('>', '>=', '<', '<='), sum);
+    const equal = this.#parseBinaryExpSet(Set.of('==', '!='), compare);
+    const and = this.#parseBinaryExpSet(Set.of('&&'), equal, (pos, left, right) => {
       return new ParserAndEx({
         pos,
         left,
         right,
       });
     });
-    const or = this.#parseBinaryExpSet(Set.of("||"), and, (pos, left, right) => {
+    const or = this.#parseBinaryExpSet(Set.of('||'), and, (pos, left, right) => {
       return new ParserOrEx({
         pos,
         left,
         right,
       });
     });
-    return or()
+    return or();
   }
 
   #parseBinaryExpSet(ops: Set<string>, tail: () => ParserExpression, handler?: (pos: Position, left: ParserExpression, right: ParserExpression) => ParserExpression): () => ParserExpression {
@@ -663,7 +643,7 @@ export class Parser {
             value: new ParserIdentifierEx({
               pos: name.pos,
               name: name.value,
-            })
+            }),
           });
         }
       });
@@ -762,13 +742,13 @@ export class Parser {
           path: List.of(
             new ParserIdentifierEx({
               pos: next.pos,
-              name: 'core'
+              name: 'core',
             }), new ParserIdentifierEx({
               pos: next.pos,
-              name: 'math'
+              name: 'math',
             }), new ParserIdentifierEx({
               pos: next.pos,
-              name: 'negate'
+              name: 'negate',
             }),
           ),
         }),
@@ -783,7 +763,7 @@ export class Parser {
   }
 
   #parseStaticAccessExpression(): ParserExpression {
-    let base = this.#parseTerm();
+    const base = this.#parseTerm();
 
     if (base instanceof ParserIdentifierEx && this.#checkSymbol('::')) {
       const path = List.of<ParserIdentifierEx>(base).asMutable();
@@ -817,7 +797,7 @@ export class Parser {
       });
     } else if (next.kind === 'number') {
       // TODO: there is more to number literals than this
-      const num = Number.parseFloat(next.value)
+      const num = Number.parseFloat(next.value);
 
       if (Number.isSafeInteger(num)) {
         return new ParserIntLiteralEx({
@@ -890,13 +870,13 @@ export class Parser {
                 pos: possibleAssignment.pos,
                 func: new ParserIdentifierEx({
                   pos: possibleAssignment.pos,
-                  name: possibleAssignment.value[0]!!,
+                  name: possibleAssignment.value[0]!,
                 }),
                 typeArgs: List(),
                 args: List.of(
                   expression,
                   content,
-                )
+                ),
               }),
             }));
           }
@@ -1059,7 +1039,7 @@ export class Parser {
         pos: next.pos,
         name: next.value,
       }));
-    } while (!this.#endOfFile() && this.#checkSymbol('::'))
+    } while (!this.#endOfFile() && this.#checkSymbol('::'));
 
     return new ParserNominalType({
       pos,

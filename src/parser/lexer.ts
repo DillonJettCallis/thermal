@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { Set } from 'immutable';
-import { Position } from "../ast.ts";
+import { Position } from '../ast.ts';
 
 const whitespace = Set(' \t\r\n');
 const digits = Set('0123456789');
@@ -106,9 +106,9 @@ export class Lexer {
   readonly #content: string;
   readonly #limit: number;
 
-  #index: number = 0;
-  #line: number = 1;
-  #col: number = 1;
+  #index = 0;
+  #line = 1;
+  #col = 1;
 
   private constructor(src: string, content: string) {
     this.#src = src;
@@ -116,13 +116,13 @@ export class Lexer {
     this.#limit = content.length;
   }
 
-  public static lexFile(path: string): Token[] {
-    const content = readFileSync(path, {encoding: 'utf-8'}) as string;
+  public static lexFile(path: string): Array<Token> {
+    const content = readFileSync(path, {encoding: 'utf-8'});
 
     return new Lexer(path, content).#lexFile();
   }
 
-  public static lexString(path: string, content: string): Token[] {
+  public static lexString(path: string, content: string): Array<Token> {
     return new Lexer(path, content).#lexFile();
   }
 
@@ -138,7 +138,7 @@ export class Lexer {
     if (this.#endOfFile()) {
       throw new Error('Out of bounds');
     } else {
-      return this.#content[this.#index]!!;
+      return this.#content[this.#index]!;
     }
   }
 
@@ -165,11 +165,11 @@ export class Lexer {
       this.#skip();
     }
 
-    return !this.#endOfFile()
+    return !this.#endOfFile();
   }
 
-  #lexFile(): Token[] {
-    const tokens: Token[] = [];
+  #lexFile(): Array<Token> {
+    const tokens: Array<Token> = [];
 
     while (this.#skipWhitespace()) {
       tokens.push(this.#lexNext());
@@ -187,7 +187,7 @@ export class Lexer {
         pos,
         kind: 'symbol',
         value: this.#lexSymbol(first),
-      }
+      };
     }
 
     if (digits.has(first)) {
@@ -207,7 +207,7 @@ export class Lexer {
         pos,
         kind: 'number',
         value: num,
-      }
+      };
     }
 
     if (quotes.has(first)) {
@@ -224,8 +224,8 @@ export class Lexer {
       return {
         pos,
         kind: keywords.has(word) ? 'keyword': 'identifier',
-        value: word
-      }
+        value: word,
+      };
     }
 
     return pos.fail(`Unknown character ${first}`);
@@ -269,10 +269,10 @@ export class Lexer {
       }
     }
 
-    pos.fail('Unterminated string starting')
+    pos.fail('Unterminated string starting');
   }
 
-  #lexWord(first: string, pos: Position): string {
+  #lexWord(first: string, _pos: Position): string {
     let word = first;
 
     while (!this.#endOfFile()) {

@@ -13,3 +13,8 @@ node_modules
 
 # typescript compiler output
 build
+
+# yarn pnp (I don't trust it just yet)
+.pnp.cjs
+.pnp.loader.mjs
+

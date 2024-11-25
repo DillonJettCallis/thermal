@@ -1,10 +1,11 @@
 import { List, Map, Record, Set } from 'immutable';
-import {
+import type {
   ParserImportDeclaration,
+  ParserNestedImportExpression} from './parser/parserAst.ts';
+import {
   type ParserImportExpression,
-  ParserNestedImportExpression,
-  ParserNominalImportExpression
-} from "./parser/parserAst.ts";
+  ParserNominalImportExpression,
+} from './parser/parserAst.ts';
 
 export class Position extends Record({src: '', line: 0, column: 0}){
   public static readonly native = new Position('[native]', 0, 0);
@@ -14,7 +15,7 @@ export class Position extends Record({src: '', line: 0, column: 0}){
   }
 
   describe(): string {
-    return `${this.src} ${this.line}:${this.column}`
+    return `${this.src} ${this.line}:${this.column}`;
   }
 
   fail(message: string): never {
@@ -70,14 +71,14 @@ export class PackageName extends Record({
 }) {
   constructor(organization: string, name: string, version: Version, assembly?: string, alias?: string) {
     if (name === 'self') {
-      throw new Error(`Package name 'self' is forbidden`);
+      throw new Error('Package name \'self\' is forbidden');
     }
 
     super({ organization, assembly, name, version, alias });
   }
 
   override toString(): string {
-    return `${this.organization}/${this.name}/${this.version}`
+    return `${this.organization}/${this.name}/${this.version}`;
   }
 }
 
@@ -89,15 +90,15 @@ export class Symbol extends Record({
     super({ package: pack, path: List() });
   }
 
-  child(next: string): Symbol {
-    return this.update("path", path => path.push(next));
+  child(next: string): this {
+    return this.update('path', path => path.push(next));
   }
 
-  parent(): Symbol | undefined {
+  parent(): this | undefined {
     if (this.path.isEmpty()) {
       return undefined;
     } else {
-      return this.set("path", this.path.pop());
+      return this.set('path', this.path.pop());
     }
   }
 
@@ -134,7 +135,7 @@ export class DependencyManager {
    */
   addDependency(packageName: PackageName, alias?: string): void {
     if (alias === 'self') {
-      throw new Error(`Alias 'self' is forbidden`);
+      throw new Error('Alias \'self\' is forbidden');
     }
 
     this.#packages.set(alias ?? packageName.name, packageName);
@@ -158,7 +159,7 @@ export class DependencyManager {
     if (importEx instanceof ParserNominalImportExpression) {
       return List.of(this.#breakdownNominalImportExpression(parent, importEx));
     } else {
-      return this.#breakdownNestedImportExpression(parent, importEx)
+      return this.#breakdownNestedImportExpression(parent, importEx);
     }
   }
 

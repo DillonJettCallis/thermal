@@ -1,11 +1,12 @@
-import { DependencyDictionary, PackageName, Position, Symbol, Version } from "../ast.ts";
-import { coreLib } from "../lib.ts";
-import { List, Map } from "immutable";
-import { Checker, PhaseType, Scope } from "../checker/checker.ts";
-import { ok, equal, throws } from "node:assert";
-import { Qualifier } from "../checker/collector.ts";
-import { describe, it } from "node:test";
-import { CheckedAccessRecord, CheckedFunctionType, CheckedFunctionTypeParameter } from "../checker/checkerAst.ts";
+import { DependencyDictionary, PackageName, Position, Symbol, Version } from '../ast.ts';
+import { coreLib } from '../lib.ts';
+import { List, Map } from 'immutable';
+import { Checker, PhaseType, Scope } from '../checker/checker.ts';
+import { ok, equal, throws } from 'node:assert';
+import { Qualifier } from '../checker/collector.ts';
+import { describe, it } from 'node:test';
+import type { CheckedAccessRecord} from '../checker/checkerAst.ts';
+import { CheckedFunctionType, CheckedFunctionTypeParameter } from '../checker/checkerAst.ts';
 import {
   ParserBlockEx,
   ParserBooleanLiteralEx,
@@ -21,8 +22,8 @@ import {
   ParserParameter,
   ParserReturnEx,
   ParserStaticAccessEx,
-  ParserStringLiteralEx
-} from "../parser/parserAst.ts";
+  ParserStringLiteralEx,
+} from '../parser/parserAst.ts';
 
 const version = new Version(0, 1, 0);
 const packageName = new PackageName('sample', 'sample', version);
@@ -37,7 +38,14 @@ rootManager.addDependency(corePackage.name);
 
 const checker = new Checker(rootManager, Map<PackageName, Map<Symbol, CheckedAccessRecord>>().set(corePackage.name, corePackage.declarations), coreTypes, preamble);
 const qualifier = new Qualifier(preamble);
-const preambleScope = preamble.map(name => new PhaseType(corePackage.declarations.get(name)!!.type, 'const', pos));
+const preambleScope = preamble.map(name => {
+  const type = corePackage.declarations.get(name)?.type;
+  if (type === undefined) {
+    throw new Error('Huh? Something is very wrong!');
+  }
+
+  return new PhaseType(type, 'const', pos);
+});
 
 function testScope(): Scope {
   return Scope.init(preambleScope, qualifier, root, coreTypes.unit);
@@ -141,7 +149,7 @@ describe('Checker', () => {
           }), new ParserIdentifierEx({
             pos,
             name: 'get',
-          })
+          }),
         ),
       }),
       typeArgs: List(),
@@ -183,10 +191,10 @@ describe('Checker', () => {
               new ParserIdentifierEx({
                 pos,
                 name: 'Int',
-              })
-            )
+              }),
+            ),
           }),
-        })
+        }),
       ),
       body: new ParserBlockEx({
         pos,
@@ -235,8 +243,8 @@ describe('Checker', () => {
             name: 'list',
           }), new ParserIdentifierEx({
             pos,
-            name: 'map'
-          })
+            name: 'map',
+          }),
         ),
       }),
       typeArgs: List(),
@@ -252,7 +260,7 @@ describe('Checker', () => {
               value: 2,
             }), new ParserIntLiteralEx({
               pos,
-              value: 3
+              value: 3,
             }),
           ),
         }),
@@ -265,13 +273,13 @@ describe('Checker', () => {
               name: 'x',
               phase: undefined,
               type: undefined, // the type is not declared
-            })
+            }),
           ),
           body: new ParserCallEx({
             pos,
             func: new ParserIdentifierEx({
               pos,
-              name: 'toString'
+              name: 'toString',
             }),
             typeArgs: List(),
             args: List.of(
@@ -279,7 +287,7 @@ describe('Checker', () => {
                 pos,
                 name: 'x',
               }),
-            )
+            ),
           }),
         }),
       ),
@@ -305,8 +313,8 @@ describe('Checker', () => {
             name: 'list',
           }), new ParserIdentifierEx({
             pos,
-            name: 'flatMap'
-          })
+            name: 'flatMap',
+          }),
         ),
       }),
       typeArgs: List(),
@@ -322,7 +330,7 @@ describe('Checker', () => {
               value: 2,
             }), new ParserIntLiteralEx({
               pos,
-              value: 3
+              value: 3,
             }),
           ),
         }),
@@ -335,7 +343,7 @@ describe('Checker', () => {
               name: 'x',
               phase: undefined,
               type: undefined, // the type is not declared
-            })
+            }),
           ),
           body: new ParserListLiteralEx({
             pos,
@@ -361,9 +369,9 @@ describe('Checker', () => {
                     value: 2,
                   }),
                 ),
-              })
-            )
-          })
+              }),
+            ),
+          }),
         }),
       ),
     }), testScope());
@@ -397,7 +405,7 @@ describe('Checker', () => {
           pos,
           value: 1,
         }),
-      )
+      ),
     }), testScope());
 
     equal(actual.phase, 'const');
@@ -428,7 +436,7 @@ describe('Checker', () => {
           pos,
           name: 'x',
         }),
-      )
+      ),
     }), scope);
 
     equal(actual.phase, 'val');
@@ -459,7 +467,7 @@ describe('Checker', () => {
           pos,
           name: 'x',
         }),
-      )
+      ),
     }), scope);
 
     equal(actual.phase, 'flow');
@@ -490,7 +498,7 @@ describe('Checker', () => {
           pos,
           name: 'x',
         }),
-      )
+      ),
     }), scope);
 
     equal(actual.phase, 'flow');
@@ -527,21 +535,21 @@ describe('Checker', () => {
                   name: 'Int',
                 }),
               ),
-            })
+            }),
           }),
         ),
         body: new ParserIntLiteralEx({
           pos,
           value: 0,
-        })
+        }),
       }),
     });
 
     throws(() => {
       checker.checkFunctionStatement(input, testScope(), root);
     }, {
-      message: `Attempt to require a 'flow' parameter in a 'fun' function. A 'fun' function can only have 'const' or 'val' parameters at ${pos.describe()}`
-    })
+      message: `Attempt to require a 'flow' parameter in a 'fun' function. A 'fun' function can only have 'const' or 'val' parameters at ${pos.describe()}`,
+    });
   });
 
   it('should allow a fun function to close over a flow, as long as the resulting expression is flow', () => {
@@ -563,7 +571,7 @@ describe('Checker', () => {
           new ParserIdentifierEx({
             pos,
             name: 'Int',
-          })
+          }),
         ),
       }),
       lambda: new ParserLambdaEx({
@@ -580,17 +588,17 @@ describe('Checker', () => {
                 new ParserIdentifierEx({
                   pos,
                   name: 'Int',
-                })
+                }),
               ),
-            })
-          })
+            }),
+          }),
         ),
         body: new ParserCallEx({
           pos,
           typeArgs: List(),
           func: new ParserIdentifierEx({
             pos,
-            name: '+'
+            name: '+',
           }),
           args: List.of(
             new ParserIdentifierEx({
@@ -601,9 +609,9 @@ describe('Checker', () => {
               pos,
               name: 'y',
             }),
-          )
+          ),
         }),
-      })
+      }),
     }), scope, root);
 
     equal(actual.phase, 'flow');
@@ -628,7 +636,7 @@ describe('Checker', () => {
           new ParserIdentifierEx({
             pos,
             name: 'Int',
-          })
+          }),
         ),
       }),
       lambda: new ParserLambdaEx({
@@ -645,17 +653,17 @@ describe('Checker', () => {
                 new ParserIdentifierEx({
                   pos,
                   name: 'Int',
-                })
+                }),
               ),
-            })
-          })
+            }),
+          }),
         ),
         body: new ParserCallEx({
           pos,
           typeArgs: List(),
           func: new ParserIdentifierEx({
             pos,
-            name: '+'
+            name: '+',
           }),
           args: List.of(
             new ParserIdentifierEx({
@@ -666,15 +674,15 @@ describe('Checker', () => {
               pos,
               name: 'y',
             }),
-          )
+          ),
         }),
-      })
+      }),
     });
 
     throws(() => {
       checker.checkFunctionStatement(input, scope, root);
     }, {
-      message: `Attempt to declare 'const' function, but body is actually 'flow'. This function must close over values outside of the allowed phase. at ${pos.describe()}`
+      message: `Attempt to declare 'const' function, but body is actually 'flow'. This function must close over values outside of the allowed phase. at ${pos.describe()}`,
     });
   });
 });

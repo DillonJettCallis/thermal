@@ -1,10 +1,19 @@
-import { DependencyManager, type ExpressionPhase, type FunctionPhase, PackageName, Position, Symbol, } from "../ast.ts";
-import { List, Map, Record, Seq, Set } from "immutable";
-import { collectDeclarations, Qualifier } from "./collector.ts";
-import { type CoreTypes } from "../lib.ts";
+import type { DependencyManager, ExpressionPhase, FunctionPhase, PackageName, Symbol } from '../ast.ts';
+import { Position } from '../ast.ts';
+import type { Set } from 'immutable';
+import { List, Map, Record, Seq } from 'immutable';
+import { collectDeclarations, Qualifier } from './collector.ts';
+import type { CoreTypes } from '../lib.ts';
+import type {
+  CheckedAccessRecord,
+  CheckedEnumTypeVariant,
+  CheckedExpression,
+  CheckedSetLiteralEx,
+  CheckedStatement,
+  CheckedTypeExpression,
+} from './checkerAst.ts';
 import {
   CheckedAccessEx,
-  CheckedAccessRecord,
   CheckedAndEx,
   CheckedAssignmentStatement,
   CheckedBlockEx,
@@ -21,8 +30,6 @@ import {
   CheckedEnumTypeAtomVariant,
   CheckedEnumTypeStructVariant,
   CheckedEnumTypeTupleVariant,
-  type CheckedEnumTypeVariant,
-  type CheckedExpression,
   CheckedExpressionStatement,
   CheckedFile,
   CheckedFloatLiteralEx,
@@ -48,16 +55,21 @@ import {
   CheckedParameterizedType,
   CheckedReassignmentStatement,
   CheckedReturnEx,
-  CheckedSetLiteralEx,
-  type CheckedStatement,
   CheckedStaticAccessEx,
   CheckedStringLiteralEx,
   CheckedStructDeclare,
   CheckedStructField,
   CheckedStructType,
-  type CheckedTypeExpression,
-  CheckedTypeParameterType
-} from "./checkerAst.ts";
+  CheckedTypeParameterType,
+} from './checkerAst.ts';
+import type {
+  ParserExpression,
+  ParserFile,
+  ParserFunctionStatement,
+  ParserMapLiteralEx,
+  ParserParameter,
+  ParserStatement,
+} from '../parser/parserAst.ts';
 import {
   ParserAccessEx,
   ParserAndEx,
@@ -69,12 +81,9 @@ import {
   ParserConstructEx,
   ParserEnumStructVariant,
   ParserEnumTupleVariant,
-  type ParserExpression,
   ParserExpressionStatement,
-  ParserFile,
   ParserFloatLiteralEx,
   ParserFunctionDeclare,
-  ParserFunctionStatement,
   ParserIdentifierEx,
   ParserIfEx,
   ParserImportDeclaration,
@@ -82,18 +91,15 @@ import {
   ParserIsEx,
   ParserLambdaEx,
   ParserListLiteralEx,
-  ParserMapLiteralEx,
   ParserNotEx,
   ParserOrEx,
-  ParserParameter,
   ParserReassignmentStatement,
   ParserReturnEx,
   ParserSetLiteralEx,
-  type ParserStatement,
   ParserStaticAccessEx,
   ParserStringLiteralEx,
-  ParserStructDeclare
-} from "../parser/parserAst.ts";
+  ParserStructDeclare,
+} from '../parser/parserAst.ts';
 
 export class Checker {
   readonly #manager: DependencyManager;
@@ -126,7 +132,7 @@ export class Checker {
           access: dec.access,
           symbol: dec.symbol,
           func,
-        })
+        });
       } else if (dec instanceof ParserConstantDeclare) {
         const type = fileScope.qualifier.checkTypeExpression(dec.type);
         const expression = this.#checkExpression(dec.expression, fileScope, type);
@@ -142,7 +148,7 @@ export class Checker {
           symbol: dec.symbol,
           expression,
           type,
-        })
+        });
       } else if (dec instanceof ParserStructDeclare) {
         const typeParams = dec.typeParams.map(it => fileScope.qualifier.checkTypeExpression(it) as CheckedTypeParameterType);
         const fields = dec.fields.map(it => {
@@ -162,7 +168,7 @@ export class Checker {
           access: dec.access,
           typeParams,
           fields,
-        })
+        });
       } else {
         const typeParams = dec.typeParams.map(it => fileScope.qualifier.checkTypeExpression(it) as CheckedTypeParameterType);
         const variants = dec.variants.map(variant => {
@@ -339,7 +345,7 @@ export class Checker {
   checkStaticAccess(ex: ParserStaticAccessEx, scope: Scope): CheckedStaticAccessEx {
     const [first, ...rest] = ex.path.toArray();
 
-    const init = this.checkIdentifier(first!!, scope);
+    const init = this.checkIdentifier(first!, scope);
     const path = List.of(init).asMutable();
     let prev = init.type;
 
@@ -405,7 +411,7 @@ export class Checker {
           };
         });
 
-       const { typeArgs, args } = this.#fullChecking(namesToPairs, scope, ex.pos, genericParams);
+        const { typeArgs, args } = this.#fullChecking(namesToPairs, scope, ex.pos, genericParams);
 
         const baseName = new CheckedNominalType({name: baseType.name});
 
@@ -418,7 +424,7 @@ export class Checker {
           base,
           typeArgs,
           fields: ex.fields.map(it => {
-            const ex = args.get(it.name) ?? it.pos.fail("This should never happen, an argument was provided but not returned from fullChecking");
+            const ex = args.get(it.name) ?? it.pos.fail('This should never happen, an argument was provided but not returned from fullChecking');
 
             return new CheckedConstructEntry({name: it.name, value: ex, pos: ex.pos});
           }),
@@ -436,7 +442,7 @@ export class Checker {
         return ex.pos.fail(`Incompatible fields for constructor ${baseType.name} with ${extraMessage} ${missingMessage}`);
       }
     } else {
-      return ex.pos.fail('Attempt to construct non-constructable')
+      return ex.pos.fail('Attempt to construct non-constructable');
     }
   }
 
@@ -448,9 +454,9 @@ export class Checker {
       // TODO: handle default arguments
       // TODO: handle generics in the expected type, that matters
       if (funcType.params.size === ex.args.size) {
-        const rawArgs = funcType.params.zipWith((expected: CheckedFunctionTypeParameter, actual: ParserExpression) => ({expected: expected.type, actual}), ex.args).toOrderedMap()
+        const rawArgs = funcType.params.zipWith((expected: CheckedFunctionTypeParameter, actual: ParserExpression) => ({expected: expected.type, actual}), ex.args).toOrderedMap();
 
-        const { typeArgs, args } = this.#fullChecking(rawArgs, scope, ex.pos, funcType.typeParams)
+        const { typeArgs, args } = this.#fullChecking(rawArgs, scope, ex.pos, funcType.typeParams);
         const typeParams = funcType.typeParams.toOrderedMap()
           .mapEntries(([index, value]) => {
             return [value.name, typeArgs.get(index)!];
@@ -462,7 +468,7 @@ export class Checker {
           return {
             expectedPhase: param.phase,
             arg,
-          }
+          };
         }).valueSeq().toList();
 
         return new CheckedCallEx({
@@ -487,7 +493,7 @@ export class Checker {
 
         // make sure that all types are actually assignable
         for (let index = 0; index < funcType.params.size; index++) {
-          const expected = funcType.params.get(index)!!;
+          const expected = funcType.params.get(index)!;
           const expectedWithGenerics = expected.type;
           const actual = resolvedFields.get(index)?.type ?? ex.pos.fail('This should not happen. A function call is missing a required argument after it was already checked');
 
@@ -516,9 +522,9 @@ export class Checker {
       // TODO: handle generics in the expected type, that matters
       if (funcType.fields.size === ex.args.size) {
         const genericParams = this.#genericsOfEnum(funcType);
-        const rawArgs = funcType.fields.zipWith((expected, actual: ParserExpression) => ({expected, actual}), ex.args).toOrderedMap()
+        const rawArgs = funcType.fields.zipWith((expected, actual: ParserExpression) => ({expected, actual}), ex.args).toOrderedMap();
 
-        const { typeArgs, args } = this.#fullChecking(rawArgs, scope, ex.pos, genericParams)
+        const { typeArgs, args } = this.#fullChecking(rawArgs, scope, ex.pos, genericParams);
         const typeParams = genericParams.toOrderedMap()
           .mapEntries(([index, value]) => {
             return [value.name, typeArgs.get(index)!];
@@ -536,7 +542,7 @@ export class Checker {
         return ex.pos.fail(`Tuple ${func.pos} expects ${funcType.fields.size} arguments but found ${ex.args.size} arguments instead`);
       }
     } else {
-      return ex.pos.fail('Attempt to call non-callable')
+      return ex.pos.fail('Attempt to call non-callable');
     }
   }
 
@@ -658,7 +664,7 @@ export class Checker {
   checkLambda(ex: ParserLambdaEx, scope: Scope, expected: CheckedTypeExpression | undefined): CheckedLambdaEx {
     if (expected instanceof CheckedFunctionType) {
       if (ex.params.size !== expected.params.size) {
-        ex.pos.fail(`Wrong number of arguments, expected function with arguments '${expected.params}' but found ${ex.params.size} arguments`)
+        ex.pos.fail(`Wrong number of arguments, expected function with arguments '${expected.params}' but found ${ex.params.size} arguments`);
       }
 
       // we can spot check the expected types whenever we don't have them (and only when we need to check)
@@ -666,7 +672,7 @@ export class Checker {
       const expectedResult = expected.result;
       const params = ex.params.map((it, index) => {
         const type = it.type === undefined
-          ? expected.params.get(index)!!.type // no type specified, look it up from expected
+          ? expected.params.get(index)!.type // no type specified, look it up from expected
           : scope.qualifier.checkTypeExpression(it.type);
 
         return new CheckedParameter({
@@ -714,7 +720,7 @@ export class Checker {
     // all but the last statement
     const initBody: List<CheckedStatement> = ex.body.shift().map(state => this.checkStatement(state, scope, undefined));
     // the last statement is the only one that gets expected, and the only one who's type matters
-    const last = this.checkStatement(ex.body.last()!!, scope, expected);
+    const last = this.checkStatement(ex.body.last(), scope, expected);
     const body = initBody.push(last);
 
     return new CheckedBlockEx({
@@ -780,7 +786,7 @@ export class Checker {
 
   checkReassignmentStatement(state: ParserReassignmentStatement, scope: Scope): CheckedReassignmentStatement {
     if (scope.functionScope.phase !== 'sig') {
-      return state.pos.fail(`Attempt to update a 'var' inside a '${scope.functionScope.phase}' function. Only a 'sig' function is permitted to update a 'var'`)
+      return state.pos.fail(`Attempt to update a 'var' inside a '${scope.functionScope.phase}' function. Only a 'sig' function is permitted to update a 'var'`);
     }
 
     const id = scope.get(state.name, state.pos);
@@ -844,7 +850,7 @@ export class Checker {
       case 'sig':
         for (const param of params) {
           if (param.phase === 'flow') {
-            param.pos.fail(`Attempt to require a 'flow' parameter in a 'sig' function. A 'sig' function can only have 'const', 'val', or 'flow' parameters`);
+            param.pos.fail('Attempt to require a \'flow\' parameter in a \'sig\' function. A \'sig\' function can only have \'const\', \'val\', or \'flow\' parameters');
           }
         }
         break;
@@ -961,7 +967,7 @@ export class Checker {
       return new CheckedMapLiteralEntry({
         pos: item.pos,
         key: this.#checkExpression(item.key, scope, expectedKey),
-        value: this.#checkExpression(item.value, scope, expectedValue)
+        value: this.#checkExpression(item.value, scope, expectedValue),
       });
     });
     const keyType = this.#mergeList(entries.map(it => it.key.type), expectedKey ?? this.#coreTypes.nothing, ex.pos);
@@ -976,7 +982,7 @@ export class Checker {
   }
 
   #genericsOfEnum(ex: CheckedEnumTypeVariant): List<CheckedTypeParameterType> {
-    const base = this.#declarations.get(ex.name.package)?.get(ex.name.parent()!!);
+    const base = this.#declarations.get(ex.name.package)?.get(ex.name.parent()!);
 
     if (base?.type instanceof CheckedEnumType) {
       return base.type.typeParams;
@@ -1071,27 +1077,27 @@ export class Checker {
     switch (functionPhase) {
       case 'sig':
         // for now, sigs have no limits and always return 'val'
-      return 'val';
+        return 'val';
       case 'def':
         // defs always return a 'flow' no matter what
         return 'flow';
-      case "fun":
+      case 'fun':
         // a fun returns the highest value
         return highestPhase;
     }
   }
 
   //TODO: someday have a way to handle default values, meaning optional actual values
-  #fullChecking<MapKey extends number | string>(pairs: Map<MapKey, { actual: ParserExpression, expected: CheckedTypeExpression}>, scope: Scope, pos: Position, genericParams: List<CheckedTypeParameterType>): { typeArgs: List<CheckedTypeExpression>, args: Map<MapKey, CheckedExpression> } {
+  #fullChecking<MapKey extends number | string>(pairs: Map<MapKey, { actual: ParserExpression, expected: CheckedTypeExpression }>, scope: Scope, pos: Position, genericParams: List<CheckedTypeParameterType>): { typeArgs: List<CheckedTypeExpression>, args: Map<MapKey, CheckedExpression> } {
     if (genericParams.isEmpty()) {
       return {
         typeArgs: List(),
         args: pairs.map(({actual, expected}) => this.#checkExpression(actual, scope, expected)),
-      }
+      };
     }
 
     const expectedGenerics = genericParams.map(it => it.name).toSet();
-    const resolvedGenerics = List<{ symbol: Symbol, pos: Position, type: CheckedTypeExpression}>().asMutable();
+    const resolvedGenerics = List<{ symbol: Symbol, pos: Position, type: CheckedTypeExpression }>().asMutable();
     const checkedArgs = Map<MapKey, CheckedExpression>().asMutable();
 
     // check all non-lambdas, use lambda known types
@@ -1125,7 +1131,7 @@ export class Checker {
     // check lambdas
     pairs.forEach(({actual, expected}, key) => {
       if (actual instanceof ParserLambdaEx && expected instanceof CheckedFunctionType) {
-        const actualGenericsPlusHoles = actualGenericsPreLambda.asMutable()
+        const actualGenericsPlusHoles = actualGenericsPreLambda.asMutable();
         expectedGenerics.forEach(name => {
           if (!actualGenericsPlusHoles.has(name)) {
             // fill in holes with `Nothing`
@@ -1164,7 +1170,7 @@ export class Checker {
     return {
       typeArgs: actualTypeArgs,
       args: checkedArgs,
-    }
+    };
   }
 
   #checkAllAssignable(actual: List<CheckedTypeExpression>, expected: List<CheckedTypeExpression>): boolean {
@@ -1196,7 +1202,7 @@ export class Checker {
     }
 
     if (actual instanceof CheckedParameterizedType && expected instanceof CheckedParameterizedType) {
-      return actual.base.name.equals(expected.base.name) && this.#checkAllAssignable(actual.args, expected.args)
+      return actual.base.name.equals(expected.base.name) && this.#checkAllAssignable(actual.args, expected.args);
     }
 
     if (expected instanceof CheckedEnumType) {
@@ -1244,7 +1250,7 @@ export class Checker {
     } else if (this.#checkAssignable(right, left)) {
       return left;
     } else {
-      return pos.fail(`Incompatible with other type`)
+      return pos.fail('Incompatible with other type');
     }
   }
 
@@ -1252,7 +1258,7 @@ export class Checker {
     // results are checked backwards because of contravariance
     return actual.phase === expected.phase && this.#checkAssignable(expected.result, actual.result) && actual.params.size === expected.params.size &&
       // TODO: consider how to compare phases. For now demand they are exactly equal
-      actual.params.zip<CheckedFunctionTypeParameter>(expected.params).every(([left, right]) => (left.phase ?? 'val') === (right.phase ?? 'val') && this.#checkAssignable(left.type!!, right.type));
+      actual.params.zip<CheckedFunctionTypeParameter>(expected.params).every(([left, right]) => (left.phase ?? 'val') === (right.phase ?? 'val') && this.#checkAssignable(left.type, right.type));
   }
 
   #typeSymbolToPhaseType(symbol: Symbol, pos: Position): PhaseType {
@@ -1280,7 +1286,7 @@ export class Checker {
         const num = Number.parseInt(id.name.substring(1));
 
         if (Number.isSafeInteger(num) && num < type.fields.size) {
-          return type.fields.get(num)!!;
+          return type.fields.get(num)!;
         }
       }
 
@@ -1327,7 +1333,7 @@ export class Checker {
 
         return this.#fillGenericTypes(field, id.pos, generics);
       } else {
-        return id.pos.fail("Parameterized type has no fields");
+        return id.pos.fail('Parameterized type has no fields');
       }
     }
   }
@@ -1355,7 +1361,7 @@ export class Checker {
    * This method should then return just `Int`.
    */
   #fillGenericTypes(ex: CheckedTypeExpression, pos: Position, generics: Map<Symbol, CheckedTypeExpression>): CheckedTypeExpression {
-    const self = this;
+    const declarations = this.#declarations;
 
     function fill(ex: CheckedTypeExpression): CheckedTypeExpression {
       if (ex instanceof CheckedStructType) {
@@ -1380,7 +1386,7 @@ export class Checker {
       } else if (ex instanceof CheckedParameterizedType) {
         return ex.set('args', ex.args.map(fill));
       } else if (ex instanceof CheckedNominalType) {
-        const realType = self.#declarations.get(ex.name.package)?.get(ex.name)?.type;
+        const realType = declarations.get(ex.name.package)?.get(ex.name)?.type;
 
         if (realType === undefined) {
           // this should not happen, since the verifier should have detected this
@@ -1402,9 +1408,9 @@ export class Checker {
 class FunctionScope {
 
   readonly #closures = Map<string, PhaseType>().asMutable();
-  readonly symbol: Symbol
-  readonly phase: FunctionPhase
-  resultType: CheckedTypeExpression
+  readonly symbol: Symbol;
+  readonly phase: FunctionPhase;
+  resultType: CheckedTypeExpression;
 
   constructor(symbol: Symbol, resultType: CheckedTypeExpression, phase: FunctionPhase) {
     this.symbol = symbol;
@@ -1412,7 +1418,7 @@ class FunctionScope {
     this.phase = phase;
   }
 
-  get closures(): Map<String, PhaseType> {
+  get closures(): Map<string, PhaseType> {
     return this.#closures.asImmutable();
   }
 

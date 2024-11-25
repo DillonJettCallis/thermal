@@ -1,7 +1,7 @@
-import { PackageName, Position, Symbol, Version } from "../ast.ts";
-import { Parser } from "../parser/parser.ts";
-import { ok } from "node:assert";
-import { describe, it } from "node:test";
+import { PackageName, Position, Symbol, Version } from '../ast.ts';
+import { Parser } from '../parser/parser.ts';
+import { ok } from 'node:assert';
+import { describe, it } from 'node:test';
 import {
   ParserAccessEx,
   ParserBlockEx,
@@ -20,9 +20,9 @@ import {
   ParserMapLiteralEx,
   ParserSetLiteralEx,
   ParserStaticAccessEx,
-  ParserStringLiteralEx
-} from "../parser/parserAst.ts";
-import { List } from "immutable";
+  ParserStringLiteralEx,
+} from '../parser/parserAst.ts';
+import { List } from 'immutable';
 
 const version = new Version(0, 1, 0);
 const packageName = new PackageName('sample', 'sample', version);
@@ -93,7 +93,7 @@ describe('Parser', () => {
           pos: new Position(src, 1, 8),
           value: 3,
         }),
-      )
+      ),
     }),
   }));
 
@@ -114,12 +114,12 @@ describe('Parser', () => {
           pos: new Position(src, 1, 9),
           value: 3,
         }),
-      )
-    })
+      ),
+    }),
   }));
 
   it('should parse a simple map of strings to integers', () => expressionParserTest({
-    code: `#['one': 1, 'two': 2, 'three': 3]`,
+    code: '#[\'one\': 1, \'two\': 2, \'three\': 3]',
     expected: new ParserMapLiteralEx({
       pos: new Position(src, 1, 1),
       values: List.of(
@@ -156,8 +156,8 @@ describe('Parser', () => {
             value: 3,
           }),
         }),
-      )
-    })
+      ),
+    }),
   }));
 
   it('should parse a simple access expression', () => expressionParserTest({
@@ -166,13 +166,13 @@ describe('Parser', () => {
       pos: new Position(src, 1, 5),
       base: new ParserIdentifierEx({
         pos: new Position(src, 1, 1),
-        name: 'some'
+        name: 'some',
       }),
       field: new ParserIdentifierEx({
         pos: new Position(src, 1, 6),
         name: 'thing',
       }),
-    })
+    }),
   }));
 
   it('should parse a simple static expression', () => expressionParserTest({
@@ -182,14 +182,14 @@ describe('Parser', () => {
       path: List.of(
         new ParserIdentifierEx({
           pos: new Position(src, 1, 1),
-          name: 'some'
+          name: 'some',
         }),
         new ParserIdentifierEx({
           pos: new Position(src, 1, 7),
           name: 'thing',
         }),
       ),
-    })
+    }),
   }));
 
   it('should parse a simple static function call', () => expressionParserTest({
@@ -201,7 +201,7 @@ describe('Parser', () => {
         path: List.of(
           new ParserIdentifierEx({
             pos: new Position(src, 1, 1),
-            name: 'some'
+            name: 'some',
           }),
           new ParserIdentifierEx({
             pos: new Position(src, 1, 7),
@@ -299,38 +299,38 @@ Entry {
     const actual = Parser.parseExpression(src, '4 + 5 * 3', root);
 
     ok(actual.equals(new ParserCallEx({
+      pos: new Position(src, 1, 3),
+      func: new ParserIdentifierEx({
         pos: new Position(src, 1, 3),
-        func: new ParserIdentifierEx({
-          pos: new Position(src, 1, 3),
-          name: '+',
-        }),
-        typeArgs: List(),
-        args: List.of<ParserExpression>(
-          new ParserIntLiteralEx({
-            pos: new Position(src, 1, 1),
-            value: 4,
-          }),
-          new ParserCallEx({
-            pos: new Position(src, 1, 7),
-            func: new ParserIdentifierEx({
-              pos: new Position(src, 1, 7),
-              name: '*',
-            }),
-            typeArgs: List(),
-            args: List.of(
-              new ParserIntLiteralEx({
-                pos: new Position(src, 1, 5),
-                value: 5,
-              }),
-              new ParserIntLiteralEx({
-                pos: new Position(src, 1, 9),
-                value: 3,
-              }),
-            ),
-          }),
-        )
+        name: '+',
       }),
-    ))
+      typeArgs: List(),
+      args: List.of<ParserExpression>(
+        new ParserIntLiteralEx({
+          pos: new Position(src, 1, 1),
+          value: 4,
+        }),
+        new ParserCallEx({
+          pos: new Position(src, 1, 7),
+          func: new ParserIdentifierEx({
+            pos: new Position(src, 1, 7),
+            name: '*',
+          }),
+          typeArgs: List(),
+          args: List.of(
+            new ParserIntLiteralEx({
+              pos: new Position(src, 1, 5),
+              value: 5,
+            }),
+            new ParserIntLiteralEx({
+              pos: new Position(src, 1, 9),
+              value: 3,
+            }),
+          ),
+        }),
+      ),
+    }),
+    ));
   });
-})
+});
 

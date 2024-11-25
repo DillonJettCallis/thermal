@@ -9,13 +9,18 @@
     "immutable": "4.3.7"
   },
   "devDependencies": {
+    "@eslint/js": "9.15.0",
+    "@stylistic/eslint-plugin": "2.11.0",
     "@types/node": "22.5.4",
     "esbuild": "0.23.1",
-    "typescript": "5.7.2"
+    "eslint": "9.15.0",
+    "typescript": "5.7.2",
+    "typescript-eslint": "8.15.0"
   },
   "scripts": {
     "build": "yarn run esbuild src/main.ts --platform=node --target=node20 --bundle --outfile=build/bundle/lib.js --minify",
-    "test": "yarn node --experimental-strip-types --test './src/test/*.test.ts'",
-    "check": "yarn run tsc"
+    "test": "yarn node --test './src/test/*.test.ts'",
+    "check": "yarn run tsc",
+    "lint": "yarn run eslint --fix -c eslint.config.ts src/**/*.ts"
   }
 }

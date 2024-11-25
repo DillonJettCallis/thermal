@@ -1,4 +1,4 @@
-import { type FunctionPhase, PackageName, Position, Symbol, Version } from "./ast.ts";
+import { type FunctionPhase, PackageName, Position, Symbol, Version } from './ast.ts';
 import { List, Map } from 'immutable';
 import {
   CheckedAccessRecord,
@@ -16,8 +16,8 @@ import {
   CheckedParameterizedType,
   CheckedStructType,
   type CheckedTypeExpression,
-  CheckedTypeParameterType
-} from "./checker/checkerAst.ts";
+  CheckedTypeParameterType,
+} from './checker/checkerAst.ts';
 
 const coreVersion = new Version(0, 1, 0);
 const corePackageName = new PackageName('core', 'core', coreVersion);
@@ -56,7 +56,7 @@ export function coreLib(): { package: CheckedPackage, coreTypes: CoreTypes, prea
         base: this.option,
         args: List.of(
           content,
-        )
+        ),
       });
     },
     list: createStructType(coreSymbol.child('list'), declarations, 'List', ['Item'], {}),
@@ -83,8 +83,8 @@ export function coreLib(): { package: CheckedPackage, coreTypes: CoreTypes, prea
         base: this.map,
         args: List.of(key, value),
       });
-    }
-  }
+    },
+  };
 
   const preamble = Map<string, Symbol>().asMutable();
 
@@ -120,7 +120,7 @@ export function coreLib(): { package: CheckedPackage, coreTypes: CoreTypes, prea
     }),
     coreTypes,
     preamble: preamble.asImmutable(),
-  }
+  };
 }
 
 export interface CoreTypes {
@@ -176,7 +176,7 @@ function boolLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: Core
         unphasedFunction([coreTypes.int, coreTypes.int], coreTypes.boolean),
         unphasedFunction([coreTypes.float, coreTypes.float], coreTypes.boolean),
         unphasedFunction([coreTypes.string, coreTypes.string], coreTypes.boolean),
-      )
+      ),
     }),
   }));
   preamble.set('==', boolSymbol.child('=='));
@@ -190,7 +190,7 @@ function boolLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: Core
         unphasedFunction([coreTypes.int, coreTypes.int], coreTypes.boolean),
         unphasedFunction([coreTypes.float, coreTypes.float], coreTypes.boolean),
         unphasedFunction([coreTypes.string, coreTypes.string], coreTypes.boolean),
-      )
+      ),
     }),
   }));
   preamble.set('!=', boolSymbol.child('!='));
@@ -210,7 +210,7 @@ function mathLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: Core
         unphasedFunction([intType, intType], intType),
         unphasedFunction([floatType, floatType], floatType),
       ),
-    })
+    }),
   }));
   preamble.set('+', mathSymbol.child('+'));
 
@@ -226,7 +226,7 @@ function mathLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: Core
         // binary versions
         unphasedFunction([intType, intType], intType),
         unphasedFunction([floatType, floatType], floatType),
-      )
+      ),
     }),
   }));
   preamble.set('-', mathSymbol.child('-'));
@@ -238,7 +238,7 @@ function mathLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: Core
       branches: List.of(
         unphasedFunction([intType, intType], intType),
         unphasedFunction([floatType, floatType], floatType),
-      )
+      ),
     }),
   }));
   preamble.set('*', mathSymbol.child('*'));
@@ -250,7 +250,7 @@ function mathLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: Core
       branches: List.of(
         unphasedFunction([intType, intType], floatType),
         unphasedFunction([floatType, floatType], floatType),
-      )
+      ),
     }),
   }));
   preamble.set('/', mathSymbol.child('/'));
@@ -270,7 +270,7 @@ function mathLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: Core
       }),
     }));
     preamble.set(op, mathSymbol.child(op));
-  })
+  });
 
   const integerDivisionResultType = createStructType(mathSymbol, declarations, 'IntegerDivisionResult', [], {
     dividend: intType,
@@ -300,7 +300,7 @@ function stringLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: Co
         unphasedFunction([coreTypes.boolean], coreTypes.string),
         unphasedFunction([coreTypes.int], coreTypes.string),
         unphasedFunction([coreTypes.float], coreTypes.string),
-      )
+      ),
     }),
   }));
   preamble.set('toString', stringSymbol.child('toString'));
@@ -373,7 +373,7 @@ function domLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: CoreT
         new CheckedFunctionTypeParameter({
           phase: undefined,
           type: coreTypes.string,
-        })
+        }),
       ),
       result: elementType,
     }),
@@ -395,8 +395,8 @@ function domLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: CoreT
   const displayEnumType = createEnumType(styleSymbol, declarations, 'Display', [], Object.fromEntries(['Block', 'InlineBlock', 'Flex'].map(variant => {
     return [variant, new CheckedEnumTypeAtomVariant({
       pos,
-      name: styleSymbol.child('Display').child(variant)
-    })] as const
+      name: styleSymbol.child('Display').child(variant),
+    })] as const;
   })));
 
   declarations.set(styleSymbol.child('display'), new CheckedAccessRecord({
@@ -418,8 +418,8 @@ function domLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: CoreT
   const flexDirectionEnumType = createEnumType(styleSymbol, declarations, 'FlexDirection', [], Object.fromEntries(['Row', 'Column'].map(variant => {
     return [variant, new CheckedEnumTypeAtomVariant({
       pos,
-      name: styleSymbol.child('FlexDirection').child(variant)
-    })] as const
+      name: styleSymbol.child('FlexDirection').child(variant),
+    })] as const;
   })));
 
   declarations.set(styleSymbol.child('flexDirection'), new CheckedAccessRecord({
@@ -621,9 +621,7 @@ function listLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: Core
   }));
 }
 
-function createStructType(parent: Symbol, declarations: Map<Symbol, CheckedAccessRecord>, baseName: string, typeParams: string[], fields: {
-  [key: string]: CheckedTypeExpression
-}): CheckedNominalType {
+function createStructType(parent: Symbol, declarations: Map<Symbol, CheckedAccessRecord>, baseName: string, typeParams: Array<string>, fields: Record<string, CheckedTypeExpression>): CheckedNominalType {
   const name = parent.child(baseName);
 
   const type = new CheckedNominalType({
@@ -648,9 +646,7 @@ function createStructType(parent: Symbol, declarations: Map<Symbol, CheckedAcces
   return type;
 }
 
-function createEnumType(parent: Symbol, declarations: Map<Symbol, CheckedAccessRecord>, baseName: string, typeParams: string[], variants: {
-  [key: string]: CheckedEnumTypeVariant
-}): CheckedNominalType {
+function createEnumType(parent: Symbol, declarations: Map<Symbol, CheckedAccessRecord>, baseName: string, typeParams: Array<string>, variants: Record<string, CheckedEnumTypeVariant>): CheckedNominalType {
   const name = parent.child(baseName);
 
   const type = new CheckedNominalType({
@@ -675,7 +671,7 @@ function createEnumType(parent: Symbol, declarations: Map<Symbol, CheckedAccessR
   return type;
 }
 
-function unphasedFunction(args: CheckedTypeExpression[], result: CheckedTypeExpression, phase: FunctionPhase = 'fun'): CheckedFunctionType {
+function unphasedFunction(args: Array<CheckedTypeExpression>, result: CheckedTypeExpression, phase: FunctionPhase = 'fun'): CheckedFunctionType {
   return new CheckedFunctionType({
     phase,
     typeParams: List(),
