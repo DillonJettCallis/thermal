@@ -1,5 +1,5 @@
 import { List, Map, Record, } from 'immutable';
-import { Access, ExpressionPhase, FunctionPhase, PackageName, Position, Symbol, } from '../ast.js';
+import { type Access, type ExpressionPhase, type FunctionPhase, PackageName, Position, Symbol, } from '../ast.ts';
 
 export type CheckedTypeExpression
   = CheckedNominalType
@@ -73,11 +73,13 @@ interface MutableCheckedBooleanLiteralEx {
   pos: Position;
   value: boolean;
   type: CheckedTypeExpression;
+  phase: ExpressionPhase;
 }
 export class CheckedBooleanLiteralEx extends Record<MutableCheckedBooleanLiteralEx>({
   pos: undefined as unknown as Position,
   value: undefined as unknown as boolean,
   type: undefined as unknown as CheckedTypeExpression,
+  phase: undefined as unknown as ExpressionPhase,
 }) {
   constructor(props: MutableCheckedBooleanLiteralEx) {
     super(props);
@@ -88,11 +90,13 @@ interface MutableCheckedIntLiteralEx {
   pos: Position;
   value: number;
   type: CheckedTypeExpression;
+  phase: ExpressionPhase;
 }
 export class CheckedIntLiteralEx extends Record<MutableCheckedIntLiteralEx>({
   pos: undefined as unknown as Position,
   value: undefined as unknown as number,
   type: undefined as unknown as CheckedTypeExpression,
+  phase: undefined as unknown as ExpressionPhase,
 }) {
   constructor(props: MutableCheckedIntLiteralEx) {
     super(props);
@@ -103,11 +107,13 @@ interface MutableCheckedFloatLiteralEx {
   pos: Position;
   value: number;
   type: CheckedTypeExpression;
+  phase: ExpressionPhase;
 }
 export class CheckedFloatLiteralEx extends Record<MutableCheckedFloatLiteralEx>({
   pos: undefined as unknown as Position,
   value: undefined as unknown as number,
   type: undefined as unknown as CheckedTypeExpression,
+  phase: undefined as unknown as ExpressionPhase,
 }) {
   constructor(props: MutableCheckedFloatLiteralEx) {
     super(props);
@@ -118,11 +124,13 @@ interface MutableCheckedStringLiteralEx {
   pos: Position;
   value: string;
   type: CheckedTypeExpression;
+  phase: ExpressionPhase;
 }
 export class CheckedStringLiteralEx extends Record<MutableCheckedStringLiteralEx>({
   pos: undefined as unknown as Position,
   value: undefined as unknown as string,
   type: undefined as unknown as CheckedTypeExpression,
+  phase: undefined as unknown as ExpressionPhase,
 }) {
   constructor(props: MutableCheckedStringLiteralEx) {
     super(props);
@@ -133,11 +141,13 @@ interface MutableCheckedIdentifierEx {
   pos: Position;
   name: string;
   type: CheckedTypeExpression;
+  phase: ExpressionPhase;
 }
 export class CheckedIdentifierEx extends Record<MutableCheckedIdentifierEx>({
   pos: undefined as unknown as Position,
   name: undefined as unknown as string,
   type: undefined as unknown as CheckedTypeExpression,
+  phase: undefined as unknown as ExpressionPhase,
 }) {
   constructor(props: MutableCheckedIdentifierEx) {
     super(props);
@@ -312,11 +322,13 @@ interface MutableCheckedListLiteralEx {
   pos: Position;
   values: List<CheckedExpression>;
   type: CheckedTypeExpression;
+  phase: ExpressionPhase;
 }
 export class CheckedListLiteralEx extends Record<MutableCheckedListLiteralEx>({
   pos: undefined as unknown as Position,
   values: undefined as unknown as List<CheckedExpression>,
   type: undefined as unknown as CheckedTypeExpression,
+  phase: undefined as unknown as ExpressionPhase,
 }) {
   constructor(props: MutableCheckedListLiteralEx) {
     super(props);
@@ -327,11 +339,13 @@ interface MutableCheckedSetLiteralEx {
   pos: Position;
   values: List<CheckedExpression>;
   type: CheckedTypeExpression;
+  phase: ExpressionPhase;
 }
 export class CheckedSetLiteralEx extends Record<MutableCheckedSetLiteralEx>({
   pos: undefined as unknown as Position,
   values: undefined as unknown as List<CheckedExpression>,
   type: undefined as unknown as CheckedTypeExpression,
+  phase: undefined as unknown as ExpressionPhase,
 }) {
   constructor(props: MutableCheckedSetLiteralEx) {
     super(props);
@@ -357,11 +371,13 @@ interface MutableCheckedMapLiteralEx {
   pos: Position;
   values: List<CheckedMapLiteralEntry>;
   type: CheckedTypeExpression;
+  phase: ExpressionPhase;
 }
 export class CheckedMapLiteralEx extends Record<MutableCheckedMapLiteralEx>({
   pos: undefined as unknown as Position,
   values: undefined as unknown as List<CheckedMapLiteralEntry>,
   type: undefined as unknown as CheckedTypeExpression,
+  phase: undefined as unknown as ExpressionPhase,
 }) {
   constructor(props: MutableCheckedMapLiteralEx) {
     super(props);
@@ -374,6 +390,7 @@ interface MutableCheckedIsEx {
   base: CheckedExpression;
   check: CheckedTypeExpression;
   type: CheckedTypeExpression;
+  phase: ExpressionPhase;
 }
 export class CheckedIsEx extends Record<MutableCheckedIsEx>({
   pos: undefined as unknown as Position,
@@ -381,6 +398,7 @@ export class CheckedIsEx extends Record<MutableCheckedIsEx>({
   base: undefined as unknown as CheckedExpression,
   check: undefined as unknown as CheckedTypeExpression,
   type: undefined as unknown as CheckedTypeExpression,
+  phase: undefined as unknown as ExpressionPhase,
 }) {
   constructor(props: MutableCheckedIsEx) {
     super(props);
@@ -391,11 +409,13 @@ interface MutableCheckedNotEx {
   pos: Position;
   base: CheckedExpression;
   type: CheckedTypeExpression;
+  phase: ExpressionPhase;
 }
 export class CheckedNotEx extends Record<MutableCheckedNotEx>({
   pos: undefined as unknown as Position,
   base: undefined as unknown as CheckedExpression,
   type: undefined as unknown as CheckedTypeExpression,
+  phase: undefined as unknown as ExpressionPhase,
 }) {
   constructor(props: MutableCheckedNotEx) {
     super(props);
@@ -407,12 +427,14 @@ interface MutableCheckedOrEx {
   left: CheckedExpression;
   right: CheckedExpression;
   type: CheckedTypeExpression;
+  phase: ExpressionPhase;
 }
 export class CheckedOrEx extends Record<MutableCheckedOrEx>({
   pos: undefined as unknown as Position,
   left: undefined as unknown as CheckedExpression,
   right: undefined as unknown as CheckedExpression,
   type: undefined as unknown as CheckedTypeExpression,
+  phase: undefined as unknown as ExpressionPhase,
 }) {
   constructor(props: MutableCheckedOrEx) {
     super(props);
@@ -424,12 +446,14 @@ interface MutableCheckedAndEx {
   left: CheckedExpression;
   right: CheckedExpression;
   type: CheckedTypeExpression;
+  phase: ExpressionPhase;
 }
 export class CheckedAndEx extends Record<MutableCheckedAndEx>({
   pos: undefined as unknown as Position,
   left: undefined as unknown as CheckedExpression,
   right: undefined as unknown as CheckedExpression,
   type: undefined as unknown as CheckedTypeExpression,
+  phase: undefined as unknown as ExpressionPhase,
 }) {
   constructor(props: MutableCheckedAndEx) {
     super(props);
@@ -441,12 +465,14 @@ interface MutableCheckedAccessEx {
   base: CheckedExpression;
   field: CheckedIdentifierEx;
   type: CheckedTypeExpression;
+  phase: ExpressionPhase;
 }
 export class CheckedAccessEx extends Record<MutableCheckedAccessEx>({
   pos: undefined as unknown as Position,
   base: undefined as unknown as CheckedExpression,
   field: undefined as unknown as CheckedIdentifierEx,
   type: undefined as unknown as CheckedTypeExpression,
+  phase: undefined as unknown as ExpressionPhase,
 }) {
   constructor(props: MutableCheckedAccessEx) {
     super(props);
@@ -457,11 +483,13 @@ interface MutableCheckedStaticAccessEx {
   pos: Position;
   path: List<CheckedIdentifierEx>;
   type: CheckedTypeExpression;
+  phase: ExpressionPhase;
 }
 export class CheckedStaticAccessEx extends Record<MutableCheckedStaticAccessEx>({
   pos: undefined as unknown as Position,
   path: undefined as unknown as List<CheckedIdentifierEx>,
   type: undefined as unknown as CheckedTypeExpression,
+  phase: undefined as unknown as ExpressionPhase,
 }) {
   constructor(props: MutableCheckedStaticAccessEx) {
     super(props);
@@ -489,6 +517,7 @@ interface MutableCheckedConstructEx {
   typeArgs: List<CheckedTypeExpression>;
   fields: List<CheckedConstructEntry>;
   type: CheckedTypeExpression;
+  phase: ExpressionPhase;
 }
 export class CheckedConstructEx extends Record<MutableCheckedConstructEx>({
   pos: undefined as unknown as Position,
@@ -496,6 +525,7 @@ export class CheckedConstructEx extends Record<MutableCheckedConstructEx>({
   typeArgs: undefined as unknown as List<CheckedTypeExpression>,
   fields: undefined as unknown as List<CheckedConstructEntry>,
   type: undefined as unknown as CheckedTypeExpression,
+  phase: undefined as unknown as ExpressionPhase,
 }) {
   constructor(props: MutableCheckedConstructEx) {
     super(props);
@@ -521,17 +551,19 @@ export class CheckedParameter extends Record<MutableCheckedParameter>({
 
 interface MutableCheckedLambdaEx {
   pos: Position;
-  phase: FunctionPhase;
+  functionPhase: FunctionPhase;
   params: List<CheckedParameter>;
   body: CheckedExpression;
   type: CheckedTypeExpression;
+  phase: ExpressionPhase;
 }
 export class CheckedLambdaEx extends Record<MutableCheckedLambdaEx>({
   pos: undefined as unknown as Position,
-  phase: undefined as unknown as FunctionPhase,
+  functionPhase: undefined as unknown as FunctionPhase,
   params: undefined as unknown as List<CheckedParameter>,
   body: undefined as unknown as CheckedExpression,
   type: undefined as unknown as CheckedTypeExpression,
+  phase: undefined as unknown as ExpressionPhase,
 }) {
   constructor(props: MutableCheckedLambdaEx) {
     super(props);
@@ -542,11 +574,13 @@ interface MutableCheckedBlockEx {
   pos: Position;
   body: List<CheckedStatement>;
   type: CheckedTypeExpression;
+  phase: ExpressionPhase;
 }
 export class CheckedBlockEx extends Record<MutableCheckedBlockEx>({
   pos: undefined as unknown as Position,
   body: undefined as unknown as List<CheckedStatement>,
   type: undefined as unknown as CheckedTypeExpression,
+  phase: undefined as unknown as ExpressionPhase,
 }) {
   constructor(props: MutableCheckedBlockEx) {
     super(props);
@@ -557,11 +591,13 @@ interface MutableCheckedExpressionStatement {
   pos: Position;
   expression: CheckedExpression;
   type: CheckedTypeExpression;
+  phase: ExpressionPhase;
 }
 export class CheckedExpressionStatement extends Record<MutableCheckedExpressionStatement>({
   pos: undefined as unknown as Position,
   expression: undefined as unknown as CheckedExpression,
   type: undefined as unknown as CheckedTypeExpression,
+  phase: undefined as unknown as ExpressionPhase,
 }) {
   constructor(props: MutableCheckedExpressionStatement) {
     super(props);
@@ -591,12 +627,14 @@ interface MutableCheckedReassignmentStatement {
   pos: Position;
   name: string;
   type: CheckedTypeExpression;
+  phase: ExpressionPhase;
   expression: CheckedExpression;
 }
 export class CheckedReassignmentStatement extends Record<MutableCheckedReassignmentStatement>({
   pos: undefined as unknown as Position,
   name: undefined as unknown as string,
   type: undefined as unknown as CheckedTypeExpression,
+  phase: undefined as unknown as ExpressionPhase,
   expression: undefined as unknown as CheckedExpression,
 }) {
   constructor(props: MutableCheckedReassignmentStatement) {
@@ -606,6 +644,7 @@ export class CheckedReassignmentStatement extends Record<MutableCheckedReassignm
 
 interface MutableCheckedFunctionStatement {
   pos: Position;
+  phase: ExpressionPhase;
   name: string;
   typeParams: List<CheckedTypeParameterType>;
   result: CheckedTypeExpression;
@@ -614,6 +653,7 @@ interface MutableCheckedFunctionStatement {
 }
 export class CheckedFunctionStatement extends Record<MutableCheckedFunctionStatement>({
   pos: undefined as unknown as Position,
+  phase: undefined as unknown as ExpressionPhase,
   name: undefined as unknown as string,
   typeParams: undefined as unknown as List<CheckedTypeParameterType>,
   result: undefined as unknown as CheckedTypeExpression,
@@ -631,6 +671,7 @@ interface MutableCheckedCallEx {
   typeArgs: List<CheckedTypeExpression>;
   args: List<CheckedExpression>;
   type: CheckedTypeExpression;
+  phase: ExpressionPhase;
 }
 export class CheckedCallEx extends Record<MutableCheckedCallEx>({
   pos: undefined as unknown as Position,
@@ -638,6 +679,7 @@ export class CheckedCallEx extends Record<MutableCheckedCallEx>({
   typeArgs: undefined as unknown as List<CheckedTypeExpression>,
   args: undefined as unknown as List<CheckedExpression>,
   type: undefined as unknown as CheckedTypeExpression,
+  phase: undefined as unknown as ExpressionPhase,
 }) {
   constructor(props: MutableCheckedCallEx) {
     super(props);
@@ -650,6 +692,7 @@ interface MutableCheckedIfEx {
   thenEx: CheckedExpression;
   elseEx: CheckedExpression | undefined;
   type: CheckedTypeExpression;
+  phase: ExpressionPhase;
 }
 export class CheckedIfEx extends Record<MutableCheckedIfEx>({
   pos: undefined as unknown as Position,
@@ -657,6 +700,7 @@ export class CheckedIfEx extends Record<MutableCheckedIfEx>({
   thenEx: undefined as unknown as CheckedExpression,
   elseEx: undefined as unknown as CheckedExpression | undefined,
   type: undefined as unknown as CheckedTypeExpression,
+  phase: undefined as unknown as ExpressionPhase,
 }) {
   constructor(props: MutableCheckedIfEx) {
     super(props);
@@ -667,11 +711,13 @@ interface MutableCheckedReturnEx {
   pos: Position;
   base: CheckedExpression;
   type: CheckedTypeExpression;
+  phase: ExpressionPhase;
 }
 export class CheckedReturnEx extends Record<MutableCheckedReturnEx>({
   pos: undefined as unknown as Position,
   base: undefined as unknown as CheckedExpression,
   type: undefined as unknown as CheckedTypeExpression,
+  phase: undefined as unknown as ExpressionPhase,
 }) {
   constructor(props: MutableCheckedReturnEx) {
     super(props);

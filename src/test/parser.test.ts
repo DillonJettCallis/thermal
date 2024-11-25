@@ -1,5 +1,5 @@
-import { PackageName, Position, Symbol, Version } from "../ast.js";
-import { Parser } from "../parser/parser.js";
+import { PackageName, Position, Symbol, Version } from "../ast.ts";
+import { Parser } from "../parser/parser.ts";
 import { ok } from "node:assert";
 import { describe, it } from "node:test";
 import {
@@ -9,7 +9,7 @@ import {
   ParserCallEx,
   ParserConstructEntry,
   ParserConstructEx,
-  ParserExpression,
+  type ParserExpression,
   ParserExpressionStatement,
   ParserFloatLiteralEx,
   ParserIdentifierEx,
@@ -21,7 +21,7 @@ import {
   ParserSetLiteralEx,
   ParserStaticAccessEx,
   ParserStringLiteralEx
-} from "../parser/parserAst.js";
+} from "../parser/parserAst.ts";
 import { List } from "immutable";
 
 const version = new Version(0, 1, 0);
@@ -256,7 +256,7 @@ Entry {
     code: 'fun { => true }',
     expected: new ParserLambdaEx({
       pos: new Position(src, 1, 1),
-      phase: 'fun',
+      functionPhase: 'fun',
       params: List(),
       body: new ParserBlockEx({
         pos: new Position(src, 1, 1),

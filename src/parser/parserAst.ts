@@ -1,5 +1,5 @@
 import { List, Map, Record, } from 'immutable';
-import { Access, ExpressionPhase, FunctionPhase, PackageName, Position, Symbol, } from '../ast.js';
+import { type Access, type ExpressionPhase, type FunctionPhase, PackageName, Position, Symbol, } from '../ast.ts';
 
 export type ParserTypeExpression
   = ParserNominalType
@@ -389,13 +389,13 @@ export class ParserParameter extends Record<MutableParserParameter>({
 
 interface MutableParserLambdaEx {
   pos: Position;
-  phase: FunctionPhase;
+  functionPhase: FunctionPhase;
   params: List<ParserParameter>;
   body: ParserExpression;
 }
 export class ParserLambdaEx extends Record<MutableParserLambdaEx>({
   pos: undefined as unknown as Position,
-  phase: undefined as unknown as FunctionPhase,
+  functionPhase: undefined as unknown as FunctionPhase,
   params: undefined as unknown as List<ParserParameter>,
   body: undefined as unknown as ParserExpression,
 }) {
@@ -466,6 +466,7 @@ export class ParserReassignmentStatement extends Record<MutableParserReassignmen
 
 interface MutableParserFunctionStatement {
   pos: Position;
+  phase: ExpressionPhase;
   name: string;
   typeParams: List<ParserTypeParameterType>;
   result: ParserTypeExpression;
@@ -473,6 +474,7 @@ interface MutableParserFunctionStatement {
 }
 export class ParserFunctionStatement extends Record<MutableParserFunctionStatement>({
   pos: undefined as unknown as Position,
+  phase: undefined as unknown as ExpressionPhase,
   name: undefined as unknown as string,
   typeParams: undefined as unknown as List<ParserTypeParameterType>,
   result: undefined as unknown as ParserTypeExpression,

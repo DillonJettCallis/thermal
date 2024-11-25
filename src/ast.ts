@@ -1,10 +1,10 @@
 import { List, Map, Record, Set } from 'immutable';
 import {
   ParserImportDeclaration,
-  ParserImportExpression,
+  type ParserImportExpression,
   ParserNestedImportExpression,
   ParserNominalImportExpression
-} from "./parser/parserAst.js";
+} from "./parser/parserAst.ts";
 
 export class Position extends Record({src: '', line: 0, column: 0}){
   public static readonly native = new Position('[native]', 0, 0);
@@ -202,7 +202,7 @@ export type ExpressionPhase
   = 'const'
   | 'val'
   | 'var'
-  | 'dyn'
+  | 'flow'
   ;
 
 export type FunctionPhase
@@ -211,7 +211,7 @@ export type FunctionPhase
   | 'sig'
   ;
 
-const expressionPhaseKeywords = Set(['const', 'val', 'var', 'dyn']);
+const expressionPhaseKeywords = Set(['const', 'val', 'var', 'flow']);
 
 export function isExpressionPhase(key: string): key is ExpressionPhase {
   return expressionPhaseKeywords.has(key);

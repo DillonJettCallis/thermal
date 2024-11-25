@@ -45,7 +45,7 @@ There are four binding Phases and three function phases.
 * const
 * val
 * var
-* dyn
+* flow
 
 #### Function phases
 
@@ -64,41 +64,41 @@ A `val` cannot be reassigned, and it's value is fixed upon assignment.
 A `var` binding is also made up only of `const`, `val` and `fun` components,
 but a `var` can have its value changed later.
 
-A `dyn` binding can use any other binding type, including other `dyn`, and it can
+A `flow` binding can use any other binding type, including other `flow`, and it can
 use the result of a `def` function as well as `fun.`
-In fact, all `def` functions always return `dyn` values, and can only be assigned to
-`dyn` bindings.
-When the component `var` or `dyn` binding in a `dyn` expression changes, the `dyn`'s value
-also changes, "dynamically".
-In other words, you and build up a chain of `dyn` expressions depending on each other and some
-`var`s, then change one or more `var` bindings and the whole chain of `dyn`s will update.
+In fact, all `def` functions always return `flow` values, and can only be assigned to
+`flow` bindings.
+When the component `var` or `flow` binding in a `flow` expression changes, the `flow`'s value
+also changes, or "flows".
+In other words, you and build up a chain of `flow` expressions depending on each other and some
+`var`s, then change one or more `var` bindings and the whole chain of `flow`s will update.
 If you are familiar with rxjs or scala.rx, you can think of `var` as a `BehaviorSubject` or a `Var`,
-and the `dyn` as like an `Observable` or an `Rx`.
+and the `flow` as like an `Observable` or an `Rx`.
 
 To access each of these four bindings, we have three different function types, each
 with rules about what they are allowed to do or not do.
 
 A `fun` is a pure function.
 It's arguments are only allowed to be `val` or `const`, it cannot use or declare any
-`var` or `dyn` bindings.
+`var` or `flow` bindings.
 It also cannot call a `def` or `sig` function, only other `fun`s.
 This means that a `fun` cannot have any side effects.
 Technically a `fun` can accept a `def` or `sig` function argument, it just can't call it.
 
-A `def` function is a definition of state and always returns a `dyn` expression.
+A `def` function is a definition of state and always returns a `flow` expression.
 It is allowed to accept any kind of binding, it is allowed to declare `var`
-and `dyn` bindings and use them, but it is NOT allowed to reassign to a `var` binding.
+and `flow` bindings and use them, but it is NOT allowed to reassign to a `var` binding.
 
 A `sig` function is a signal from the outside world.
 A `sig` function can only be called from another `sig` or by the runtime.
 They work as call backs from event listeners, timer events or network requests.
-They are allowed to read `var` and `dyn` expressions but are not allowed to declare them.
+They are allowed to read `var` and `flow` expressions but are not allowed to declare them.
 Critically however, they are the only place where you can update a `var` binding.
 
 A quick example is given below:
 
 ```thermal
-// def returns a `dyn` of Element objects
+// def returns a `flow` of Element objects
 // initialCount doesn't have a binding phase so it's implied to be `val`
 def countedButton(initialCount: Int): Element {
   // count is a `var`, meaning it can be mutated, but it's being declared with a `val` phase
@@ -121,30 +121,35 @@ def countedButton(initialCount: Int): Element {
 }
 ```
 
-##### How dyn phase bindings work with function calls
+##### How flow phase bindings work with function calls
 
-If you call a `fun` and pass a `dyn` or `var` argument, then the result
-of the function will be `dyn`.
-When the `dyn` or `var` change, the function will be called again.
+If you call a `fun` and pass a `flow` or `var` argument, then the result
+of the function will be `flow`.
+When the `flow` or `var` change, the function will be called again.
 Each time the `fun` is called, it will see a new `val` binding representing
 the current state of the expression.
 
-If you call a `def` passing a `dyn` or `var` and the parameter is marked with
-a `val` phase, then it will behave like a `fun` in that changes to the upstream
+If you call a `def` passing a `flow` or `var` and the parameter has no explicit phase marked,
+then it will behave like a `fun` in that changes to the upstream
 value will call `def` again, effectively resetting any internal state of the `def`.
 
-If you specify that a parameter is `dyn` though, a few things happen.
-First, you can then only pass a `dyn` or `var` as input, using a `const` or `val`
-will be an error.
-Secondly, if that input `dyn` or `var` change, the `def` will NOT be re-evaluated,
-instead only `dyn` bindings inside the `def` will be evaluated.
+If you specify that a parameter is `flow` though,
+then if that input `flow` or `var` change, the `def` will NOT be re-evaluated,
+instead only `flow` bindings inside the `def` will be evaluated.
 
 If you specify that a parameter is `var`, then only a `var` is allowed to be passed.
-The `def` can then use the `var` in `dyn` expressions just like if it was declared itself.
+The `def` can then use the `var` in `flow` expressions just like if it was declared itself.
 A `sig` function inside the `def` can even assign to the `var`, and the change will propagate
 to both this `def` and the source `def` that passed it in.
 
-A `sig` function cannot accept a `dyn` parameter, but it can accept a `var` parameter
+A parameter marked `flow` can accept any type of value, as a `const` or `val` input
+can be converted into a `flow` of a single value that will never update and a `var`
+can be converted into a `flow` that is simply a read-only view of that `var`.
+
+A parameter marked as `val` can accept a `const` input but not `var` or `flow`, and
+a parameter marked as `var` can only accept a `var`.
+
+A `sig` function cannot accept a `flow` parameter, but it can accept a `var` parameter
 and it can reassign to it.
 
 ###### Projection
@@ -159,7 +164,7 @@ var location = Point {
   y: 0,
 };
 
-dyn swapped = Point { x: location.y, y: location.x };
+flow swapped = Point { x: location.y, y: location.x };
 
 // later, inside a `sig`
 sig { newX: Int =>
@@ -180,7 +185,7 @@ def grid(): Element {
     y: 0,
   };
 
-  dyn swapped = Point { x: location.y, y: location.x };
+  flow swapped = Point { x: location.y, y: location.x };
 
   // return some html based on swapped that includes this ..
   shiftXButton(location.x)

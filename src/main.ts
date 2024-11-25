@@ -1,13 +1,13 @@
-import { Parser } from "./parser/parser.js";
-import { DependencyDictionary, PackageName, Symbol, Version } from "./ast.js";
-import { coreLib } from "./lib.js";
-import { collectSymbols } from "./checker/collector.js";
+import { Parser } from "./parser/parser.ts";
+import { DependencyDictionary, PackageName, Symbol, Version } from "./ast.ts";
+import { coreLib } from "./lib.ts";
+import { collectSymbols } from "./checker/collector.ts";
 import { Map } from "immutable";
-import { verifyImports } from "./checker/verifier.js";
-import { Checker } from "./checker/checker.js";
-import { CheckedAccessRecord } from "./checker/checkerAst.js";
+import { verifyImports } from "./checker/verifier.ts";
+import { Checker } from "./checker/checker.ts";
 import { readdirSync } from "node:fs";
-import { substringBeforeLast } from "./utils.js";
+import { substringBeforeLast } from "./utils.ts";
+import type { CheckedAccessRecord } from "./checker/checkerAst.js";
 
 function main(): void {
   const dir = 'sample';

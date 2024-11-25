@@ -1,14 +1,14 @@
-import { isKind, Kind, Lexer, Token } from "./lexer.js";
+import { isKind, type Kind, Lexer, type Token } from "./lexer.ts";
 import {
-  Access,
-  ExpressionPhase,
-  FunctionPhase,
+  type Access,
+  type ExpressionPhase,
+  type FunctionPhase,
   isAccess,
   isExpressionPhase,
   isFunctionPhase,
   Position,
   Symbol
-} from '../ast.js';
+} from '../ast.ts';
 import { List, Map, Set } from 'immutable';
 import {
   ParserAccessEx,
@@ -20,13 +20,13 @@ import {
   ParserConstantDeclare,
   ParserConstructEntry,
   ParserConstructEx,
-  ParserDeclaration,
+  type ParserDeclaration,
   ParserEnumAtomVariant,
   ParserEnumDeclare,
   ParserEnumStructVariant,
   ParserEnumTupleVariant,
-  ParserEnumVariant,
-  ParserExpression,
+  type ParserEnumVariant,
+  type ParserExpression,
   ParserExpressionStatement,
   ParserFile,
   ParserFloatLiteralEx,
@@ -37,7 +37,7 @@ import {
   ParserIdentifierEx,
   ParserIfEx,
   ParserImportDeclaration,
-  ParserImportExpression,
+  type ParserImportExpression,
   ParserIntLiteralEx,
   ParserIsEx,
   ParserLambdaEx,
@@ -54,14 +54,14 @@ import {
   ParserReassignmentStatement,
   ParserReturnEx,
   ParserSetLiteralEx,
-  ParserStatement,
+  type ParserStatement,
   ParserStaticAccessEx,
   ParserStringLiteralEx,
   ParserStructDeclare,
   ParserStructField,
-  ParserTypeExpression,
+  type ParserTypeExpression,
   ParserTypeParameterType
-} from "./parserAst.js";
+} from "./parserAst.ts";
 
 export class Parser {
 
@@ -306,7 +306,7 @@ export class Parser {
   }
 
   #parseFunctionDeclare(extern: boolean, access: Access, phase: FunctionPhase, pos: Position): ParserFunctionDeclare {
-    const func = this.#parseFunctionStatement(phase, pos);
+    const func = this.#parseFunctionStatement(phase, 'const', pos);
 
     return new ParserFunctionDeclare({
       func,
@@ -391,7 +391,7 @@ export class Parser {
     ]
   }
 
-  #parseFunctionStatement(phase: FunctionPhase, pos: Position): ParserFunctionStatement {
+  #parseFunctionStatement(functionPhase: FunctionPhase, phase: ExpressionPhase, pos: Position): ParserFunctionStatement {
     // the word 'fun' has already been parsed by this point
     const name = this.#assertKind('identifier').value;
     const typeParams = this.#parseTypeParams();
@@ -436,12 +436,13 @@ export class Parser {
 
     return new ParserFunctionStatement({
       pos,
+      phase,
       name,
       typeParams,
       result,
       lambda: new ParserLambdaEx({
         pos,
-        phase,
+        functionPhase,
         params,
         body,
       })
@@ -468,13 +469,13 @@ export class Parser {
     }
   }
 
-  #parseLambda(phase: FunctionPhase, pos: Position): ParserLambdaEx {
+  #parseLambda(functionPhase: FunctionPhase, pos: Position): ParserLambdaEx {
     // the opening phase has already been parsed
     this.#assertSymbol('{');
 
     return new ParserLambdaEx({
       pos,
-      phase,
+      functionPhase,
       params: this.#parseList('=>', false, () => {
         const first = this.#next();
         const [phase, name] = isExpressionPhase(first.value)
@@ -856,12 +857,16 @@ export class Parser {
       if (first.kind === 'symbol' && first.value === ';') {
         // do nothing
         this.#skip();
-      } else if (first.kind === 'keyword' && isFunctionPhase(first.value)) {
-        this.#skip();
-        body.push(this.#parseFunctionStatement(first.value, pos));
       } else if (first.kind === 'keyword' && isExpressionPhase(first.value)) {
         this.#skip();
-        body.push(this.#parseAssignment(first.value, pos));
+        const next = this.#peek();
+
+        if (next.kind === 'keyword' && isFunctionPhase(next.value)) {
+          this.#skip();
+          body.push(this.#parseFunctionStatement(next.value, first.value, pos));
+        } else {
+          body.push(this.#parseAssignment(first.value, pos));
+        }
       } else {
         const expression = this.#parseExpression();
         const possibleAssignment = this.#peek();

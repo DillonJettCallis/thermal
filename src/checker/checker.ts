@@ -1,7 +1,7 @@
-import { DependencyManager, PackageName, Position, Symbol, } from "../ast.js";
-import { List, Map, Seq, Set } from "immutable";
-import { collectDeclarations, Qualifier } from "./collector.js";
-import { CoreTypes } from "../lib.js";
+import { DependencyManager, type ExpressionPhase, type FunctionPhase, PackageName, Position, Symbol, } from "../ast.ts";
+import { List, Map, Record, Seq, Set } from "immutable";
+import { collectDeclarations, Qualifier } from "./collector.ts";
+import { type CoreTypes } from "../lib.ts";
 import {
   CheckedAccessEx,
   CheckedAccessRecord,
@@ -21,8 +21,8 @@ import {
   CheckedEnumTypeAtomVariant,
   CheckedEnumTypeStructVariant,
   CheckedEnumTypeTupleVariant,
-  CheckedEnumTypeVariant,
-  CheckedExpression,
+  type CheckedEnumTypeVariant,
+  type CheckedExpression,
   CheckedExpressionStatement,
   CheckedFile,
   CheckedFloatLiteralEx,
@@ -49,15 +49,15 @@ import {
   CheckedReassignmentStatement,
   CheckedReturnEx,
   CheckedSetLiteralEx,
-  CheckedStatement,
+  type CheckedStatement,
   CheckedStaticAccessEx,
   CheckedStringLiteralEx,
   CheckedStructDeclare,
   CheckedStructField,
   CheckedStructType,
-  CheckedTypeExpression,
+  type CheckedTypeExpression,
   CheckedTypeParameterType
-} from "./checkerAst.js";
+} from "./checkerAst.ts";
 import {
   ParserAccessEx,
   ParserAndEx,
@@ -69,7 +69,7 @@ import {
   ParserConstructEx,
   ParserEnumStructVariant,
   ParserEnumTupleVariant,
-  ParserExpression,
+  type ParserExpression,
   ParserExpressionStatement,
   ParserFile,
   ParserFloatLiteralEx,
@@ -89,11 +89,11 @@ import {
   ParserReassignmentStatement,
   ParserReturnEx,
   ParserSetLiteralEx,
-  ParserStatement,
+  type ParserStatement,
   ParserStaticAccessEx,
   ParserStringLiteralEx,
   ParserStructDeclare
-} from "../parser/parserAst.js";
+} from "../parser/parserAst.ts";
 
 export class Checker {
   readonly #manager: DependencyManager;
@@ -112,7 +112,7 @@ export class Checker {
     const declarations = collectDeclarations(file, this.#manager, this.#preamble);
     const filePos = new Position(file.src, 0, 0);
     const qualifier = new Qualifier(declarations);
-    const fileScope = Scope.init(declarations.map(symbol => this.#typeSymbolToTypeExpression(symbol, filePos)), qualifier, file.module, this.#coreTypes.unit);
+    const fileScope = Scope.init(declarations.map(symbol => this.#typeSymbolToPhaseType(symbol, filePos)), qualifier, file.module, this.#coreTypes.unit);
 
     const checkedDeclarations = file.declarations.map(dec => {
       if (dec instanceof ParserImportDeclaration) {
@@ -263,6 +263,7 @@ export class Checker {
       pos: ex.pos,
       value: ex.value,
       type: this.#coreTypes.boolean,
+      phase: 'const',
     });
   }
 
@@ -271,6 +272,7 @@ export class Checker {
       pos: ex.pos,
       value: ex.value,
       type: this.#coreTypes.int,
+      phase: 'const',
     });
   }
 
@@ -279,6 +281,7 @@ export class Checker {
       pos: ex.pos,
       value: ex.value,
       type: this.#coreTypes.float,
+      phase: 'const',
     });
   }
 
@@ -287,24 +290,31 @@ export class Checker {
       pos: ex.pos,
       value: ex.value,
       type: this.#coreTypes.string,
+      phase: 'const',
     });
   }
 
   checkIdentifier(ex: ParserIdentifierEx, scope: Scope): CheckedIdentifierEx {
+    const got = scope.get(ex.name, ex.pos);
+
     return new CheckedIdentifierEx({
       pos: ex.pos,
       name: ex.name,
-      type: scope.get(ex.name, ex.pos),
+      type: got.type,
+      phase: got.phase,
     });
   }
 
   checkIs(ex: ParserIsEx, scope: Scope): CheckedIsEx {
+    const base = this.#checkExpression(ex.base, scope, undefined);
+
     return new CheckedIsEx({
       pos: ex.pos,
       not: ex.not,
-      base: this.#checkExpression(ex.base, scope, undefined),
+      base,
       check: scope.qualifier.checkTypeExpression(ex.check),
       type: this.#coreTypes.boolean,
+      phase: base.phase,
     });
   }
 
@@ -318,9 +328,11 @@ export class Checker {
         pos: ex.field.pos,
         name: ex.field.name,
         type,
+        phase: base.phase,
       }),
       base,
       type,
+      phase: base.phase,
     });
   }
 
@@ -338,6 +350,7 @@ export class Checker {
           pos: next.pos,
           name: next.name,
           type: child.type,
+          phase: 'const',
         }));
         prev = child.type;
       } else if (prev instanceof CheckedEnumType) {
@@ -346,6 +359,7 @@ export class Checker {
           pos: next.pos,
           name: next.name,
           type: variant,
+          phase: 'const',
         }));
         prev = variant;
       } else {
@@ -357,6 +371,7 @@ export class Checker {
       pos: ex.pos,
       path: path.asImmutable(),
       type: prev,
+      phase: 'const',
     });
   }
 
@@ -408,6 +423,7 @@ export class Checker {
             return new CheckedConstructEntry({name: it.name, value: ex, pos: ex.pos});
           }),
           type,
+          phase: this.#phaseCheck(args.valueSeq().toList()),
         });
       } else {
         // find out what we're missing or are extra
@@ -440,12 +456,22 @@ export class Checker {
             return [value.name, typeArgs.get(index)!];
           });
 
+        const phaseParams = args.map((arg, index) => {
+          const param = funcType.params.get(index) ?? ex.pos.fail("This should never happen, `fullChecking` didn't return an argument");
+
+          return {
+            expectedPhase: param.phase,
+            arg,
+          }
+        }).valueSeq().toList();
+
         return new CheckedCallEx({
           pos: ex.pos,
           func,
           args: ex.args.map((_, index) => args.get(index) ?? ex.pos.fail("This should never happen, `fullChecking` didn't return an argument")),
           typeArgs,
           type: this.#fillGenericTypes(funcType.result, ex.pos, typeParams),
+          phase: this.#phaseCheckCall(phaseParams, funcType.phase),
         });
       } else {
         return ex.pos.fail(`Function ${func.pos} expects ${funcType.params.size} arguments but found ${ex.args.size} arguments instead`);
@@ -477,6 +503,8 @@ export class Checker {
           args: resolvedFields,
           typeArgs: List(),
           type: funcType.result,
+          // TODO: we're just temporarily assuming that these are only 'fun'
+          phase: this.#phaseCheckCall(resolvedFields.map(arg => ({arg, expectedPhase: undefined})), 'fun'),
         });
       }
 
@@ -502,6 +530,7 @@ export class Checker {
           args: ex.args.map((_, index) => args.get(index) ?? ex.pos.fail("This should never happen, `fullChecking` didn't return an argument")),
           typeArgs,
           type: this.#fillGenericTypes(funcType, ex.pos, typeParams),
+          phase: this.#phaseCheckCall(args.valueSeq().map(arg => ({arg, expectedPhase: undefined})).toList(), 'fun'),
         });
       } else {
         return ex.pos.fail(`Tuple ${func.pos} expects ${funcType.fields.size} arguments but found ${ex.args.size} arguments instead`);
@@ -528,6 +557,7 @@ export class Checker {
       left,
       right,
       type: this.#coreTypes.boolean,
+      phase: this.#phaseCheck(List.of(left, right)),
     });
   }
 
@@ -548,6 +578,7 @@ export class Checker {
       left,
       right,
       type: this.#coreTypes.boolean,
+      phase: this.#phaseCheck(List.of(left, right)),
     });
   }
 
@@ -562,6 +593,7 @@ export class Checker {
       pos: ex.pos,
       base,
       type: this.#coreTypes.boolean,
+      phase: this.#phaseCheck(List.of(base), 'fun'),
     });
   }
 
@@ -574,33 +606,43 @@ export class Checker {
       condition.pos.fail(`Condition of 'if' should be a boolean but is actually '${condition.type}'`);
     }
 
+    const exprs = List.of(condition, thenEx).asMutable();
+
+    if (elseEx !== undefined) {
+      exprs.push(elseEx);
+    }
+
     return new CheckedIfEx({
       pos: ex.pos,
       condition,
       thenEx,
       elseEx,
       type: elseEx === undefined ? this.#coreTypes.optionOf(thenEx.type) : this.#mergeTypes(thenEx.type, elseEx.type, ex.pos),
+      phase: this.#phaseCheck(exprs.asImmutable()),
     });
   }
 
   #checkLambdaBody(ex: ParserLambdaEx, scope: Scope, params: List<CheckedParameter>, expectedResult: CheckedTypeExpression | undefined): CheckedLambdaEx {
     // TODO: I'm not sure if 'Nothing' is actually going to work here, make sure to test that
     // TODO: create a system to give annon lambdas names
-    const childScope = scope.childFunction(scope.functionScope.symbol.child('<lambda>'), expectedResult ?? this.#coreTypes.nothing);
+    const childScope = scope.childFunction(scope.functionScope.symbol.child('<lambda>'), expectedResult ?? this.#coreTypes.nothing, ex.functionPhase);
 
     for (const param of params) {
-      childScope.set(param.name, param.type);
+      childScope.set(param.name, new PhaseType(param.type, param.phase ?? 'val', param.pos));
     }
 
     const body = this.#checkExpression(ex.body, childScope, expectedResult);
+    const closures = childScope.functionScope.closures;
+    const phase = this.#phaseCheckImpl(closures.valueSeq().map(it => ({pos: it.pos, phase: it.phase, expectedPhase: undefined})).toList(), ex.functionPhase);
 
     return new CheckedLambdaEx({
       pos: ex.pos,
-      phase: ex.phase,
+      phase,
+      functionPhase: ex.functionPhase,
       params,
       body,
       type: new CheckedFunctionType({
-        phase: ex.phase,
+        phase: ex.functionPhase,
         typeParams: List(),
         params: params.map(it => {
           return new CheckedFunctionTypeParameter({
@@ -663,6 +705,7 @@ export class Checker {
         pos: ex.pos,
         body: List(),
         type: this.#coreTypes.unit,
+        phase: 'const',
       });
     }
 
@@ -678,6 +721,7 @@ export class Checker {
       pos: ex.pos,
       body,
       type: last.type,
+      phase: last.phase,
     });
   }
 
@@ -694,16 +738,36 @@ export class Checker {
   }
 
   checkAssignmentStatement(state: ParserAssignmentStatement, scope: Scope): CheckedAssignmentStatement {
+    if ( (state.phase === 'var' || state.phase === 'flow') && scope.functionScope.phase !== 'def') {
+      return state.pos.fail(`Attempt to assign a '${state.phase}' inside a '${scope.functionScope.phase}' function. Only a 'def' function can create a 'var' or 'flow'`);
+    }
+
     const expectedType = state.type === undefined ? undefined : scope.qualifier.checkTypeExpression(state.type);
     const expression = this.#checkExpression(state.expression, scope, expectedType);
 
     if (expectedType !== undefined && !this.#checkAssignable(expression.type, expectedType)) {
-      state.expression.pos.fail(`Expected type '${expectedType}' but found type '${expression.type}'`);
+      expression.pos.fail(`Expected type '${expectedType}' but found type '${expression.type}'`);
+    }
+
+    switch (state.phase) {
+      case 'const':
+        if (expression.phase !== 'const') {
+          return expression.pos.fail(`Attempt to assign a '${expression.phase}' expression to a 'const'. Only a 'const' expression can be assigned to a 'const'`);
+        }
+        break;
+      case 'val':
+      case 'var':
+        if (expression.phase === 'var' || expression.phase === 'flow') {
+          return expression.pos.fail(`Attempt to assign a '${expression.phase}' expression to a '${state.phase}'. Only a 'const' or 'val' expression can be assigned to a '${state.phase}'`);
+        }
+        break;
+      case 'flow':
+        // everything is allowed to be a flow
     }
 
     const type = expectedType ?? expression.type;
 
-    scope.set(state.name, type);
+    scope.set(state.name, new PhaseType(type, state.phase, state.pos));
 
     return new CheckedAssignmentStatement({
       pos: state.pos,
@@ -715,12 +779,20 @@ export class Checker {
   }
 
   checkReassignmentStatement(state: ParserReassignmentStatement, scope: Scope): CheckedReassignmentStatement {
-    const type = scope.get(state.name, state.pos);
+    if (scope.functionScope.phase !== 'sig') {
+      return state.pos.fail(`Attempt to update a 'var' inside a '${scope.functionScope.phase}' function. Only a 'sig' function is permitted to update a 'var'`)
+    }
 
-    const expression = this.#checkExpression(state.expression, scope, type);
+    const id = scope.get(state.name, state.pos);
 
-    if (!this.#checkAssignable(expression.type, type)) {
-      state.pos.fail(`Expected assignment of type '${type}' but found value of type '${expression.type}'`);
+    if (id.phase !== 'var') {
+      return state.pos.fail(`Attempt to update a '${id.phase}'. Only a 'var' can be updated`);
+    }
+
+    const expression = this.#checkExpression(state.expression, scope, id.type);
+
+    if (!this.#checkAssignable(expression.type, id.type)) {
+      state.pos.fail(`Expected assignment of type '${id.type}' but found value of type '${expression.type}'`);
     }
 
     return new CheckedReassignmentStatement({
@@ -728,6 +800,7 @@ export class Checker {
       name: state.name,
       expression,
       type: this.#coreTypes.unit,
+      phase: 'val',
     });
   }
 
@@ -738,6 +811,7 @@ export class Checker {
       pos: state.pos,
       expression,
       type: expression.type,
+      phase: expression.phase,
     });
   }
 
@@ -759,9 +833,28 @@ export class Checker {
       });
     });
 
+    switch (state.lambda.functionPhase) {
+      case 'fun':
+        for (const param of params) {
+          if (param.phase === 'var' || param.phase === 'flow') {
+            param.pos.fail(`Attempt to require a '${param.phase}' parameter in a 'fun' function. A 'fun' function can only have 'const' or 'val' parameters`);
+          }
+        }
+        break;
+      case 'sig':
+        for (const param of params) {
+          if (param.phase === 'flow') {
+            param.pos.fail(`Attempt to require a 'flow' parameter in a 'sig' function. A 'sig' function can only have 'const', 'val', or 'flow' parameters`);
+          }
+        }
+        break;
+      case 'def': // def is safe to require anything
+        break;
+    }
+
     const result = scope.qualifier.checkTypeExpression(state.result);
 
-    const childScope = scope.childFunction(symbol, result);
+    const childScope = scope.childFunction(symbol, result, state.lambda.functionPhase);
 
     const typeParams = state.typeParams.map(typeParam => {
       return new CheckedTypeParameterType({
@@ -770,16 +863,23 @@ export class Checker {
     });
 
     for (const typeParam of typeParams) {
-      childScope.set(typeParam.name.name, typeParam);
+      childScope.set(typeParam.name.name, new PhaseType(typeParam, 'val', state.pos));
     }
 
     for (const param of params) {
-      childScope.set(param.name, param.type);
+      childScope.set(param.name, new PhaseType(param.type, param.phase ?? 'val', param.pos));
     }
 
     const body = this.#checkExpression(state.lambda.body, childScope, result);
+    const closures = childScope.functionScope.closures;
+    const phase = this.#phaseCheckImpl(closures.valueSeq().map(it => ({pos: it.pos, phase: it.phase, expectedPhase: undefined})).toList(), state.lambda.functionPhase);
+
+    if (state.phase !== phase) {
+      state.pos.fail(`Attempt to declare '${state.phase}' function, but body is actually '${phase}'. This function must close over values outside of the allowed phase.`);
+    }
+
     const type = new CheckedFunctionType({
-      phase: state.lambda.phase,
+      phase: state.lambda.functionPhase,
       typeParams,
       params: params.map(it => {
         return new CheckedFunctionTypeParameter({
@@ -790,16 +890,18 @@ export class Checker {
       result,
     });
 
-    scope.set(state.name, type);
+    scope.set(state.name, new PhaseType(type, state.phase, state.pos));
 
     return new CheckedFunctionStatement({
       pos: state.pos,
+      phase: state.phase,
       lambda: new CheckedLambdaEx({
         pos: state.pos,
-        phase: state.lambda.phase,
+        functionPhase: state.lambda.functionPhase,
         params,
         body,
         type,
+        phase: state.phase,
       }),
       name: state.name,
       typeParams,
@@ -818,6 +920,7 @@ export class Checker {
       pos: ex.pos,
       base,
       type: this.#coreTypes.nothing, // return always evaluates to nothing
+      phase: base.phase,
     });
   }
 
@@ -831,6 +934,7 @@ export class Checker {
       pos: ex.pos,
       values,
       type: this.#coreTypes.listOf(type),
+      phase: this.#phaseCheck(values),
     });
   }
 
@@ -844,6 +948,7 @@ export class Checker {
       pos: ex.pos,
       values,
       type: this.#coreTypes.listOf(type),
+      phase: this.#phaseCheck(values),
     });
   }
 
@@ -866,6 +971,7 @@ export class Checker {
       pos: ex.pos,
       values: entries,
       type: this.#coreTypes.mapOf(keyType, valueType),
+      phase: this.#phaseCheck(entries.flatMap(it => List.of(it.key, it.value))),
     });
   }
 
@@ -880,23 +986,100 @@ export class Checker {
   }
 
   #recursiveGenericsLookup(expected: CheckedTypeExpression | undefined, actual: CheckedTypeExpression | undefined, expectedGenerics: Set<Symbol>, collector: (symbol: Symbol, type: CheckedTypeExpression) => void): void {
-      if (expected === undefined || actual === undefined) {
-        return;
-      } else if (expected instanceof CheckedTypeParameterType) {
-        if (expectedGenerics.has(expected.name)) {
-          collector(expected.name, actual);
-        }
-      } else if (expected instanceof CheckedParameterizedType) {
-        if (actual instanceof CheckedParameterizedType) {
-          expected.args.zip<CheckedTypeExpression>(actual.args).forEach(([ex, act]) => this.#recursiveGenericsLookup(ex, act, expectedGenerics, collector));
-        }
-      } else if (expected instanceof CheckedFunctionType) {
-        if (actual instanceof CheckedFunctionType) {
-          expected.params.zip<CheckedTypeExpression>(actual.params).forEach(([ex, act]) => this.#recursiveGenericsLookup(ex, act, expectedGenerics, collector));
-          this.#recursiveGenericsLookup(expected.result, actual.result, expectedGenerics, collector);
-        }
+    if (expected === undefined || actual === undefined) {
+      return;
+    } else if (expected instanceof CheckedTypeParameterType) {
+      if (expectedGenerics.has(expected.name)) {
+        collector(expected.name, actual);
+      }
+    } else if (expected instanceof CheckedParameterizedType) {
+      if (actual instanceof CheckedParameterizedType) {
+        expected.args.zip<CheckedTypeExpression>(actual.args).forEach(([ex, act]) => this.#recursiveGenericsLookup(ex, act, expectedGenerics, collector));
+      }
+    } else if (expected instanceof CheckedFunctionType) {
+      if (actual instanceof CheckedFunctionType) {
+        expected.params.zip<CheckedTypeExpression>(actual.params).forEach(([ex, act]) => this.#recursiveGenericsLookup(ex, act, expectedGenerics, collector));
+        this.#recursiveGenericsLookup(expected.result, actual.result, expectedGenerics, collector);
       }
     }
+  }
+
+  #phaseCheck(args: List<CheckedExpression>, functionPhase: FunctionPhase = 'fun'): ExpressionPhase {
+    return this.#phaseCheckImpl(args.map(arg => ({phase: arg.phase, pos: arg.pos, expectedPhase: undefined})), functionPhase);
+  }
+
+  #phaseCheckCall(pairs: List<{ arg: CheckedExpression, expectedPhase: ExpressionPhase | undefined }>, functionPhase: FunctionPhase): ExpressionPhase {
+    return this.#phaseCheckImpl(pairs.map(({arg, expectedPhase}) => ({phase: arg.phase, pos: arg.pos, expectedPhase})), functionPhase);
+  }
+
+  #phaseCheckImpl(pairs: List<{ phase: ExpressionPhase, expectedPhase: ExpressionPhase | undefined, pos: Position }>, functionPhase: FunctionPhase): ExpressionPhase {
+    const highestPhase = pairs.map<'const' | 'val' | 'flow'>(({ phase, pos, expectedPhase }) => {
+      switch (expectedPhase) {
+        case 'var':
+          // only a var can be passed to a var
+          if (phase !== 'var') {
+            pos.fail(`Expected 'var' parameter, found '${phase}' argument`);
+          }
+
+          return 'flow';
+        case 'flow':
+          // a var or flow are acceptable for a flow parameter
+          if (phase !== 'var' && phase !== 'flow') {
+            pos.fail(`Expected 'flow' parameter, found '${phase}' argument`);
+          }
+
+          return 'flow';
+        case 'val':
+          // only an explicit val or const are legal
+          if (phase !== 'val' && phase !== 'const') {
+            pos.fail(`Expected 'val' parameter, found '${phase}' argument`);
+          }
+
+          return 'val';
+        case 'const':
+          // only an explicit const is legal
+          // only an explicit val or const are legal
+          if (phase !== 'const') {
+            pos.fail(`Expected 'const' parameter, found '${phase}' argument`);
+          }
+
+          return 'const';
+        case undefined:
+          // any value is legal here
+          switch (phase) {
+            case 'var':
+            case 'flow':
+              return 'flow';
+            case 'val':
+              return 'val';
+            case 'const':
+              return 'const';
+          }
+      }
+    }).reduce<'const' | 'val' | 'flow'>((prev, sum) => {
+      if (prev === 'flow' || sum === 'flow') {
+        return 'flow';
+      }
+
+      if (prev === 'val' || sum === 'val') {
+        return 'val';
+      }
+
+      return 'const';
+    }, 'const');
+
+    switch (functionPhase) {
+      case 'sig':
+        // for now, sigs have no limits and always return 'val'
+      return 'val';
+      case 'def':
+        // defs always return a 'flow' no matter what
+        return 'flow';
+      case "fun":
+        // a fun returns the highest value
+        return highestPhase;
+    }
+  }
 
   //TODO: someday have a way to handle default values, meaning optional actual values
   #fullChecking<MapKey extends number | string>(pairs: Map<MapKey, { actual: ParserExpression, expected: CheckedTypeExpression}>, scope: Scope, pos: Position, genericParams: List<CheckedTypeParameterType>): { typeArgs: List<CheckedTypeExpression>, args: Map<MapKey, CheckedExpression> } {
@@ -1072,7 +1255,7 @@ export class Checker {
       actual.params.zip<CheckedFunctionTypeParameter>(expected.params).every(([left, right]) => (left.phase ?? 'val') === (right.phase ?? 'val') && this.#checkAssignable(left.type!!, right.type));
   }
 
-  #typeSymbolToTypeExpression(symbol: Symbol, pos: Position): CheckedTypeExpression {
+  #typeSymbolToPhaseType(symbol: Symbol, pos: Position): PhaseType {
     const pack = this.#declarations.get(symbol.package);
 
     if (pack === undefined) {
@@ -1086,7 +1269,7 @@ export class Checker {
     }
 
     // TODO: do we need to check access here? In theory it's already been checked ..
-    return record.type;
+    return new PhaseType(record.type, 'const', pos);
   }
 
   #processAccess(type: CheckedTypeExpression, id: ParserIdentifierEx): CheckedTypeExpression {
@@ -1218,37 +1401,63 @@ export class Checker {
 
 class FunctionScope {
 
-  constructor(readonly symbol: Symbol, public resultType: CheckedTypeExpression) {
+  readonly #closures = Map<string, PhaseType>().asMutable();
+  readonly symbol: Symbol
+  readonly phase: FunctionPhase
+  resultType: CheckedTypeExpression
+
+  constructor(symbol: Symbol, resultType: CheckedTypeExpression, phase: FunctionPhase) {
+    this.symbol = symbol;
+    this.resultType = resultType;
+    this.phase = phase;
+  }
+
+  get closures(): Map<String, PhaseType> {
+    return this.#closures.asImmutable();
+  }
+
+  addClosure(name: string, type: PhaseType): void {
+    this.#closures.set(name, type);
   }
 
 }
 
+export class PhaseType extends Record({
+  type: undefined as unknown as CheckedTypeExpression,
+  phase: undefined as unknown as ExpressionPhase,
+  pos: undefined as unknown as Position,
+}) {
+  constructor(type: CheckedTypeExpression, phase: ExpressionPhase, pos: Position) {
+    super({type, phase, pos});
+  }
+}
+
 export class Scope {
   readonly #parent: Scope | undefined;
-  readonly #symbols: Map<string, CheckedTypeExpression>;
+  readonly #symbols: Map<string, PhaseType>;
   readonly qualifier: Qualifier;
   readonly functionScope: FunctionScope;
 
-  private constructor(parent: Scope | undefined, declared: Map<string, CheckedTypeExpression> | undefined, qualifier: Qualifier, functionScope: FunctionScope) {
+  private constructor(parent: Scope | undefined, declared: Map<string, PhaseType> | undefined, qualifier: Qualifier, functionScope: FunctionScope) {
     this.#parent = parent;
-    this.#symbols = (declared ?? Map<string, CheckedTypeExpression>()).asMutable();
+    this.#symbols = (declared ?? Map<string, PhaseType>()).asMutable();
     this.qualifier = qualifier;
     this.functionScope = functionScope;
   }
 
-  static init(declared: Map<string, CheckedTypeExpression>, qualifier: Qualifier, symbol: Symbol, resultType: CheckedTypeExpression): Scope {
-    return new Scope(undefined, declared, qualifier, new FunctionScope(symbol, resultType));
+  static init(declared: Map<string, PhaseType>, qualifier: Qualifier, symbol: Symbol, resultType: CheckedTypeExpression): Scope {
+    return new Scope(undefined, declared, qualifier, new FunctionScope(symbol, resultType, 'fun'));
   }
 
   child(): Scope {
     return new Scope(this, undefined, this.qualifier, this.functionScope);
   }
 
-  childFunction(symbol: Symbol, resultType: CheckedTypeExpression): Scope {
-    return new Scope(this, undefined, this.qualifier, new FunctionScope(symbol, resultType));
+  childFunction(symbol: Symbol, resultType: CheckedTypeExpression, phase: FunctionPhase): Scope {
+    return new Scope(this, undefined, this.qualifier, new FunctionScope(symbol, resultType, phase));
   }
 
-  get(name: string, pos: Position): CheckedTypeExpression {
+  get(name: string, pos: Position): PhaseType {
     const maybe = this.#symbols.get(name);
 
     if (maybe !== undefined) {
@@ -1256,13 +1465,26 @@ export class Scope {
     }
 
     if (this.#parent !== undefined) {
-      return this.#parent.get(name, pos);
+      const parentResult = this.#parent.get(name, pos);
+
+      // this check is on object identity on propose
+      // if we found a value from a different function, that means this function is closing over a value
+      // from an above function, thus it needs to be counted in our closures
+      if (this.#parent.functionScope !== this.functionScope) {
+        this.functionScope.addClosure(name, parentResult);
+
+        if (this.functionScope.phase === 'fun' && (parentResult.phase === 'var' || parentResult.phase === 'flow')) {
+          return parentResult.set('phase', 'val');
+        }
+      }
+
+      return parentResult;
     }
 
     return pos.fail(`Could not find '${name}' in scope`);
   }
 
-  set(name: string, type: CheckedTypeExpression): void {
+  set(name: string, type: PhaseType): void {
     this.#symbols.set(name, type);
   }
 }

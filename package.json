@@ -4,18 +4,18 @@
   "main": "index.js",
   "license": "MIT",
   "type": "module",
-  "packageManager": "yarn@4.4.1",
+  "packageManager": "yarn@4.5.2",
   "dependencies": {
     "immutable": "4.3.7"
   },
   "devDependencies": {
     "@types/node": "22.5.4",
     "esbuild": "0.23.1",
-    "ts-node": "10.9.2",
-    "typescript": "5.5.4"
+    "typescript": "5.7.2"
   },
   "scripts": {
-    "build": "yarn run esbuild src/main.ts --platform=node --target=node20 --bundle --outfile=build/bundle/lib.js",
+    "build": "yarn run esbuild src/main.ts --platform=node --target=node20 --bundle --outfile=build/bundle/lib.js --minify",
+    "test": "yarn node --experimental-strip-types --test './src/test/*.test.ts'",
     "check": "yarn run tsc"
   }
 }

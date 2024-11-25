@@ -1,4 +1,4 @@
-import { FunctionPhase, PackageName, Position, Symbol, Version } from "./ast.js";
+import { type FunctionPhase, PackageName, Position, Symbol, Version } from "./ast.ts";
 import { List, Map } from 'immutable';
 import {
   CheckedAccessRecord,
@@ -6,7 +6,7 @@ import {
   CheckedEnumTypeAtomVariant,
   CheckedEnumTypeStructVariant,
   CheckedEnumTypeTupleVariant,
-  CheckedEnumTypeVariant,
+  type CheckedEnumTypeVariant,
   CheckedFunctionType,
   CheckedFunctionTypeParameter,
   CheckedModuleType,
@@ -15,9 +15,9 @@ import {
   CheckedPackage,
   CheckedParameterizedType,
   CheckedStructType,
-  CheckedTypeExpression,
+  type CheckedTypeExpression,
   CheckedTypeParameterType
-} from "./checker/checkerAst.js";
+} from "./checker/checkerAst.ts";
 
 const coreVersion = new Version(0, 1, 0);
 const corePackageName = new PackageName('core', 'core', coreVersion);

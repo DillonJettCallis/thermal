@@ -1,18 +1,18 @@
-import { DependencyDictionary, PackageName, Position, Symbol, Version } from "../ast.js";
-import { coreLib } from "../lib.js";
+import { DependencyDictionary, PackageName, Position, Symbol, Version } from "../ast.ts";
+import { coreLib } from "../lib.ts";
 import { List, Map } from "immutable";
-import { Checker, Scope } from "../checker/checker.js";
-import { ok } from "node:assert";
-import { Qualifier } from "../checker/collector.js";
+import { Checker, PhaseType, Scope } from "../checker/checker.ts";
+import { ok, equal, throws } from "node:assert";
+import { Qualifier } from "../checker/collector.ts";
 import { describe, it } from "node:test";
-import { CheckedAccessRecord, CheckedFunctionType, CheckedFunctionTypeParameter } from "../checker/checkerAst.js";
+import { CheckedAccessRecord, CheckedFunctionType, CheckedFunctionTypeParameter } from "../checker/checkerAst.ts";
 import {
   ParserBlockEx,
   ParserBooleanLiteralEx,
   ParserCallEx,
-  ParserExpression,
+  type ParserExpression,
   ParserExpressionStatement,
-  ParserFloatLiteralEx,
+  ParserFloatLiteralEx, ParserFunctionStatement,
   ParserIdentifierEx,
   ParserIntLiteralEx,
   ParserLambdaEx,
@@ -22,7 +22,7 @@ import {
   ParserReturnEx,
   ParserStaticAccessEx,
   ParserStringLiteralEx
-} from "../parser/parserAst.js";
+} from "../parser/parserAst.ts";
 
 const version = new Version(0, 1, 0);
 const packageName = new PackageName('sample', 'sample', version);
@@ -37,7 +37,7 @@ rootManager.addDependency(corePackage.name);
 
 const checker = new Checker(rootManager, Map<PackageName, Map<Symbol, CheckedAccessRecord>>().set(corePackage.name, corePackage.declarations), coreTypes, preamble);
 const qualifier = new Qualifier(preamble);
-const preambleScope = preamble.map(name => corePackage.declarations.get(name)!!.type);
+const preambleScope = preamble.map(name => new PhaseType(corePackage.declarations.get(name)!!.type, 'const', pos));
 
 function testScope(): Scope {
   return Scope.init(preambleScope, qualifier, root, coreTypes.unit);
@@ -171,7 +171,7 @@ describe('Checker', () => {
     // this whole AST just to represent the code above
     const actual = checker.checkLambda(new ParserLambdaEx({
       pos,
-      phase: 'fun',
+      functionPhase: 'fun',
       params: List.of(
         new ParserParameter({
           pos,
@@ -258,7 +258,7 @@ describe('Checker', () => {
         }),
         new ParserLambdaEx({
           pos,
-          phase: 'fun',
+          functionPhase: 'fun',
           params: List.of(
             new ParserParameter({
               pos,
@@ -328,7 +328,7 @@ describe('Checker', () => {
         }),
         new ParserLambdaEx({
           pos,
-          phase: 'fun',
+          functionPhase: 'fun',
           params: List.of(
             new ParserParameter({
               pos,
@@ -369,6 +369,313 @@ describe('Checker', () => {
     }), testScope());
 
     ok(actual.type.equals(coreTypes.listOf(coreTypes.int)), 'call does not return a List of Ints like it should');
+  });
+
+  it('should check that a literal is const phase', () => {
+    const actual = checker.checkIntLiteral(new ParserIntLiteralEx({
+      pos,
+      value: 1,
+    }));
+
+    equal(actual.phase, 'const');
+  });
+
+  it('should show that a call passed only const inputs should return a const expression', () => {
+    const actual = checker.checkCall(new ParserCallEx({
+      pos,
+      func: new ParserIdentifierEx({
+        pos,
+        name: '==',
+      }),
+      typeArgs: List(),
+      args: List.of(
+        new ParserIntLiteralEx({
+          pos,
+          value: 1,
+        }),
+        new ParserIntLiteralEx({
+          pos,
+          value: 1,
+        }),
+      )
+    }), testScope());
+
+    equal(actual.phase, 'const');
+  });
+
+  it('should show that a call passed only const and val input should return a val expression', () => {
+    // init the root scope
+    const parentScope = testScope();
+
+    // set up the child scope with a variable named 'x' that we will use
+    const scope = parentScope.childFunction(root.child('testFunc'), coreTypes.nothing, 'fun');
+    scope.set('x', new PhaseType(coreTypes.int, 'val', pos));
+
+    const actual = checker.checkCall(new ParserCallEx({
+      pos,
+      func: new ParserIdentifierEx({
+        pos,
+        name: '==',
+      }),
+      typeArgs: List(),
+      args: List.of<ParserExpression>(
+        new ParserIntLiteralEx({
+          pos,
+          value: 1,
+        }),
+        new ParserIdentifierEx({
+          // use 'x', which is 'val', thus making the whole function call 'val'
+          pos,
+          name: 'x',
+        }),
+      )
+    }), scope);
+
+    equal(actual.phase, 'val');
+  });
+
+  it('should show that a call passed flow input should return a flow expression', () => {
+    // init the root scope
+    const parentScope = testScope();
+
+    // set up the child scope with a variable named 'x' that we will use
+    const scope = parentScope.childFunction(root.child('testFunc'), coreTypes.nothing, 'fun');
+    scope.set('x', new PhaseType(coreTypes.int, 'flow', pos));
+
+    const actual = checker.checkCall(new ParserCallEx({
+      pos,
+      func: new ParserIdentifierEx({
+        pos,
+        name: '==',
+      }),
+      typeArgs: List(),
+      args: List.of<ParserExpression>(
+        new ParserIntLiteralEx({
+          pos,
+          value: 1,
+        }),
+        new ParserIdentifierEx({
+          // use 'x', which is 'flow', thus making the whole function call 'flow'
+          pos,
+          name: 'x',
+        }),
+      )
+    }), scope);
+
+    equal(actual.phase, 'flow');
+  });
+
+  it('should show that a call passed var input should return a flow expression', () => {
+    // init the root scope
+    const parentScope = testScope();
+
+    // set up the child scope with a variable named 'x' that we will use
+    const scope = parentScope.childFunction(root.child('testFunc'), coreTypes.nothing, 'fun');
+    scope.set('x', new PhaseType(coreTypes.int, 'var', pos));
+
+    const actual = checker.checkCall(new ParserCallEx({
+      pos,
+      func: new ParserIdentifierEx({
+        pos,
+        name: '==',
+      }),
+      typeArgs: List(),
+      args: List.of<ParserExpression>(
+        new ParserIntLiteralEx({
+          pos,
+          value: 1,
+        }),
+        new ParserIdentifierEx({
+          // use 'x', which is 'var', thus making the whole function call 'flow'
+          pos,
+          name: 'x',
+        }),
+      )
+    }), scope);
+
+    equal(actual.phase, 'flow');
+  });
+
+  it('should reject a fun that attempts to take a flow parameter', () => {
+    const input = new ParserFunctionStatement({
+      pos,
+      name: 'test',
+      phase: 'const',
+      typeParams: List(),
+      result: new ParserNominalType({
+        pos,
+        name: List.of(
+          new ParserIdentifierEx({
+            pos,
+            name: 'Int',
+          }),
+        ),
+      }),
+      lambda: new ParserLambdaEx({
+        pos,
+        functionPhase: 'fun',
+        params: List.of(
+          new ParserParameter({
+            pos,
+            phase: 'flow',
+            name: 'x',
+            type: new ParserNominalType({
+              pos,
+              name: List.of(
+                new ParserIdentifierEx({
+                  pos,
+                  name: 'Int',
+                }),
+              ),
+            })
+          }),
+        ),
+        body: new ParserIntLiteralEx({
+          pos,
+          value: 0,
+        })
+      }),
+    });
+
+    throws(() => {
+      checker.checkFunctionStatement(input, testScope(), root);
+    }, {
+      message: `Attempt to require a 'flow' parameter in a 'fun' function. A 'fun' function can only have 'const' or 'val' parameters at ${pos.describe()}`
+    })
+  });
+
+  it('should allow a fun function to close over a flow, as long as the resulting expression is flow', () => {
+    // init the root scope
+    const parentScope = testScope();
+
+    // set up the child scope with a variable named 'x' that we will use
+    const scope = parentScope.childFunction(root.child('testFunc'), coreTypes.nothing, 'fun');
+    scope.set('x', new PhaseType(coreTypes.int, 'flow', pos));
+
+    const actual = checker.checkFunctionStatement(new ParserFunctionStatement({
+      pos,
+      name: 'testFunc',
+      phase: 'flow',
+      typeParams: List(),
+      result: new ParserNominalType({
+        pos,
+        name: List.of(
+          new ParserIdentifierEx({
+            pos,
+            name: 'Int',
+          })
+        ),
+      }),
+      lambda: new ParserLambdaEx({
+        pos,
+        functionPhase: 'fun',
+        params: List.of(
+          new ParserParameter({
+            pos,
+            name: 'y',
+            phase: undefined,
+            type: new ParserNominalType({
+              pos,
+              name: List.of(
+                new ParserIdentifierEx({
+                  pos,
+                  name: 'Int',
+                })
+              ),
+            })
+          })
+        ),
+        body: new ParserCallEx({
+          pos,
+          typeArgs: List(),
+          func: new ParserIdentifierEx({
+            pos,
+            name: '+'
+          }),
+          args: List.of(
+            new ParserIdentifierEx({
+              pos,
+              name: 'x',
+            }),
+            new ParserIdentifierEx({
+              pos,
+              name: 'y',
+            }),
+          )
+        }),
+      })
+    }), scope, root);
+
+    equal(actual.phase, 'flow');
+  });
+
+  it('should not allow a fun function to close over a flow if the final expression is marked const', () => {
+    // init the root scope
+    const parentScope = testScope();
+
+    // set up the child scope with a variable named 'x' that we will use
+    const scope = parentScope.childFunction(root.child('testFunc'), coreTypes.nothing, 'fun');
+    scope.set('x', new PhaseType(coreTypes.int, 'flow', pos));
+
+    const input = new ParserFunctionStatement({
+      pos,
+      name: 'testFunc',
+      phase: 'const',
+      typeParams: List(),
+      result: new ParserNominalType({
+        pos,
+        name: List.of(
+          new ParserIdentifierEx({
+            pos,
+            name: 'Int',
+          })
+        ),
+      }),
+      lambda: new ParserLambdaEx({
+        pos,
+        functionPhase: 'fun',
+        params: List.of(
+          new ParserParameter({
+            pos,
+            name: 'y',
+            phase: undefined,
+            type: new ParserNominalType({
+              pos,
+              name: List.of(
+                new ParserIdentifierEx({
+                  pos,
+                  name: 'Int',
+                })
+              ),
+            })
+          })
+        ),
+        body: new ParserCallEx({
+          pos,
+          typeArgs: List(),
+          func: new ParserIdentifierEx({
+            pos,
+            name: '+'
+          }),
+          args: List.of(
+            new ParserIdentifierEx({
+              pos,
+              name: 'x',
+            }),
+            new ParserIdentifierEx({
+              pos,
+              name: 'y',
+            }),
+          )
+        }),
+      })
+    });
+
+    throws(() => {
+      checker.checkFunctionStatement(input, scope, root);
+    }, {
+      message: `Attempt to declare 'const' function, but body is actually 'flow'. This function must close over values outside of the allowed phase. at ${pos.describe()}`
+    });
   });
 });
 

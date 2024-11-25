@@ -1,18 +1,18 @@
-/**
- * Here we have a mini library for generating code for all of the ASTs we have to deal with in the compiler
- */
 import { List, Map, Seq, Set } from "immutable";
 import { createWriteStream } from 'node:fs';
 import { Stream } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { resolve } from 'node:path';
-import { Position, Symbol } from "../src/ast.js";
-import { type } from "node:os";
+
+/**
+ * Here we have a mini library for generating code for all of the ASTs we have to deal with in the compiler
+ */
+
 
 type Type
   = { kind: 'lib', package: string, name: string }
   | { kind: 'local', name: string }
-  | { kind: 'util', name: string }
+  | { kind: 'util', name: string, type: boolean }
   | { kind: 'list', item: Type }
   | { kind: 'map', key: Type, value: Type }
   | { kind: 'optional', base: Type }
@@ -47,10 +47,11 @@ function optional(base: Type): Type {
   };
 }
 
-function util(name: string): Type {
+function util(name: string, type: boolean): Type {
   return {
     kind: 'util',
     name,
+    type,
   };
 }
 
@@ -61,10 +62,12 @@ function native(name: 'string' | 'boolean' | 'number'): Type {
   };
 }
 
-const pos = util('Position');
-const symbol = util('Symbol');
-const access = util('Access');
-
+const pos = util('Position', false);
+const symbol = util('Symbol', false);
+const access = util('Access', true);
+const expressionPhase = util('ExpressionPhase', true);
+const functionPhase = util('FunctionPhase', true);
+const packageName = util('PackageName', false);
 
 class Generator {
   private readonly records = List<Record>().asMutable();
@@ -107,7 +110,7 @@ class Generator {
           this.imports.update(type.package, prev => (prev ?? Set<string>()).add(type.name));
           break;
         case 'util':
-          this.imports.update('../ast.js', prev => (prev ?? Set<string>()).add(type.name));
+          this.imports.update('../ast.ts', prev => (prev ?? Set<string>()).add(type.type ? `type ${type.name}` : type.name));
           break;
       case 'optional':
         this.#loadImports(type.base);
@@ -209,13 +212,13 @@ function parser(): Generator {
 
   const functionTypeParameterType = gen.add('FunctionTypeParameter', {
     pos,
-    phase: optional(util('ExpressionPhase')),
+    phase: optional(expressionPhase),
     type: typeExpression,
   }, typeExpression);
 
   gen.add('FunctionType', {
     pos,
-    phase: util('FunctionPhase'),
+    phase: functionPhase,
     params: list(functionTypeParameterType),
     result: typeExpression,
   }, typeExpression);
@@ -297,13 +300,13 @@ function parser(): Generator {
   const lambdaParameter = gen.add('Parameter', {
     pos,
     name: native('string'),
-    phase: optional(util('ExpressionPhase')),
+    phase: optional(expressionPhase),
     type: optional(typeExpression),
   });
 
   const lambda = gen.add('LambdaEx', {
     pos,
-    phase: util('FunctionPhase'),
+    functionPhase,
     params: list(lambdaParameter),
     body: expression,
   }, expression);
@@ -323,7 +326,7 @@ function parser(): Generator {
   gen.add('AssignmentStatement', {
     pos,
     name: native('string'),
-    phase: util('ExpressionPhase'),
+    phase: expressionPhase,
     type: optional(typeExpression),
     expression,
   }, statement);
@@ -336,6 +339,7 @@ function parser(): Generator {
 
   const func = gen.add('FunctionStatement', {
     pos,
+    phase: expressionPhase,
     name: native('string'),
     typeParams: list(typeParameterType),
     result: typeExpression,
@@ -384,7 +388,7 @@ function parser(): Generator {
   gen.add('FunctionDeclare', {
     pos,
     extern: native('boolean'),
-    access: util('Access'),
+    access,
     symbol,
     func,
   }, declare);
@@ -454,7 +458,7 @@ function parser(): Generator {
   });
 
   gen.add('Package', {
-    name: util('PackageName'),
+    name: packageName,
     files: list(file),
     declarations: map(symbol, accessRecord),
   });
@@ -474,6 +478,7 @@ function checker(): Generator {
       pos,
       value: native(lit),
       type: typeExpression,
+      phase: expressionPhase,
     }, expression);
   }
 
@@ -481,6 +486,7 @@ function checker(): Generator {
     pos,
     name: native('string'),
     type: typeExpression,
+    phase: expressionPhase,
   }, expression);
 
   const nominalType = gen.add('NominalType', {
@@ -493,7 +499,7 @@ function checker(): Generator {
   }, typeExpression);
 
   const functionTypeParameterType = gen.add('FunctionTypeParameter', {
-    phase: optional(util('ExpressionPhase')),
+    phase: optional(expressionPhase),
     type: typeExpression,
   }, typeExpression);
 
@@ -503,7 +509,7 @@ function checker(): Generator {
   }, typeExpression);
 
   const functionType = gen.add('FunctionType', {
-    phase: util('FunctionPhase'),
+    phase: functionPhase,
     typeParams: list(typeParameterType),
     params: list(functionTypeParameterType),
     result: typeExpression,
@@ -554,12 +560,14 @@ function checker(): Generator {
     pos,
     values: list(expression),
     type: typeExpression,
+    phase: expressionPhase,
   }, expression);
 
   gen.add('SetLiteralEx', {
     pos,
     values: list(expression),
     type: typeExpression,
+    phase: expressionPhase,
   }, expression);
 
   const mapEntry = gen.add('MapLiteralEntry', {
@@ -572,6 +580,7 @@ function checker(): Generator {
     pos,
     values: list(mapEntry),
     type: typeExpression,
+    phase: expressionPhase,
   }, expression);
 
   gen.add('IsEx', {
@@ -580,12 +589,14 @@ function checker(): Generator {
     base: expression,
     check: typeExpression,
     type: typeExpression,
+    phase: expressionPhase,
   }, expression);
 
   gen.add('NotEx', {
     pos,
     base: expression,
     type: typeExpression,
+    phase: expressionPhase,
   }, expression);
 
   gen.add('OrEx', {
@@ -593,6 +604,7 @@ function checker(): Generator {
     left: expression,
     right: expression,
     type: typeExpression,
+    phase: expressionPhase,
   }, expression);
 
   gen.add('AndEx', {
@@ -600,6 +612,7 @@ function checker(): Generator {
     left: expression,
     right: expression,
     type: typeExpression,
+    phase: expressionPhase,
   }, expression);
 
   gen.add('AccessEx', {
@@ -607,12 +620,14 @@ function checker(): Generator {
     base: expression,
     field: identifierEx,
     type: typeExpression,
+    phase: expressionPhase,
   }, expression);
 
   gen.add('StaticAccessEx', {
     pos,
     path: list(identifierEx),
     type: typeExpression,
+    phase: expressionPhase,
   }, expression);
 
   const constructEntry = gen.add('ConstructEntry', {
@@ -627,21 +642,23 @@ function checker(): Generator {
     typeArgs: list(typeExpression),
     fields: list(constructEntry),
     type: typeExpression,
+    phase: expressionPhase,
   }, expression);
 
   const lambdaParameter = gen.add('Parameter', {
     pos,
     name: native('string'),
-    phase: optional(util('ExpressionPhase')),
+    phase: optional(expressionPhase),
     type: typeExpression,
   });
 
   const lambda = gen.add('LambdaEx', {
     pos,
-    phase: util('FunctionPhase'),
+    functionPhase,
     params: list(lambdaParameter),
     body: expression,
     type: typeExpression,
+    phase: expressionPhase,
   }, expression);
 
   const statement = gen.type('Statement');
@@ -650,18 +667,20 @@ function checker(): Generator {
     pos,
     body: list(statement),
     type: typeExpression,
+    phase: expressionPhase,
   }, expression);
 
   gen.add('ExpressionStatement', {
     pos,
     expression,
     type: typeExpression,
+    phase: expressionPhase,
   }, statement);
 
   gen.add('AssignmentStatement', {
     pos,
     name: native('string'),
-    phase: util('ExpressionPhase'),
+    phase: expressionPhase,
     type: typeExpression,
     expression,
   }, statement);
@@ -670,11 +689,13 @@ function checker(): Generator {
     pos,
     name: native('string'),
     type: typeExpression,
+    phase: expressionPhase,
     expression,
   }, statement);
 
   const func = gen.add('FunctionStatement', {
     pos,
+    phase: expressionPhase,
     name: native('string'),
     typeParams: list(typeParameterType),
     result: typeExpression,
@@ -688,6 +709,7 @@ function checker(): Generator {
     typeArgs: list(typeExpression),
     args: list(expression),
     type: typeExpression,
+    phase: expressionPhase,
   }, expression);
 
   gen.add('IfEx', {
@@ -696,12 +718,14 @@ function checker(): Generator {
     thenEx: expression,
     elseEx: optional(expression),
     type: typeExpression,
+    phase: expressionPhase,
   }, expression);
 
   gen.add('ReturnEx', {
     pos,
     base: expression,
     type: typeExpression,
+    phase: expressionPhase,
   }, expression);
 
   const declare = gen.type('Declaration');
@@ -727,7 +751,7 @@ function checker(): Generator {
   gen.add('FunctionDeclare', {
     pos,
     extern: native('boolean'),
-    access: util('Access'),
+    access,
     symbol,
     func,
   }, declare);
@@ -797,13 +821,14 @@ function checker(): Generator {
   });
 
   gen.add('Package', {
-    name: util('PackageName'),
+    name: packageName,
     files: list(file),
     declarations: map(symbol, accessRecord),
   });
 
   return gen;
 }
+
 
 const outputs = [
   ['../src/parser/parserAst.ts', parser],

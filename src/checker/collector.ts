@@ -1,5 +1,5 @@
 import { List, Map } from 'immutable';
-import { DependencyManager, Symbol } from "../ast.js";
+import { DependencyManager, Symbol } from "../ast.ts";
 import {
   ParserConstantDeclare,
   ParserEnumAtomVariant,
@@ -13,9 +13,9 @@ import {
   ParserParameterizedType,
   ParserStructDeclare,
   ParserStructField,
-  ParserTypeExpression,
+  type ParserTypeExpression,
   ParserTypeParameterType
-} from "../parser/parserAst.js";
+} from "../parser/parserAst.ts";
 import {
   CheckedAccessRecord,
   CheckedEnumType,
@@ -27,9 +27,9 @@ import {
   CheckedNominalType,
   CheckedParameterizedType,
   CheckedStructType,
-  CheckedTypeExpression,
+  type CheckedTypeExpression,
   CheckedTypeParameterType
-} from "./checkerAst.js";
+} from "./checkerAst.ts";
 
 
 /**
@@ -97,7 +97,7 @@ export function collectSymbols(files: ParserFile[], manager: DependencyManager, 
             access: dec.access,
             module,
             type: new CheckedFunctionType({
-              phase: dec.func.lambda.phase,
+              phase: dec.func.lambda.functionPhase,
               typeParams: dec.func.typeParams.map(it => qualifier.checkTypeParamType(it)),
               params: dec.func.lambda.params.map(it => {
                 return new CheckedFunctionTypeParameter({
