@@ -6,14 +6,14 @@ const whitespace = Set(' \t\r\n');
 const digits = Set('0123456789');
 const number = digits.concat(Set('_.'));
 const quotes = Set('\'"`');
-const identifierStartTest = /^[\p{L}_]$/u;
+const identifierStartTest = /^\p{L}$/u;
 const identifierTest = /^[\p{L}_\d]$/u;
 const keywords = Set.of(
   // the four expression types
   'const',
   'val',
   'var',
-  'dyn',
+  'flow',
   // the three function types
   'fun',
   'def',

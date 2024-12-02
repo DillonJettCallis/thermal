@@ -1,8 +1,8 @@
 import type { Map } from 'immutable';
-import type { Access, DependencyManager, PackageName, Symbol } from '../ast.js';
-import type { CheckedAccessRecord } from './checkerAst.js';
-import type { ParserFile} from '../parser/parserAst.js';
-import { ParserImportDeclaration } from '../parser/parserAst.js';
+import type { Access, DependencyManager, PackageName, Symbol } from '../ast.ts';
+import type { CheckedAccessRecord } from './checkerAst.ts';
+import type { ParserFile} from '../parser/parserAst.ts';
+import { ParserImportDeclaration } from '../parser/parserAst.ts';
 
 /**
  * Check this file and make sure everything it imports actually exists.

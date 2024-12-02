@@ -934,7 +934,7 @@ export class Parser {
           break;
         // we hit the end of the list, leave
         case close:
-          return items;
+          return items.asImmutable();
         default:
           // anything besides a comma or close is an error
           next.pos.fail(`Expected either , or ${close}`);

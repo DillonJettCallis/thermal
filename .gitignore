@@ -14,6 +14,9 @@ node_modules
 # typescript compiler output
 build
 
+# sample output
+dist
+
 # yarn pnp (I don't trust it just yet)
 .pnp.cjs
 .pnp.loader.mjs

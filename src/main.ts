@@ -7,9 +7,11 @@ import { verifyImports } from './checker/verifier.ts';
 import { Checker } from './checker/checker.ts';
 import { readdirSync } from 'node:fs';
 import { substringBeforeLast } from './utils.ts';
-import type { CheckedAccessRecord } from './checker/checkerAst.js';
+import type { CheckedAccessRecord } from './checker/checkerAst.ts';
+import { JsCompiler } from "./js/jsCompiler.ts";
+import { JsEmitter } from "./js/jsEmitter.ts";
 
-function main(): void {
+async function main(): Promise<void> {
   const dir = 'sample';
 
   const version = new Version(0, 1, 0);
@@ -22,7 +24,10 @@ function main(): void {
   depDict.addManager(corePackage.name);
   rootManager.addDependency(corePackage.name);
 
-  const allFiles = readdirSync(dir).map(file => Parser.parseFile(`${dir}/${file}`, root.child(substringBeforeLast(file, '.thermal'))));
+  // const sources = readdirSync(dir);
+  const sources = ['simple.thermal'];
+
+  const allFiles = sources.map(file => Parser.parseFile(`${dir}/${file}`, root.child(substringBeforeLast(file, '.thermal'))));
   // const allFiles = [Parser.parseFile(`${dir}/simple.thermal`, root.child('simple'))];
   const allApplicationSymbols = collectSymbols(allFiles, rootManager, preamble);
   const allProgramSymbols = Map<PackageName, Map<Symbol, CheckedAccessRecord>>().asMutable();
@@ -34,10 +39,17 @@ function main(): void {
 
   const checker = new Checker(rootManager, allProgramSymbols, coreTypes, preamble);
 
-  allFiles.forEach(file => checker.checkFile(file));
+  const checkedFiles = allFiles.map(file => checker.checkFile(file));
 
-  console.log(allFiles);
+  const jsCompiler = new JsCompiler();
+  const jsCompilePrep = checkedFiles.map(file => jsCompiler.compileFile(file));
+
+  const jsEmitter = new JsEmitter('dist');
+  for (const file of jsCompilePrep) {
+    await jsEmitter.emitFile(file.set('name', 'simple.js'));
+  }
+
+  console.log(jsCompilePrep);
 }
 
-
-main();
+await main();

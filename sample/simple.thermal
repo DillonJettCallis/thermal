@@ -1,15 +1,46 @@
-import core/dom;
+import core/dom::{ Html, head, tag, text, content, Element, style, onClick };
 
-def main(): dom::Html {
-  return dom::Html {
-    head: dom::Head {
-      title: 'Sample page'
-    },
-    body: dom::Body {
-      content: [
-        dom::elem::text('Sample body')
-      ]
-    }
+def main(): Html {
+  var reset = false
+
+  return Html {
+    head: head('Button Test'),
+    body: tag('body', [
+      content([
+        clickCounter(reset, sig { =>
+          reset = !reset
+          true
+        })
+      ])
+    ]),
   }
+}
+
+
+def clickCounter(reset: Boolean, resetter: sig { -> Boolean }): Element {
+  var count = 0;
+
+  tag('div', [
+    style('
+      display: flex;
+      flex-direction: row;
+      gap: 10px;
+    '),
+    content([
+      label(toString(count)),
+      tag('button', [
+        onClick(sig { => count = count + 1; true }),
+        content([text('Click here')]),
+      ]),
+      tag('button', [
+        onClick(resetter),
+        content([text('Reset')]),
+      ])
+    ])
+  ])
+}
+
+fun label(str: String): Element {
+  return tag('label', [content([text(str)])]);
 }
 

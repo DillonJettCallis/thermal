@@ -1,7 +1,5 @@
-import type { List, Map} from 'immutable';
-import { Record } from 'immutable';
-import type { PackageName, Position, Symbol } from '../ast.ts';
-import { type Access, type ExpressionPhase, type FunctionPhase } from '../ast.ts';
+import { Map, List, Set, Record,  } from 'immutable';
+import { Position, type ExpressionPhase, Symbol, type FunctionPhase, type Access, PackageName,  } from '../ast.ts';
 
 export type CheckedTypeExpression
   = CheckedNominalType

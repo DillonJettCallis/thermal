@@ -4,13 +4,13 @@ import type { Set } from 'immutable';
 import { List, Map, Record, Seq } from 'immutable';
 import { collectDeclarations, Qualifier } from './collector.ts';
 import type { CoreTypes } from '../lib.ts';
-import type {
-  CheckedAccessRecord,
-  CheckedEnumTypeVariant,
-  CheckedExpression,
-  CheckedSetLiteralEx,
-  CheckedStatement,
-  CheckedTypeExpression,
+import {
+  type CheckedAccessRecord,
+  type CheckedEnumTypeVariant,
+  type CheckedExpression, type CheckedImportExpression, CheckedNestedImportExpression, CheckedNominalImportExpression,
+  type CheckedSetLiteralEx,
+  type CheckedStatement,
+  type CheckedTypeExpression,
 } from './checkerAst.ts';
 import {
   CheckedAccessEx,
@@ -62,13 +62,13 @@ import {
   CheckedStructType,
   CheckedTypeParameterType,
 } from './checkerAst.ts';
-import type {
-  ParserExpression,
-  ParserFile,
-  ParserFunctionStatement,
-  ParserMapLiteralEx,
-  ParserParameter,
-  ParserStatement,
+import {
+  type ParserExpression,
+  type ParserFile,
+  type ParserFunctionStatement, type ParserImportExpression,
+  type ParserMapLiteralEx, ParserNominalImportExpression,
+  type ParserParameter,
+  type ParserStatement,
 } from '../parser/parserAst.ts';
 import {
   ParserAccessEx,
@@ -122,7 +122,11 @@ export class Checker {
 
     const checkedDeclarations = file.declarations.map(dec => {
       if (dec instanceof ParserImportDeclaration) {
-        return new CheckedImportDeclaration(dec);
+        return new CheckedImportDeclaration({
+          pos: dec.pos,
+          package: dec.package,
+          ex: this.#checkImportExpression(dec.ex),
+        });
       } else if (dec instanceof ParserFunctionDeclare) {
         const func = this.checkFunctionStatement(dec.func, fileScope, file.module);
 
@@ -218,6 +222,21 @@ export class Checker {
       module: file.module,
       declarations: checkedDeclarations,
     });
+  }
+
+  #checkImportExpression(ex: ParserImportExpression): CheckedImportExpression {
+    if (ex instanceof ParserNominalImportExpression) {
+      return new CheckedNominalImportExpression({
+        pos: ex.pos,
+        name: ex.name,
+      });
+    } else {
+      return new CheckedNestedImportExpression({
+        pos: ex.pos,
+        base: ex.base,
+        children: ex.children.map(it => this.#checkImportExpression(it)),
+      })
+    }
   }
 
   #checkExpression(ex: ParserExpression, scope: Scope, expected: CheckedTypeExpression | undefined): CheckedExpression {
@@ -393,8 +412,9 @@ export class Checker {
       // TODO: check for duplicated fields
 
       if (expectedKeys.equals(actualKeys)) {
-        const expectedFields = expected instanceof CheckedStructType || expected instanceof CheckedEnumTypeStructVariant
-          ? expected.fields
+        const lookupExpected = this.#lookup(expected);
+        const expectedFields = lookupExpected instanceof CheckedStructType || lookupExpected instanceof CheckedEnumTypeStructVariant
+          ? lookupExpected.fields
           : Map<string, CheckedTypeExpression>()
         ;
 
@@ -718,7 +738,7 @@ export class Checker {
     const scope = parentScope.child();
 
     // all but the last statement
-    const initBody: List<CheckedStatement> = ex.body.shift().map(state => this.checkStatement(state, scope, undefined));
+    const initBody: List<CheckedStatement> = ex.body.pop().map(state => this.checkStatement(state, scope, undefined));
     // the last statement is the only one that gets expected, and the only one who's type matters
     const last = this.checkStatement(ex.body.last(), scope, expected);
     const body = initBody.push(last);
@@ -878,7 +898,7 @@ export class Checker {
 
     const body = this.#checkExpression(state.lambda.body, childScope, result);
     const closures = childScope.functionScope.closures;
-    const phase = this.#phaseCheckImpl(closures.valueSeq().map(it => ({pos: it.pos, phase: it.phase, expectedPhase: undefined})).toList(), state.lambda.functionPhase);
+    const phase = this.#phaseCheckImpl(closures.valueSeq().map(it => ({pos: it.pos, phase: it.phase, expectedPhase: undefined})).toList(), 'fun');
 
     if (state.phase !== phase) {
       state.pos.fail(`Attempt to declare '${state.phase}' function, but body is actually '${phase}'. This function must close over values outside of the allowed phase.`);
@@ -979,6 +999,14 @@ export class Checker {
       type: this.#coreTypes.mapOf(keyType, valueType),
       phase: this.#phaseCheck(entries.flatMap(it => List.of(it.key, it.value))),
     });
+  }
+
+  #lookup(type: CheckedTypeExpression | undefined): CheckedTypeExpression | undefined {
+    if (type instanceof CheckedNominalType) {
+      return this.#declarations.get(type.name.package)?.get(type.name)?.type;
+    } else {
+      return type;
+    }
   }
 
   #genericsOfEnum(ex: CheckedEnumTypeVariant): List<CheckedTypeParameterType> {
@@ -1203,6 +1231,20 @@ export class Checker {
 
     if (actual instanceof CheckedParameterizedType && expected instanceof CheckedParameterizedType) {
       return actual.base.name.equals(expected.base.name) && this.#checkAllAssignable(actual.args, expected.args);
+    }
+
+    if (actual instanceof CheckedNominalType) {
+      const tryLookup = this.#lookup(actual);
+
+      if (tryLookup === undefined) {
+        return false;
+      }
+
+      return this.#checkAssignable(tryLookup, expected);
+    }
+
+    if (expected instanceof CheckedNominalType) {
+      return this.#checkAssignable(actual, this.#lookup(expected));
     }
 
     if (expected instanceof CheckedEnumType) {

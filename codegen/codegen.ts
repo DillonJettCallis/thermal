@@ -14,6 +14,7 @@ type Type
   | { kind: 'local', name: string }
   | { kind: 'util', name: string, type: boolean }
   | { kind: 'list', item: Type }
+  | { kind: 'set', item: Type }
   | { kind: 'map', key: Type, value: Type }
   | { kind: 'optional', base: Type }
   | { kind: 'native', name: string }
@@ -28,6 +29,13 @@ interface Record {
 function list(item: Type): Type {
   return {
     kind: 'list',
+    item,
+  };
+}
+
+function set(item: Type): Type {
+  return {
+    kind: 'set',
     item,
   };
 }
@@ -75,7 +83,7 @@ class Generator {
   private readonly types = Map<string, List<string>>().asMutable();
 
   constructor(private readonly prefix: string) {
-    this.imports.set('immutable', Set.of('Map', 'List', 'Record'));
+    this.imports.set('immutable', Set.of('Map', 'List', 'Set', 'Record'));
   }
 
   type(name: string, member?: { kind: 'local', name: string }): { kind: 'local', name: string } {
@@ -116,6 +124,7 @@ class Generator {
         this.#loadImports(type.base);
         break;
       case 'list':
+        case 'set':
         this.#loadImports(type.item);
         break;
       case 'map':
@@ -172,6 +181,8 @@ class Generator {
         return type.name;
       case "list":
         return `List<${this.#localName(type.item)}>`;
+      case "set":
+        return `Set<${this.#localName(type.item)}>`;
       case "map":
         return `Map<${this.#localName(type.key)}, ${this.#localName(type.value)}>`;
       case "optional":
@@ -829,10 +840,181 @@ function checker(): Generator {
   return gen;
 }
 
+function jsIr(): Generator {
+  const gen = new Generator('Js');
+
+  const expression = gen.type('Expression');
+  const statement = gen.type('Statement');
+  const declare = gen.type('Declaration');
+
+  const block = gen.add("Block", {
+    body: list(statement),
+    result: expression,
+  });
+
+  for (const [name, lit] of [['Boolean', 'boolean'], ['Number', 'number'], ['String', 'string']] as const) {
+    gen.add(`${name}LiteralEx`, {
+      value: native(lit),
+    }, expression);
+  }
+
+  const identifierEx = gen.add('IdentifierEx', {
+    name: native('string'),
+  }, expression);
+
+  const lambda = gen.add('LambdaEx', {
+    args: list(native('string')),
+    body: list(statement),
+  }, expression);
+
+  const singleton = gen.add('Singleton', {
+    init: expression,
+  }, expression);
+
+  const variable = gen.add('Variable', {
+    init: expression,
+  }, expression);
+
+  const projection = gen.add('Projection', {
+    base: expression,
+    // TODO: in future projection might get more complex, once we have user-defined properties
+    property: native('string'),
+  }, expression);
+
+  const flow = gen.add('Flow', {
+    args: list(expression),
+    body: lambda,
+  }, expression);
+
+  const def = gen.add('Def', {
+    args: list(expression),
+    body: lambda,
+  }, expression);
+
+  const flowGet = gen.add('FlowGet', {
+    body: expression,
+  }, expression);
+
+  const undef = gen.add('Undefined', {}, expression);
+
+  const array = gen.add('Array', {
+    args: list(expression),
+  }, expression);
+
+  const constructField = gen.add('ConstructField', {
+    name: native('string'),
+    value: expression,
+  });
+
+  const construct = gen.add('Construct', {
+    base: expression,
+    fields: list(constructField),
+  }, expression);
+
+  const access = gen.add('Access', {
+    base: expression,
+    field: native('string'),
+  }, expression);
+
+  const call = gen.add('Call', {
+    func: expression,
+    args: list(expression),
+  }, expression);
+
+  const initVar = gen.add('DeclareVar', {
+    name: native('string'),
+  }, statement);
+
+  const assignment = gen.add('Assign', {
+    name: native('string'),
+    body: expression,
+  }, statement);
+
+  const reassignment = gen.add('Reassign', {
+    name: native('string'),
+    body: expression,
+  }, statement);
+
+  const func = gen.add('FunctionStatement', {
+    name: native('string'),
+    args: list(native('string')),
+    body: list(statement),
+  }, statement);
+
+  const returnStatement = gen.add('Return', {
+    body: expression,
+  }, statement);
+
+  const ifStatement = gen.add('If', {
+    condition: expression,
+    thenBlock: list(statement),
+    elseBlock: list(statement),
+  }, statement);
+
+  const binaryOp = gen.add('BinaryOp', {
+    op: native('string'),
+    left: expression,
+    right: expression,
+  }, expression);
+
+  const unairyOp = gen.add('UnaryOp', {
+    op: native('string'),
+    base: expression,
+  }, expression);
+
+  const exprStatement = gen.add('ExpressionStatement', {
+    base: expression,
+  }, statement);
+
+  const importDeclare = gen.add('Import', {
+    from: native('string'),
+    take: native('string'),
+    as: optional(native('string')),
+  }, declare);
+
+  const constDeclare = gen.add('Const', {
+    name: native('string'),
+    body: expression,
+  }, declare);
+
+  const functionDeclare = gen.add('FunctionDeclare', {
+    export: native('boolean'),
+    func,
+  }, declare);
+
+  const enumVariants = gen.type('EnumVariant', declare);
+
+  const structDeclare = gen.add('StructDeclare', {
+    name: native('string'),
+    fields: set(native('string')),
+  }, enumVariants);
+
+  const tupleDeclare = gen.add('TupleDeclare', {
+    name: native('string'),
+    fields: list(native('string')),
+  }, enumVariants);
+
+  const atomDeclare = gen.add('AtomDeclare', {
+    name: native('string'),
+  }, enumVariants);
+
+  const enumDeclare = gen.add('EnumDeclare', {
+    name: native('string'),
+    variants: list(enumVariants),
+  }, declare);
+
+  const file = gen.add('File', {
+    name: native('string'),
+    declarations: list(declare),
+  });
+
+  return gen;
+}
 
 const outputs = [
   ['../src/parser/parserAst.ts', parser],
   ['../src/checker/checkerAst.ts', checker],
+  ['../src/js/jsIr.ts', jsIr],
 ] as const;
 
 

@@ -1,7 +1,5 @@
-import type { List, Map} from 'immutable';
-import { Record } from 'immutable';
-import type { PackageName, Position, Symbol } from '../ast.ts';
-import { type Access, type ExpressionPhase, type FunctionPhase } from '../ast.ts';
+import { Map, List, Set, Record,  } from 'immutable';
+import { Position, type ExpressionPhase, type FunctionPhase, type Access, Symbol, PackageName,  } from '../ast.ts';
 
 export type ParserTypeExpression
   = ParserNominalType

@@ -6,6 +6,11 @@ import {
   type ParserImportExpression,
   ParserNominalImportExpression,
 } from './parser/parserAst.ts';
+import {
+  type CheckedImportDeclaration, type CheckedImportExpression,
+  CheckedNestedImportExpression,
+  CheckedNominalImportExpression
+} from "./checker/checkerAst.ts";
 
 export class Position extends Record({src: '', line: 0, column: 0}){
   public static readonly native = new Position('[native]', 0, 0);
@@ -151,23 +156,23 @@ export class DependencyManager {
     return this.#packages.get(packageName);
   }
 
-  breakdownImport(importDec: ParserImportDeclaration): List<Symbol> {
+  breakdownImport(importDec: ParserImportDeclaration | CheckedImportDeclaration): List<Symbol> {
     return this.#breakdownImportExpression(new Symbol(this.resolveImportPackage(importDec.package.name) ?? importDec.pos.fail(`No dependency with name or alias '${importDec.package.name}' was found`)), importDec.ex);
   }
 
-  #breakdownImportExpression(parent: Symbol, importEx: ParserImportExpression): List<Symbol> {
-    if (importEx instanceof ParserNominalImportExpression) {
+  #breakdownImportExpression(parent: Symbol, importEx: ParserImportExpression | CheckedImportExpression): List<Symbol> {
+    if (importEx instanceof ParserNominalImportExpression || importEx instanceof CheckedNominalImportExpression) {
       return List.of(this.#breakdownNominalImportExpression(parent, importEx));
     } else {
       return this.#breakdownNestedImportExpression(parent, importEx);
     }
   }
 
-  #breakdownNominalImportExpression(parent: Symbol, importEx: ParserNominalImportExpression): Symbol {
+  #breakdownNominalImportExpression(parent: Symbol, importEx: ParserNominalImportExpression | CheckedNominalImportExpression): Symbol {
     return parent.child(importEx.name);
   }
 
-  #breakdownNestedImportExpression(parent: Symbol, importEx: ParserNestedImportExpression): List<Symbol> {
+  #breakdownNestedImportExpression(parent: Symbol, importEx: ParserNestedImportExpression | CheckedNestedImportExpression): List<Symbol> {
     const base = this.#breakdownNominalImportExpression(parent, importEx.base);
 
     return importEx.children.flatMap(it => this.#breakdownImportExpression(base, it));
