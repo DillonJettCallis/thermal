@@ -270,7 +270,7 @@ export class JsCompiler {
         }, args.shift());
 
         return new JsConstruct({
-          base: args.first(),
+          base: args.first()!,
           fields,
         })
       });
@@ -310,7 +310,7 @@ export class JsCompiler {
       // todo: find a better way to extract operators than this
       if (ex.func instanceof CheckedIdentifierEx && ['+', '-', '*', '/', '==', '!=', '<', '<=', '>', '>='].includes(ex.func.name)) {
         if (ex.func.name === '-' && ex.args.size === 1) {
-          return this.#handleUnaryOp('-', phase, ex.args.first());
+          return this.#handleUnaryOp('-', phase, ex.args.first()!);
         } else {
           return this.#handleBinaryOp(ex.func.name, phase, ex.args.get(0)!, ex.args.get(1)!);
         }
@@ -553,7 +553,7 @@ export class JsCompiler {
     return this.#handleAction(phase, 'fun', List.of(undefined), List.of(arg), args => {
       return new JsUnaryOp({
         op,
-        base: args.first(),
+        base: args.first()!,
       });
     });
   }
@@ -562,8 +562,8 @@ export class JsCompiler {
     return this.#handleAction(phase, 'fun', List.of(undefined, undefined), List.of(left, right), args => {
       return new JsBinaryOp({
         op,
-        left: args.first(),
-        right: args.last(),
+        left: args.first()!,
+        right: args.last()!,
       });
     });
   }

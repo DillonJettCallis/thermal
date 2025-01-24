@@ -112,7 +112,7 @@ export class Symbol extends Record({
   }
 
   get name(): string {
-    return this.path.last();
+    return this.path.last()!;
   }
 
   override toString(): string {

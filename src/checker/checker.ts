@@ -734,7 +734,7 @@ export class Checker {
     // all but the last statement
     const initBody: List<CheckedStatement> = ex.body.pop().map(state => this.checkStatement(state, scope, undefined));
     // the last statement is the only one that gets expected, and the only one who's type matters
-    const last = this.checkStatement(ex.body.last(), scope, expected);
+    const last = this.checkStatement(ex.body.last()!, scope, expected);
     const body = initBody.push(last);
 
     return new CheckedBlockEx({
