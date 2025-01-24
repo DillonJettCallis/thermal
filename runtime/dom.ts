@@ -184,13 +184,24 @@ function createTag(elem: HTMLElement, node: Tag): void {
 }
 
 function* multiZip(elem: HTMLElement, prev: List<Text | Tag>, next: List<Text | Tag>): IterableIterator<{ elemChild: Node | undefined, prevChild: Text | Tag | undefined, nextChild: Text | Tag | undefined }> {
-  const max = Math.max(elem.childNodes.length, prev.size, next.size);
+  const elemChildren = safeChildNodes(elem);
+  const max = Math.max(elemChildren.length, prev.size, next.size);
 
   for (let index = 0; index < max; index++) {
     yield {
-      elemChild: elem.childNodes.item(index),
+      elemChild: elemChildren[index],
       prevChild: prev.get(index),
       nextChild: next.get(index),
     }
   }
 }
+
+function safeChildNodes(elem: HTMLElement): { [index: number]: ChildNode, length: number } {
+  if (elem instanceof HTMLBodyElement) {
+    // if there are script elements in your body tag, ignore them. Do NOT allow them to impact the rest of our processing.
+    return Array.from(elem.childNodes).filter(it => !(it instanceof HTMLScriptElement));
+  } else {
+    return elem.childNodes;
+  }
+}
+

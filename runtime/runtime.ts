@@ -10,6 +10,13 @@ class SingletonImpl<Item> implements Flow<Item> {
     return this.#value;
   }
 
+  debug(): any {
+    return {
+      kind: 'singleton',
+      value: this.#value,
+    };
+  }
+
   subscribe(): void {
   }
 
@@ -27,6 +34,13 @@ class VarImpl<Item> implements Var<Item> {
 
   get(): Item {
     return this.#value;
+  }
+
+  debug(): any {
+    return {
+      kind: 'var',
+      value: this.#value,
+    };
   }
 
   set(value: Item): void {
@@ -66,6 +80,14 @@ class ProjectionImpl<Base, Item> implements Var<Item>, Sink {
 
   get(): Item {
     return this.#getter(this.#root.get());
+  }
+
+  debug(): any {
+    return {
+      kind: 'projection',
+      root: this.#root,
+      value: this.get(),
+    }
   }
 
   set(value: Item): void {
@@ -109,6 +131,14 @@ class FlowImpl<Args extends [...any[]], Item> implements Flow<Item>, Sink {
     }
 
     return this.#value!;
+  }
+
+  debug(): any {
+    return {
+      kind: 'flow',
+      sources: this.#sources.map(it => it.debug()),
+      value: this.#value,
+    };
   }
 
   markDirty(): void {
@@ -162,6 +192,13 @@ class DefImpl<Args extends [...any[]], Item> implements Flow<Item>, Sink {
     return this.#value!.get();
   }
 
+  debug(): any {
+    return {
+      kind: 'def',
+      sources: this.#sources.map(it => it.debug()),
+    }
+  }
+
   markDirty(): void {
     if (this.#dirty) {
       return;
@@ -196,6 +233,7 @@ export interface Sink {
  */
 export interface Flow<Item> {
   get(): Item;
+  debug(): any;
   subscribe(sink: Sink): void;
   unsubscribe(sink: Sink): void;
 }

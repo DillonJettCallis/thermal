@@ -21,7 +21,7 @@
     "build": "yarn run esbuild src/main.ts --platform=node --target=node20 --bundle --outfile=build/bundle/lib.js --minify",
     "test": "yarn node --test './src/test/*.test.ts'",
     "check": "yarn run tsc",
-    "lint": "yarn run eslint --fix -c eslint.config.ts src/**/*.ts",
-    "sample": "yarn node src/main.ts && yarn run esbuild dist/simple.js --bundle --outfile=build/simple.js --minify"
+    "lint": "yarn run eslint --fix -c eslint.config.js src/**/*.ts",
+    "sample": "yarn node src/main.ts && yarn run esbuild dist/simple.js --bundle --outfile=build/simple.js"
   }
 }

@@ -412,19 +412,13 @@ export class Checker {
       // TODO: check for duplicated fields
 
       if (expectedKeys.equals(actualKeys)) {
-        const lookupExpected = this.#lookup(expected);
-        const expectedFields = lookupExpected instanceof CheckedStructType || lookupExpected instanceof CheckedEnumTypeStructVariant
-          ? lookupExpected.fields
-          : Map<string, CheckedTypeExpression>()
-        ;
-
         const actualFields = ex.fields.toOrderedMap().mapKeys((_, it) => it.name);
 
         // TODO: constructors can't explicitly declare generics, but they should be able to
         // now we need to confirm that the given expressions match the type we started with
         const genericParams = baseType instanceof CheckedStructType ? baseType.typeParams : this.#genericsOfEnum(baseType);
         const namesToPairs = actualFields.map((constructEntry, name) => {
-          const expected = expectedFields.get(name) ?? ex.pos.fail('This should not happen. A constructor is missing a required field after it was already checked');
+          const expected = baseType.fields.get(name) ?? ex.pos.fail('This should not happen. A constructor is missing a required field after it was already checked');
           return {
             actual: constructEntry.value,
             expected,

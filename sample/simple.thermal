@@ -1,23 +1,24 @@
 import core/dom::{ Html, head, tag, text, content, Element, style, onClick };
 
+struct Status {
+  reset: Boolean
+}
+
 def main(): Html {
-  var reset = false
+  var reset = Status { reset: false }
 
   return Html {
     head: head('Button Test'),
     body: tag('body', [
       content([
-        clickCounter(reset, sig { =>
-          reset = !reset
-          true
-        })
+        clickCounter(reset, reset.reset)
       ])
     ]),
   }
 }
 
 
-def clickCounter(reset: Boolean, resetter: sig { -> Boolean }): Element {
+def clickCounter(reset: Status, var resetter: Boolean): Element {
   var count = 0;
 
   tag('div', [
@@ -33,7 +34,7 @@ def clickCounter(reset: Boolean, resetter: sig { -> Boolean }): Element {
         content([text('Click here')]),
       ]),
       tag('button', [
-        onClick(resetter),
+        onClick(sig { => resetter = !resetter; true }),
         content([text('Reset')]),
       ])
     ])
