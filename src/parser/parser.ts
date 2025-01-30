@@ -1,7 +1,5 @@
 import { isKind, type Kind, Lexer, type Token } from './lexer.ts';
-import type {
-  Position,
-  Symbol} from '../ast.ts';
+import type { Position, Symbol } from '../ast.ts';
 import {
   type Access,
   type ExpressionPhase,
@@ -15,18 +13,17 @@ import {
   ParserAccessEx,
   ParserAndEx,
   ParserAssignmentStatement,
+  ParserAtom,
   ParserBlockEx,
   ParserBooleanLiteralEx,
   ParserCallEx,
   ParserConstantDeclare,
   ParserConstructEntry,
   ParserConstructEx,
+  ParserDataDeclare,
+  type ParserDataLayout,
   type ParserDeclaration,
-  ParserEnumAtomVariant,
   ParserEnumDeclare,
-  ParserEnumStructVariant,
-  ParserEnumTupleVariant,
-  type ParserEnumVariant,
   type ParserExpression,
   ParserExpressionStatement,
   ParserFile,
@@ -58,8 +55,9 @@ import {
   type ParserStatement,
   ParserStaticAccessEx,
   ParserStringLiteralEx,
-  ParserStructDeclare,
+  ParserStruct,
   ParserStructField,
+  ParserTuple,
   type ParserTypeExpression,
   ParserTypeParameterType,
 } from './parserAst.ts';
@@ -206,11 +204,11 @@ export class Parser {
       case 'def':
       case 'sig':
         return this.#parseFunctionDeclare(extern, access, keyword.value, first.pos);
-      case 'struct':
+      case 'data':
         if (extern) {
           keyword.pos.fail('Structs cannot be \'extern\'');
         }
-        return this.#parseStructDeclare(access, first.pos);
+        return this.#parseDataDeclare(access, first.pos);
       case 'enum':
         if (extern) {
           keyword.pos.fail('Enums cannot be \'extern\'');
@@ -297,20 +295,20 @@ export class Parser {
     });
   }
 
-  #parseStructDeclare(access: Access, pos: Position): ParserStructDeclare {
+  #parseDataDeclare(access: Access, pos: Position): ParserDataDeclare {
     const name = this.#assertKind('identifier').value;
     const typeParams = this.#parseTypeParams();
+    const symbol = this.#module.child(name);
 
-    this.#assertSymbol('{');
-    const fields: Map<string, ParserStructField> = Map(this.#parseList('}', true, () => this.#parseStructField()));
+    const layout = this.#parseDataLayout(pos, symbol, typeParams);
 
-    return new ParserStructDeclare({
+    return new ParserDataDeclare({
       pos,
       access,
-      symbol: this.#module.child(name),
+      symbol,
       name,
       typeParams,
-      fields,
+      layout,
     });
   }
 
@@ -320,25 +318,15 @@ export class Parser {
     this.#assertSymbol('{');
     const symbol = this.#module.child(name);
 
-    const variants = Map(this.#parseList<[string, ParserEnumVariant]>('}', true, () => {
+    const variants = Map(this.#parseList<[string, ParserDataLayout]>('}', true, () => {
       const nameToken = this.#assertKind('identifier');
       const name = nameToken.value;
       const pos = nameToken.pos;
       const next = this.#assertKind('symbol');
 
-      switch (next.value) {
-        case '{': {
-          const fields: Map<string, ParserStructField> = Map(this.#parseList('}', true, () => this.#parseStructField()));
+      const layout = this.#parseDataLayout(pos, symbol.child(name), typeParams, symbol);
 
-          return [name, new ParserEnumStructVariant({ pos, symbol: symbol.child(name), fields })] as const;
-        }
-        case '(': {
-          const fields = this.#parseList(')', false, () => this.#parseTypeExpression());
-          return [name, new ParserEnumTupleVariant({ pos, fields, symbol: symbol.child(name) })] as const;
-        }
-        default:
-          return [name, new ParserEnumAtomVariant({ pos, symbol: symbol.child(name) })] as const;
-      }
+      return [name, layout] as const;
     }));
 
     return new ParserEnumDeclare({
@@ -349,6 +337,29 @@ export class Parser {
       typeParams,
       variants,
     });
+  }
+
+  #parseDataLayout(pos: Position, symbol: Symbol, typeParams: List<ParserTypeParameterType>, enumName?: Symbol): ParserDataLayout {
+    const next = this.#assertKind('symbol');
+
+    switch (next.value) {
+      case '{': {
+        const fields: Map<string, ParserStructField> = Map(this.#parseList('}', true, () => this.#parseStructField()));
+
+        return new ParserStruct({ pos, symbol, typeParams, fields, enum: enumName });
+      }
+      case '(': {
+        const fields = this.#parseList(')', false, () => this.#parseTypeExpression());
+        return new ParserTuple({ pos, fields, symbol, typeParams, enum: enumName });
+      }
+      default: {
+        if (!typeParams.isEmpty()) {
+          pos.fail('Atom types are not allowed to declare generics');
+        }
+
+        return new ParserAtom({pos, symbol, typeParams, enum: enumName});
+      }
+    }
   }
 
   #parseStructField(): [string, ParserStructField] {

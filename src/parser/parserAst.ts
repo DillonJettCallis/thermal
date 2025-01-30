@@ -1,5 +1,5 @@
-import { Map, List, Set, Record,  } from 'immutable';
-import { Position, type ExpressionPhase, type FunctionPhase, type Access, Symbol, PackageName,  } from '../ast.ts';
+import { List, Map, Record, } from 'immutable';
+import { type Access, type ExpressionPhase, type FunctionPhase, PackageName, Position, Symbol, } from '../ast.ts';
 
 export type ParserTypeExpression
   = ParserNominalType
@@ -42,7 +42,7 @@ export type ParserStatement
 export type ParserDeclaration
   = ParserImportDeclaration
   | ParserFunctionDeclare
-  | ParserStructDeclare
+  | ParserDataDeclare
   | ParserEnumDeclare
   | ParserConstantDeclare
   ;
@@ -52,10 +52,10 @@ export type ParserImportExpression
   | ParserNestedImportExpression
   ;
 
-export type ParserEnumVariant
-  = ParserEnumStructVariant
-  | ParserEnumTupleVariant
-  | ParserEnumAtomVariant
+export type ParserDataLayout
+  = ParserStruct
+  | ParserTuple
+  | ParserAtom
   ;
 
 interface MutableParserBooleanLiteralEx {
@@ -609,66 +609,78 @@ export class ParserStructField extends Record<MutableParserStructField>({
   }
 }
 
-interface MutableParserStructDeclare {
+interface MutableParserStruct {
+  pos: Position;
+  symbol: Symbol;
+  typeParams: List<ParserTypeParameterType>;
+  fields: Map<string, ParserStructField>;
+  enum: Symbol | undefined;
+}
+export class ParserStruct extends Record<MutableParserStruct>({
+  pos: undefined as unknown as Position,
+  symbol: undefined as unknown as Symbol,
+  typeParams: undefined as unknown as List<ParserTypeParameterType>,
+  fields: undefined as unknown as Map<string, ParserStructField>,
+  enum: undefined as unknown as Symbol | undefined,
+}) {
+  constructor(props: MutableParserStruct) {
+    super(props);
+  }
+}
+
+interface MutableParserTuple {
+  pos: Position;
+  symbol: Symbol;
+  typeParams: List<ParserTypeParameterType>;
+  fields: List<ParserTypeExpression>;
+  enum: Symbol | undefined;
+}
+export class ParserTuple extends Record<MutableParserTuple>({
+  pos: undefined as unknown as Position,
+  symbol: undefined as unknown as Symbol,
+  typeParams: undefined as unknown as List<ParserTypeParameterType>,
+  fields: undefined as unknown as List<ParserTypeExpression>,
+  enum: undefined as unknown as Symbol | undefined,
+}) {
+  constructor(props: MutableParserTuple) {
+    super(props);
+  }
+}
+
+interface MutableParserAtom {
+  pos: Position;
+  symbol: Symbol;
+  typeParams: List<ParserTypeParameterType>;
+  enum: Symbol | undefined;
+}
+export class ParserAtom extends Record<MutableParserAtom>({
+  pos: undefined as unknown as Position,
+  symbol: undefined as unknown as Symbol,
+  typeParams: undefined as unknown as List<ParserTypeParameterType>,
+  enum: undefined as unknown as Symbol | undefined,
+}) {
+  constructor(props: MutableParserAtom) {
+    super(props);
+  }
+}
+
+interface MutableParserDataDeclare {
   pos: Position;
   access: Access;
   symbol: Symbol;
   name: string;
   typeParams: List<ParserTypeParameterType>;
-  fields: Map<string, ParserStructField>;
+  layout: ParserDataLayout;
 }
-export class ParserStructDeclare extends Record<MutableParserStructDeclare>({
+export class ParserDataDeclare extends Record<MutableParserDataDeclare>({
   pos: undefined as unknown as Position,
   access: undefined as unknown as Access,
   symbol: undefined as unknown as Symbol,
   name: undefined as unknown as string,
   typeParams: undefined as unknown as List<ParserTypeParameterType>,
-  fields: undefined as unknown as Map<string, ParserStructField>,
+  layout: undefined as unknown as ParserDataLayout,
 }) {
-  constructor(props: MutableParserStructDeclare) {
-    super(props);
-  }
-}
-
-interface MutableParserEnumStructVariant {
-  pos: Position;
-  symbol: Symbol;
-  fields: Map<string, ParserStructField>;
-}
-export class ParserEnumStructVariant extends Record<MutableParserEnumStructVariant>({
-  pos: undefined as unknown as Position,
-  symbol: undefined as unknown as Symbol,
-  fields: undefined as unknown as Map<string, ParserStructField>,
-}) {
-  constructor(props: MutableParserEnumStructVariant) {
-    super(props);
-  }
-}
-
-interface MutableParserEnumTupleVariant {
-  pos: Position;
-  symbol: Symbol;
-  fields: List<ParserTypeExpression>;
-}
-export class ParserEnumTupleVariant extends Record<MutableParserEnumTupleVariant>({
-  pos: undefined as unknown as Position,
-  symbol: undefined as unknown as Symbol,
-  fields: undefined as unknown as List<ParserTypeExpression>,
-}) {
-  constructor(props: MutableParserEnumTupleVariant) {
-    super(props);
-  }
-}
-
-interface MutableParserEnumAtomVariant {
-  pos: Position;
-  symbol: Symbol;
-}
-export class ParserEnumAtomVariant extends Record<MutableParserEnumAtomVariant>({
-  pos: undefined as unknown as Position,
-  symbol: undefined as unknown as Symbol,
-}) {
-  constructor(props: MutableParserEnumAtomVariant) {
+  constructor(props: MutableParserDataDeclare) {
     super(props);
   }
 }
@@ -679,7 +691,7 @@ interface MutableParserEnumDeclare {
   symbol: Symbol;
   name: string;
   typeParams: List<ParserTypeParameterType>;
-  variants: Map<string, ParserEnumVariant>;
+  variants: Map<string, ParserDataLayout>;
 }
 export class ParserEnumDeclare extends Record<MutableParserEnumDeclare>({
   pos: undefined as unknown as Position,
@@ -687,7 +699,7 @@ export class ParserEnumDeclare extends Record<MutableParserEnumDeclare>({
   symbol: undefined as unknown as Symbol,
   name: undefined as unknown as string,
   typeParams: undefined as unknown as List<ParserTypeParameterType>,
-  variants: undefined as unknown as Map<string, ParserEnumVariant>,
+  variants: undefined as unknown as Map<string, ParserDataLayout>,
 }) {
   constructor(props: MutableParserEnumDeclare) {
     super(props);

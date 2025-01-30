@@ -5,31 +5,24 @@ import { List, Map, Record, Seq } from 'immutable';
 import { collectDeclarations, Qualifier } from './collector.ts';
 import type { CoreTypes } from '../lib.ts';
 import {
-  type CheckedAccessRecord,
-  type CheckedEnumTypeVariant,
-  type CheckedExpression, type CheckedImportExpression, CheckedNestedImportExpression, CheckedNominalImportExpression,
-  type CheckedSetLiteralEx,
-  type CheckedStatement,
-  type CheckedTypeExpression,
-} from './checkerAst.ts';
-import {
   CheckedAccessEx,
+  type CheckedAccessRecord,
   CheckedAndEx,
   CheckedAssignmentStatement,
+  CheckedAtom,
+  CheckedAtomType,
   CheckedBlockEx,
   CheckedBooleanLiteralEx,
   CheckedCallEx,
   CheckedConstantDeclare,
   CheckedConstructEntry,
   CheckedConstructEx,
-  CheckedEnumAtomVariant,
+  CheckedDataDeclare,
+  type CheckedDataLayout,
+  type CheckedDataLayoutType,
   CheckedEnumDeclare,
-  CheckedEnumStructVariant,
-  CheckedEnumTupleVariant,
   CheckedEnumType,
-  CheckedEnumTypeAtomVariant,
-  CheckedEnumTypeStructVariant,
-  CheckedEnumTypeTupleVariant,
+  type CheckedExpression,
   CheckedExpressionStatement,
   CheckedFile,
   CheckedFloatLiteralEx,
@@ -40,6 +33,7 @@ import {
   CheckedIdentifierEx,
   CheckedIfEx,
   CheckedImportDeclaration,
+  type CheckedImportExpression,
   CheckedIntLiteralEx,
   CheckedIsEx,
   CheckedLambdaEx,
@@ -47,6 +41,8 @@ import {
   CheckedMapLiteralEntry,
   CheckedMapLiteralEx,
   CheckedModuleType,
+  CheckedNestedImportExpression,
+  CheckedNominalImportExpression,
   CheckedNominalType,
   CheckedNotEx,
   CheckedOrEx,
@@ -55,50 +51,57 @@ import {
   CheckedParameterizedType,
   CheckedReassignmentStatement,
   CheckedReturnEx,
+  type CheckedSetLiteralEx,
+  type CheckedStatement,
   CheckedStaticAccessEx,
   CheckedStringLiteralEx,
-  CheckedStructDeclare,
+  CheckedStruct,
   CheckedStructField,
   CheckedStructType,
+  CheckedTuple,
+  CheckedTupleType,
+  type CheckedTypeExpression,
   CheckedTypeParameterType,
 } from './checkerAst.ts';
-import {
-  type ParserExpression,
-  type ParserFile,
-  type ParserFunctionStatement, type ParserImportExpression,
-  type ParserMapLiteralEx, ParserNominalImportExpression,
-  type ParserParameter,
-  type ParserStatement,
-} from '../parser/parserAst.ts';
 import {
   ParserAccessEx,
   ParserAndEx,
   ParserAssignmentStatement,
+  ParserAtom,
   ParserBlockEx,
   ParserBooleanLiteralEx,
   ParserCallEx,
   ParserConstantDeclare,
   ParserConstructEx,
-  ParserEnumStructVariant,
-  ParserEnumTupleVariant,
+  ParserDataDeclare,
+  type ParserDataLayout,
+  type ParserExpression,
   ParserExpressionStatement,
+  type ParserFile,
   ParserFloatLiteralEx,
   ParserFunctionDeclare,
+  type ParserFunctionStatement,
   ParserIdentifierEx,
   ParserIfEx,
   ParserImportDeclaration,
+  type ParserImportExpression,
   ParserIntLiteralEx,
   ParserIsEx,
   ParserLambdaEx,
   ParserListLiteralEx,
+  type ParserMapLiteralEx,
+  ParserNominalImportExpression,
   ParserNotEx,
   ParserOrEx,
+  type ParserParameter,
   ParserReassignmentStatement,
   ParserReturnEx,
   ParserSetLiteralEx,
+  type ParserStatement,
   ParserStaticAccessEx,
   ParserStringLiteralEx,
-  ParserStructDeclare,
+  ParserStruct,
+  ParserTuple,
 } from '../parser/parserAst.ts';
 
 export class Checker {
@@ -153,58 +156,20 @@ export class Checker {
           expression,
           type,
         });
-      } else if (dec instanceof ParserStructDeclare) {
+      } else if (dec instanceof ParserDataDeclare) {
         const typeParams = dec.typeParams.map(it => fileScope.qualifier.checkTypeExpression(it) as CheckedTypeParameterType);
-        const fields = dec.fields.map(it => {
-          const type = fileScope.qualifier.checkTypeExpression(it.type);
 
-          return new CheckedStructField({
-            pos: it.pos,
-            type,
-            default: it.default === undefined ? undefined : this.#checkExpression(it.default, fileScope, type),
-          });
-        });
-
-        return new CheckedStructDeclare({
+        return new CheckedDataDeclare({
           pos: dec.pos,
           name: dec.name,
           symbol: dec.symbol,
           access: dec.access,
           typeParams,
-          fields,
+          layout: this.#checkDataLayout(dec.layout, typeParams, fileScope),
         });
       } else {
         const typeParams = dec.typeParams.map(it => fileScope.qualifier.checkTypeExpression(it) as CheckedTypeParameterType);
-        const variants = dec.variants.map(variant => {
-          if (variant instanceof ParserEnumStructVariant) {
-            const fields = variant.fields.map(it => {
-              const type = fileScope.qualifier.checkTypeExpression(it.type);
-
-              return new CheckedStructField({
-                pos: it.pos,
-                type,
-                default: it.default === undefined ? undefined : this.#checkExpression(it.default, fileScope, type),
-              });
-            });
-
-            return new CheckedEnumStructVariant({
-              pos: variant.pos,
-              symbol: variant.symbol,
-              fields,
-            });
-          } else if (variant instanceof ParserEnumTupleVariant) {
-            return new CheckedEnumTupleVariant({
-              pos: variant.pos,
-              symbol: variant.symbol,
-              fields: variant.fields.map(it => fileScope.qualifier.checkTypeExpression(it)),
-            });
-          } else {
-            return new CheckedEnumAtomVariant({
-              pos: variant.pos,
-              symbol: variant.symbol,
-            });
-          }
-        });
+        const variants = dec.variants.map(variant => this.#checkDataLayout(variant, typeParams, fileScope));
 
         return new CheckedEnumDeclare({
           pos: dec.pos,
@@ -221,6 +186,55 @@ export class Checker {
       src: file.src,
       module: file.module,
       declarations: checkedDeclarations,
+    });
+  }
+
+  #checkDataLayout(ex: ParserDataLayout, typeParams: List<CheckedTypeParameterType>, fileScope: Scope): CheckedDataLayout {
+    if (ex instanceof ParserStruct) {
+      return this.#checkStruct(ex, typeParams, fileScope);
+    } else if (ex instanceof ParserTuple) {
+      return this.#checkTuple(ex, typeParams, fileScope);
+    } else {
+      return this.#checkAtom(ex, typeParams, fileScope);
+    }
+  }
+
+  #checkStruct(ex: ParserStruct, typeParams: List<CheckedTypeParameterType>, fileScope: Scope): CheckedStruct {
+    const fields = ex.fields.map(it => {
+      const type = fileScope.qualifier.checkTypeExpression(it.type);
+
+      return new CheckedStructField({
+        pos: it.pos,
+        type,
+        default: it.default === undefined ? undefined : this.#checkExpression(it.default, fileScope, type),
+      });
+    });
+
+    return new CheckedStruct({
+      pos: ex.pos,
+      symbol: ex.symbol,
+      typeParams,
+      fields,
+      enum: ex.enum,
+    });
+  }
+
+  #checkTuple(ex: ParserTuple, typeParams: List<CheckedTypeParameterType>, fileScope: Scope): CheckedTuple {
+    return new CheckedTuple({
+      pos: ex.pos,
+      symbol: ex.symbol,
+      typeParams,
+      fields: ex.fields.map(it => fileScope.qualifier.checkTypeExpression(it)),
+      enum: ex.enum,
+    });
+  }
+
+  #checkAtom(ex: ParserAtom, typeParams: List<CheckedTypeParameterType>, _fileScope: Scope): CheckedAtom {
+    return new CheckedAtom({
+      pos: ex.pos,
+      symbol: ex.symbol,
+      typeParams,
+      enum: ex.enum,
     });
   }
 
@@ -404,7 +418,7 @@ export class Checker {
     const base = this.#checkExpression(ex.base, scope, undefined);
     const baseType = base.type;
 
-    if (baseType instanceof CheckedStructType || baseType instanceof CheckedEnumTypeStructVariant) {
+    if (baseType instanceof CheckedStructType) {
       // TODO: I forgot to handle default values inside of struct types
       // for now, let's just ignore defaults and we'll handle it some other time
       const expectedKeys = baseType.fields.keySeq().toSet();
@@ -416,7 +430,7 @@ export class Checker {
 
         // TODO: constructors can't explicitly declare generics, but they should be able to
         // now we need to confirm that the given expressions match the type we started with
-        const genericParams = baseType instanceof CheckedStructType ? baseType.typeParams : this.#genericsOfEnum(baseType);
+        const genericParams = baseType.typeParams;
         const namesToPairs = actualFields.map((constructEntry, name) => {
           const expected = baseType.fields.get(name) ?? ex.pos.fail('This should not happen. A constructor is missing a required field after it was already checked');
           return {
@@ -458,6 +472,10 @@ export class Checker {
     } else {
       return ex.pos.fail('Attempt to construct non-constructable');
     }
+  }
+
+  #checkConstruct() {
+
   }
 
   checkCall(ex: ParserCallEx, scope: Scope): CheckedCallEx {
@@ -530,12 +548,12 @@ export class Checker {
 
       // no branches worked, fail
       return ex.pos.fail('No overload found for arguments');
-    } else if (funcType instanceof CheckedEnumTypeTupleVariant) {
+    } else if (funcType instanceof CheckedTupleType) {
       // this is a copy of the function checking code, slightly tweaked
       // TODO: handle default arguments
       // TODO: handle generics in the expected type, that matters
       if (funcType.fields.size === ex.args.size) {
-        const genericParams = this.#genericsOfEnum(funcType);
+        const genericParams = funcType.typeParams;
         const rawArgs = funcType.fields.zipWith((expected, actual: ParserExpression) => ({expected, actual}), ex.args).toOrderedMap();
 
         const { typeArgs, args } = this.#fullChecking(rawArgs, scope, ex.pos, genericParams);
@@ -1003,16 +1021,6 @@ export class Checker {
     }
   }
 
-  #genericsOfEnum(ex: CheckedEnumTypeVariant): List<CheckedTypeParameterType> {
-    const base = this.#declarations.get(ex.name.package)?.get(ex.name.parent()!);
-
-    if (base?.type instanceof CheckedEnumType) {
-      return base.type.typeParams;
-    } else {
-      return ex.pos.fail("Expected enum type but didn't find it.");
-    }
-  }
-
   #recursiveGenericsLookup(expected: CheckedTypeExpression | undefined, actual: CheckedTypeExpression | undefined, expectedGenerics: Set<Symbol>, collector: (symbol: Symbol, type: CheckedTypeExpression) => void): void {
     if (expected === undefined || actual === undefined) {
       return;
@@ -1242,15 +1250,13 @@ export class Checker {
     }
 
     if (expected instanceof CheckedEnumType) {
-      if (actual instanceof CheckedEnumTypeStructVariant || actual instanceof CheckedEnumTypeTupleVariant || actual instanceof CheckedEnumTypeAtomVariant) {
-        const parent = actual.name.parent();
-
-        if (parent === undefined) {
+      if (actual instanceof CheckedStructType || actual instanceof CheckedTupleType || actual instanceof CheckedAtomType) {
+        if (actual.enum === undefined) {
           // this null check situation really should never happen
           return false;
         } else {
           // if the enum variant is a sub-type of this enum
-          return parent.equals(expected.name);
+          return actual.enum.equals(expected.name);
         }
       }
 
@@ -1315,9 +1321,9 @@ export class Checker {
   }
 
   #processAccess(type: CheckedTypeExpression, id: ParserIdentifierEx): CheckedTypeExpression {
-    if (type instanceof CheckedStructType || type instanceof CheckedEnumTypeStructVariant) {
+    if (type instanceof CheckedStructType) {
       return type.fields.get(id.name) ?? id.pos.fail(`Not able to find field ${id.name} on type ${type.name}`);
-    } else if (type instanceof CheckedEnumTypeTupleVariant) {
+    } else if (type instanceof CheckedTupleType) {
       if (id.name.startsWith('v')) {
         const num = Number.parseInt(id.name.substring(1));
 
@@ -1327,7 +1333,7 @@ export class Checker {
       }
 
       return id.pos.fail('Invalid field of tuple value');
-    } else if (type instanceof CheckedEnumTypeAtomVariant) {
+    } else if (type instanceof CheckedAtomType) {
       return id.pos.fail('Atom type has no fields');
     } else if (type instanceof CheckedModuleType) {
       return id.pos.fail('Module type has no fields');
@@ -1402,16 +1408,14 @@ export class Checker {
     function fill(ex: CheckedTypeExpression): CheckedTypeExpression {
       if (ex instanceof CheckedStructType) {
         return ex.set('fields', ex.fields.map(fill));
-      } else if (ex instanceof CheckedEnumTypeStructVariant) {
+      } else if (ex instanceof CheckedTupleType) {
         return ex.set('fields', ex.fields.map(fill));
-      } else if (ex instanceof CheckedEnumTypeTupleVariant) {
-        return ex.set('fields', ex.fields.map(fill));
-      } else if (ex instanceof CheckedEnumTypeAtomVariant) {
+      } else if (ex instanceof CheckedAtomType) {
         return ex;
       } else if (ex instanceof CheckedModuleType) {
         return ex;
       } else if (ex instanceof CheckedEnumType) {
-        return ex.set('variants', ex.variants.map(fill) as Map<string, CheckedEnumTypeVariant>);
+        return ex.set('variants', ex.variants.map(fill) as Map<string, CheckedDataLayoutType>);
       } else if (ex instanceof CheckedFunctionType) {
         return ex.set('params', ex.params.map(it => it.set('type', fill(it.type)))).set('result', fill(ex.result));
       } else if (ex instanceof CheckedFunctionTypeParameter) {

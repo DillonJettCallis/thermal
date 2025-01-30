@@ -20,7 +20,7 @@ const keywords = Set.of(
   'sig',
 
   // the data types
-  'struct',
+  'data',
   'enum',
 
   // the literals

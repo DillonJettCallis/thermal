@@ -6,9 +6,8 @@ import {
   CheckedCallEx,
   CheckedConstantDeclare,
   CheckedConstructEx,
-  CheckedEnumStructVariant,
-  CheckedEnumTupleVariant,
-  CheckedEnumTypeTupleVariant,
+  CheckedDataDeclare,
+  type CheckedDataLayout,
   type CheckedExpression,
   CheckedExpressionStatement,
   type CheckedFile,
@@ -36,7 +35,9 @@ import {
   type CheckedStatement,
   CheckedStaticAccessEx,
   CheckedStringLiteralEx,
-  CheckedStructDeclare
+  CheckedStruct,
+  CheckedTuple,
+  CheckedTupleType
 } from "../checker/checkerAst.ts";
 import {
   JsAccess,
@@ -50,6 +51,7 @@ import {
   JsConst,
   JsConstruct,
   JsConstructField,
+  type JsDataLayout,
   type JsDeclaration,
   JsDeclareVar,
   JsEnumDeclare,
@@ -140,30 +142,13 @@ export class JsCompiler {
           export: dec.access !== 'private',
           func: this.#compileFunctionStatement(dec.func),
         }));
-      } else if (dec instanceof CheckedStructDeclare) {
-        return Seq.Indexed.of(new JsStructDeclare({
-          name: dec.name,
-          fields: dec.fields.keySeq().toSet(),
-        }));
+      } else if (dec instanceof CheckedDataDeclare) {
+        return Seq.Indexed.of(this.#compileDataLayout(dec.name, dec.layout));
       } else {
         return Seq.Indexed.of(new JsEnumDeclare({
           name: dec.name,
           variants: dec.variants.entrySeq().map(([name, variant]) => {
-            if (variant instanceof CheckedEnumStructVariant) {
-              return new JsStructDeclare({
-                name,
-                fields: variant.fields.keySeq().toSet(),
-              });
-            } else if (variant instanceof CheckedEnumTupleVariant) {
-              return new JsTupleDeclare({
-                name,
-                fields: variant.fields.map((_, index) => `$${index}`).toList(),
-              });
-            } else {
-              return new JsAtomDeclare({
-                name,
-              })
-            }
+            return this.#compileDataLayout(name, variant);
           }).toList(),
         }))
       }
@@ -173,6 +158,24 @@ export class JsCompiler {
       name: src.src,
       declarations: this.#defaultImports.concat(decs),
     })
+  }
+
+  #compileDataLayout(name: string, variant: CheckedDataLayout): JsDataLayout {
+    if (variant instanceof CheckedStruct) {
+      return new JsStructDeclare({
+        name,
+        fields: variant.fields.keySeq().toSet(),
+      });
+    } else if (variant instanceof CheckedTuple) {
+      return new JsTupleDeclare({
+        name,
+        fields: variant.fields.map((_, index) => `$${index}`).toList(),
+      });
+    } else {
+      return new JsAtomDeclare({
+        name,
+      })
+    }
   }
 
   #nextId(): string {
@@ -332,7 +335,7 @@ export class JsCompiler {
         return this.#use(this.#compileExpression(ex.func, phase), func => {
           return this.#handleCall(func, phase, funcType, ex.args);
         });
-      } else if (funcType instanceof CheckedEnumTypeTupleVariant) {
+      } else if (funcType instanceof CheckedTupleType) {
         return ex.pos.fail("I can't handle tuples just yet");
       } else {
         return ex.pos.fail("Something is wrong, this looks like a function call but it's not a function or tuple")

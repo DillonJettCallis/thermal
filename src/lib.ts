@@ -2,11 +2,9 @@ import { type FunctionPhase, PackageName, Position, Symbol, Version } from './as
 import { List, Map } from 'immutable';
 import {
   CheckedAccessRecord,
+  CheckedAtomType,
+  type CheckedDataLayoutType,
   CheckedEnumType,
-  CheckedEnumTypeAtomVariant,
-  CheckedEnumTypeStructVariant,
-  CheckedEnumTypeTupleVariant,
-  type CheckedEnumTypeVariant,
   CheckedFunctionType,
   CheckedFunctionTypeParameter,
   CheckedModuleType,
@@ -15,6 +13,7 @@ import {
   CheckedPackage,
   CheckedParameterizedType,
   CheckedStructType,
+  CheckedTupleType,
   type CheckedTypeExpression,
   CheckedTypeParameterType,
 } from './checker/checkerAst.ts';
@@ -35,21 +34,7 @@ export function coreLib(): { package: CheckedPackage, coreTypes: CoreTypes, prea
     int: createStructType(coreSymbol.child('math'), declarations, 'Int', [], {}),
     float: createStructType(coreSymbol.child('math'), declarations, 'Float', [], {}),
     string: createStructType(coreSymbol.child('string'), declarations, 'String', [], {}),
-    option: createEnumType(coreSymbol.child('option'), declarations, 'Option', ['Item'], {
-      Some: new CheckedEnumTypeTupleVariant({
-        pos,
-        name: coreSymbol.child('option').child('Option').child('Some'),
-        fields: List.of(
-          new CheckedNominalType({
-            name: coreSymbol.child('option').child('Option').child('Item'),
-          }),
-        ),
-      }),
-      None: new CheckedEnumTypeAtomVariant({
-        pos,
-        name: coreSymbol.child('option').child('Option').child('None'),
-      }),
-    }),
+    option: initOption(declarations),
     unit: createStructType(coreSymbol, declarations, 'Unit', [], {}),
     optionOf(content: CheckedTypeExpression): CheckedTypeExpression {
       return new CheckedParameterizedType({
@@ -121,6 +106,27 @@ export function coreLib(): { package: CheckedPackage, coreTypes: CoreTypes, prea
     coreTypes,
     preamble: preamble.asImmutable(),
   };
+}
+
+function initOption(declarations: Map<Symbol, CheckedAccessRecord>): CheckedNominalType {
+  const option = coreSymbol.child('Option');
+  const typeParams = typeParamList(option, ['Item']);
+
+  return createEnumType(coreSymbol, option, declarations, typeParams, {
+    Some: new CheckedTupleType({
+      pos,
+      name: option.child('Some'),
+      typeParams,
+      fields: typeParams,
+      enum: option,
+    }),
+    None: new CheckedAtomType({
+      pos,
+      name: option.child('Option').child('None'),
+      typeParams,
+      enum: option,
+    }),
+  });
 }
 
 export interface CoreTypes {
@@ -319,9 +325,10 @@ function domLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: CoreT
     name: elementSymbol,
   });
 
-  const tagType = new CheckedEnumTypeStructVariant({
+  const tagType = new CheckedStructType({
     pos,
     name: elementSymbol.child('Tag'),
+    typeParams: List(),
     fields: Map({
       tag: coreTypes.string,
       attributes: coreTypes.mapOf(coreTypes.string, coreTypes.string),
@@ -333,17 +340,20 @@ function domLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: CoreT
       }),
       children: coreTypes.listOf(elementType),
     }),
+    enum: elementSymbol,
   });
 
-  const textType = new CheckedEnumTypeTupleVariant({
+  const textType = new CheckedTupleType({
     pos,
     name: elementSymbol.child('Text'),
+    typeParams: List(),
     fields: List.of(
       coreTypes.string,
     ),
+    enum: elementSymbol,
   });
 
-  const element = createEnumType(domSymbol, declarations, 'Element', [], {
+  const element = createEnumType(domSymbol, elementSymbol, declarations, List(), {
     Tag: tagType,
     Text: textType,
   });
@@ -615,35 +625,38 @@ function createStructType(parent: Symbol, declarations: Map<Symbol, CheckedAcces
         });
       }),
       fields: Map(fields),
+      enum: undefined,
     }),
   }));
 
   return type;
 }
 
-function createEnumType(parent: Symbol, declarations: Map<Symbol, CheckedAccessRecord>, baseName: string, typeParams: Array<string>, variants: Record<string, CheckedEnumTypeVariant>): CheckedNominalType {
-  const name = parent.child(baseName);
-
+function createEnumType(module: Symbol, name: Symbol, declarations: Map<Symbol, CheckedAccessRecord>, typeParams: List<CheckedTypeParameterType>, variants: Record<string, CheckedDataLayoutType>): CheckedNominalType {
   const type = new CheckedNominalType({
     name,
   });
 
   declarations.set(name, new CheckedAccessRecord({
     access: 'public',
-    module: parent,
+    module,
     type: new CheckedEnumType({
       pos,
       name,
-      typeParams: List(typeParams).map(it => {
-        return new CheckedTypeParameterType({
-          name: name.child(it),
-        });
-      }),
+      typeParams,
       variants: Map(variants),
     }),
   }));
 
   return type;
+}
+
+function typeParamList(owner: Symbol, params: Array<string>): List<CheckedTypeParameterType> {
+  return List(params).map(it => {
+    return new CheckedTypeParameterType({
+      name: owner.child(it),
+    });
+  });
 }
 
 function unphasedFunction(args: Array<CheckedTypeExpression>, result: CheckedTypeExpression, phase: FunctionPhase = 'fun'): CheckedFunctionType {

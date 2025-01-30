@@ -1,6 +1,6 @@
 import core/dom::{ Html, head, tag, text, content, Element, style, onClick };
 
-struct Status {
+data Status {
   reset: Boolean
 }
 

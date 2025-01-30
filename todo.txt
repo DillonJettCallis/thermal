@@ -1,0 +1,27 @@
+
+* Data layout - step away from Immutable, use native objects and arrays with custom data types
+* Core library support - mix together native and non-native code
+* Const evaluation
+* Test and evaluate effect system
+* Named arguments - if we do them, how we will do them - possibly unify constructors
+* Extend and fill out both dom library and effects like http fetch, timeouts, mouse and keyboard events
+* Output multiple files
+* Handle libraries
+* Methods
+* Type classes - at least a simple system
+* Documentation - find a way to better describe all possible combinations of phases
+* Pattern matching - will depend at least partly on data types
+* Destructuring - possibly based on pattern matching
+* Error handling library
+* Debugging - it needs to be possible somehow
+* Flow analysis - find a way to help reduce unnecessary flows
+* Tagged types - look deeper into if it's possible or usable
+* Reflection - also attempt to combine with const evaluation to have const reflection
+* Tests - yet more tests, covering the same areas better and covering new areas
+* Tooling - somehow need to learn about how to integrate with an IDE
+* Compiler UX - investigate compiler errors and find ways to make them more user friendly
+* String templates - with tagging and investigating escape options
+* Default values
+* Constructor explicit type params
+* for comprehension
+

@@ -1,5 +1,5 @@
-import { Map, List, Set, Record,  } from 'immutable';
-import { Position, type ExpressionPhase, Symbol, type FunctionPhase, type Access, PackageName,  } from '../ast.ts';
+import { List, Map, Record, } from 'immutable';
+import { type Access, type ExpressionPhase, type FunctionPhase, PackageName, Position, Symbol, } from '../ast.ts';
 
 export type CheckedTypeExpression
   = CheckedNominalType
@@ -9,8 +9,7 @@ export type CheckedTypeExpression
   | CheckedFunctionType
   | CheckedOverloadFunctionType
   | CheckedModuleType
-  | CheckedStructType
-  | CheckedEnumTypeVariant
+  | CheckedDataLayoutType
   | CheckedEnumType
   ;
 
@@ -37,10 +36,10 @@ export type CheckedExpression
   | CheckedReturnEx
   ;
 
-export type CheckedEnumTypeVariant
-  = CheckedEnumTypeStructVariant
-  | CheckedEnumTypeTupleVariant
-  | CheckedEnumTypeAtomVariant
+export type CheckedDataLayoutType
+  = CheckedStructType
+  | CheckedTupleType
+  | CheckedAtomType
   ;
 
 export type CheckedStatement
@@ -53,7 +52,7 @@ export type CheckedStatement
 export type CheckedDeclaration
   = CheckedImportDeclaration
   | CheckedFunctionDeclare
-  | CheckedStructDeclare
+  | CheckedDataDeclare
   | CheckedEnumDeclare
   | CheckedConstantDeclare
   ;
@@ -63,10 +62,10 @@ export type CheckedImportExpression
   | CheckedNestedImportExpression
   ;
 
-export type CheckedEnumVariant
-  = CheckedEnumStructVariant
-  | CheckedEnumTupleVariant
-  | CheckedEnumAtomVariant
+export type CheckedDataLayout
+  = CheckedStruct
+  | CheckedTuple
+  | CheckedAtom
   ;
 
 interface MutableCheckedBooleanLiteralEx {
@@ -246,14 +245,52 @@ interface MutableCheckedStructType {
   name: Symbol;
   typeParams: List<CheckedTypeParameterType>;
   fields: Map<string, CheckedTypeExpression>;
+  enum: Symbol | undefined;
 }
 export class CheckedStructType extends Record<MutableCheckedStructType>({
   pos: undefined as unknown as Position,
   name: undefined as unknown as Symbol,
   typeParams: undefined as unknown as List<CheckedTypeParameterType>,
   fields: undefined as unknown as Map<string, CheckedTypeExpression>,
+  enum: undefined as unknown as Symbol | undefined,
 }) {
   constructor(props: MutableCheckedStructType) {
+    super(props);
+  }
+}
+
+interface MutableCheckedTupleType {
+  pos: Position;
+  name: Symbol;
+  typeParams: List<CheckedTypeParameterType>;
+  fields: List<CheckedTypeExpression>;
+  enum: Symbol | undefined;
+}
+export class CheckedTupleType extends Record<MutableCheckedTupleType>({
+  pos: undefined as unknown as Position,
+  name: undefined as unknown as Symbol,
+  typeParams: undefined as unknown as List<CheckedTypeParameterType>,
+  fields: undefined as unknown as List<CheckedTypeExpression>,
+  enum: undefined as unknown as Symbol | undefined,
+}) {
+  constructor(props: MutableCheckedTupleType) {
+    super(props);
+  }
+}
+
+interface MutableCheckedAtomType {
+  pos: Position;
+  name: Symbol;
+  typeParams: List<CheckedTypeParameterType>;
+  enum: Symbol | undefined;
+}
+export class CheckedAtomType extends Record<MutableCheckedAtomType>({
+  pos: undefined as unknown as Position,
+  name: undefined as unknown as Symbol,
+  typeParams: undefined as unknown as List<CheckedTypeParameterType>,
+  enum: undefined as unknown as Symbol | undefined,
+}) {
+  constructor(props: MutableCheckedAtomType) {
     super(props);
   }
 }
@@ -262,58 +299,15 @@ interface MutableCheckedEnumType {
   pos: Position;
   name: Symbol;
   typeParams: List<CheckedTypeParameterType>;
-  variants: Map<string, CheckedEnumTypeVariant>;
+  variants: Map<string, CheckedDataLayoutType>;
 }
 export class CheckedEnumType extends Record<MutableCheckedEnumType>({
   pos: undefined as unknown as Position,
   name: undefined as unknown as Symbol,
   typeParams: undefined as unknown as List<CheckedTypeParameterType>,
-  variants: undefined as unknown as Map<string, CheckedEnumTypeVariant>,
+  variants: undefined as unknown as Map<string, CheckedDataLayoutType>,
 }) {
   constructor(props: MutableCheckedEnumType) {
-    super(props);
-  }
-}
-
-interface MutableCheckedEnumTypeStructVariant {
-  pos: Position;
-  name: Symbol;
-  fields: Map<string, CheckedTypeExpression>;
-}
-export class CheckedEnumTypeStructVariant extends Record<MutableCheckedEnumTypeStructVariant>({
-  pos: undefined as unknown as Position,
-  name: undefined as unknown as Symbol,
-  fields: undefined as unknown as Map<string, CheckedTypeExpression>,
-}) {
-  constructor(props: MutableCheckedEnumTypeStructVariant) {
-    super(props);
-  }
-}
-
-interface MutableCheckedEnumTypeTupleVariant {
-  pos: Position;
-  name: Symbol;
-  fields: List<CheckedTypeExpression>;
-}
-export class CheckedEnumTypeTupleVariant extends Record<MutableCheckedEnumTypeTupleVariant>({
-  pos: undefined as unknown as Position,
-  name: undefined as unknown as Symbol,
-  fields: undefined as unknown as List<CheckedTypeExpression>,
-}) {
-  constructor(props: MutableCheckedEnumTypeTupleVariant) {
-    super(props);
-  }
-}
-
-interface MutableCheckedEnumTypeAtomVariant {
-  pos: Position;
-  name: Symbol;
-}
-export class CheckedEnumTypeAtomVariant extends Record<MutableCheckedEnumTypeAtomVariant>({
-  pos: undefined as unknown as Position,
-  name: undefined as unknown as Symbol,
-}) {
-  constructor(props: MutableCheckedEnumTypeAtomVariant) {
     super(props);
   }
 }
@@ -801,66 +795,78 @@ export class CheckedStructField extends Record<MutableCheckedStructField>({
   }
 }
 
-interface MutableCheckedStructDeclare {
+interface MutableCheckedStruct {
+  pos: Position;
+  symbol: Symbol;
+  typeParams: List<CheckedTypeParameterType>;
+  fields: Map<string, CheckedStructField>;
+  enum: Symbol | undefined;
+}
+export class CheckedStruct extends Record<MutableCheckedStruct>({
+  pos: undefined as unknown as Position,
+  symbol: undefined as unknown as Symbol,
+  typeParams: undefined as unknown as List<CheckedTypeParameterType>,
+  fields: undefined as unknown as Map<string, CheckedStructField>,
+  enum: undefined as unknown as Symbol | undefined,
+}) {
+  constructor(props: MutableCheckedStruct) {
+    super(props);
+  }
+}
+
+interface MutableCheckedTuple {
+  pos: Position;
+  symbol: Symbol;
+  typeParams: List<CheckedTypeParameterType>;
+  fields: List<CheckedTypeExpression>;
+  enum: Symbol | undefined;
+}
+export class CheckedTuple extends Record<MutableCheckedTuple>({
+  pos: undefined as unknown as Position,
+  symbol: undefined as unknown as Symbol,
+  typeParams: undefined as unknown as List<CheckedTypeParameterType>,
+  fields: undefined as unknown as List<CheckedTypeExpression>,
+  enum: undefined as unknown as Symbol | undefined,
+}) {
+  constructor(props: MutableCheckedTuple) {
+    super(props);
+  }
+}
+
+interface MutableCheckedAtom {
+  pos: Position;
+  symbol: Symbol;
+  typeParams: List<CheckedTypeParameterType>;
+  enum: Symbol | undefined;
+}
+export class CheckedAtom extends Record<MutableCheckedAtom>({
+  pos: undefined as unknown as Position,
+  symbol: undefined as unknown as Symbol,
+  typeParams: undefined as unknown as List<CheckedTypeParameterType>,
+  enum: undefined as unknown as Symbol | undefined,
+}) {
+  constructor(props: MutableCheckedAtom) {
+    super(props);
+  }
+}
+
+interface MutableCheckedDataDeclare {
   pos: Position;
   access: Access;
   symbol: Symbol;
   name: string;
   typeParams: List<CheckedTypeParameterType>;
-  fields: Map<string, CheckedStructField>;
+  layout: CheckedDataLayout;
 }
-export class CheckedStructDeclare extends Record<MutableCheckedStructDeclare>({
+export class CheckedDataDeclare extends Record<MutableCheckedDataDeclare>({
   pos: undefined as unknown as Position,
   access: undefined as unknown as Access,
   symbol: undefined as unknown as Symbol,
   name: undefined as unknown as string,
   typeParams: undefined as unknown as List<CheckedTypeParameterType>,
-  fields: undefined as unknown as Map<string, CheckedStructField>,
+  layout: undefined as unknown as CheckedDataLayout,
 }) {
-  constructor(props: MutableCheckedStructDeclare) {
-    super(props);
-  }
-}
-
-interface MutableCheckedEnumStructVariant {
-  pos: Position;
-  symbol: Symbol;
-  fields: Map<string, CheckedStructField>;
-}
-export class CheckedEnumStructVariant extends Record<MutableCheckedEnumStructVariant>({
-  pos: undefined as unknown as Position,
-  symbol: undefined as unknown as Symbol,
-  fields: undefined as unknown as Map<string, CheckedStructField>,
-}) {
-  constructor(props: MutableCheckedEnumStructVariant) {
-    super(props);
-  }
-}
-
-interface MutableCheckedEnumTupleVariant {
-  pos: Position;
-  symbol: Symbol;
-  fields: List<CheckedTypeExpression>;
-}
-export class CheckedEnumTupleVariant extends Record<MutableCheckedEnumTupleVariant>({
-  pos: undefined as unknown as Position,
-  symbol: undefined as unknown as Symbol,
-  fields: undefined as unknown as List<CheckedTypeExpression>,
-}) {
-  constructor(props: MutableCheckedEnumTupleVariant) {
-    super(props);
-  }
-}
-
-interface MutableCheckedEnumAtomVariant {
-  pos: Position;
-  symbol: Symbol;
-}
-export class CheckedEnumAtomVariant extends Record<MutableCheckedEnumAtomVariant>({
-  pos: undefined as unknown as Position,
-  symbol: undefined as unknown as Symbol,
-}) {
-  constructor(props: MutableCheckedEnumAtomVariant) {
+  constructor(props: MutableCheckedDataDeclare) {
     super(props);
   }
 }
@@ -871,7 +877,7 @@ interface MutableCheckedEnumDeclare {
   symbol: Symbol;
   name: string;
   typeParams: List<CheckedTypeParameterType>;
-  variants: Map<string, CheckedEnumVariant>;
+  variants: Map<string, CheckedDataLayout>;
 }
 export class CheckedEnumDeclare extends Record<MutableCheckedEnumDeclare>({
   pos: undefined as unknown as Position,
@@ -879,7 +885,7 @@ export class CheckedEnumDeclare extends Record<MutableCheckedEnumDeclare>({
   symbol: undefined as unknown as Symbol,
   name: undefined as unknown as string,
   typeParams: undefined as unknown as List<CheckedTypeParameterType>,
-  variants: undefined as unknown as Map<string, CheckedEnumVariant>,
+  variants: undefined as unknown as Map<string, CheckedDataLayout>,
 }) {
   constructor(props: MutableCheckedEnumDeclare) {
     super(props);

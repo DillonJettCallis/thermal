@@ -78,31 +78,33 @@ const functionPhase = util('FunctionPhase', true);
 const packageName = util('PackageName', false);
 
 class Generator {
-  private readonly records = List<Record>().asMutable();
-  private readonly imports = Map<string, Set<string>>().asMutable();
-  private readonly types = Map<string, List<string>>().asMutable();
+  readonly #records = List<Record>().asMutable();
+  readonly #imports = Map<string, Set<string>>().asMutable();
+  readonly #types = Map<string, List<string>>().asMutable();
+  readonly #prefix: string;
 
-  constructor(private readonly prefix: string) {
-    this.imports.set('immutable', Set.of('Map', 'List', 'Set', 'Record'));
+  constructor(prefix: string) {
+    this.#prefix = prefix;
+    this.#imports.set('immutable', Set.of('Map', 'List', 'Set', 'Record'));
   }
 
   type(name: string, member?: { kind: 'local', name: string }): { kind: 'local', name: string } {
-    const newName = this.prefix + name;
-    this.types.set(newName, List());
+    const newName = this.#prefix + name;
+    this.#types.set(newName, List());
 
     if (member !== undefined) {
-      this.types.update(member.name, prev => prev?.push(newName) ?? List());
+      this.#types.update(member.name, prev => prev?.push(newName) ?? List());
     }
 
     return {kind: 'local', name: newName};
   }
 
   add(name: string, fields: { [key: string]: Type }, member?: { kind: 'local', name: string }): { kind: 'local', name: string } {
-    const newName = this.prefix + name;
-    this.records.push({name: newName, fields});
+    const newName = this.#prefix + name;
+    this.#records.push({name: newName, fields});
 
     if (member !== undefined) {
-      this.types.update(member.name, prev => prev?.push(newName) ?? List());
+      this.#types.update(member.name, prev => prev?.push(newName) ?? List());
     }
 
     for (const [, value] of Seq.Keyed(fields)) {
@@ -115,10 +117,10 @@ class Generator {
   #loadImports(type: Type): void {
     switch (type.kind) {
         case 'lib':
-          this.imports.update(type.package, prev => (prev ?? Set<string>()).add(type.name));
+          this.#imports.update(type.package, prev => (prev ?? Set<string>()).add(type.name));
           break;
         case 'util':
-          this.imports.update('../ast.ts', prev => (prev ?? Set<string>()).add(type.type ? `type ${type.name}` : type.name));
+          this.#imports.update('../ast.ts', prev => (prev ?? Set<string>()).add(type.type ? `type ${type.name}` : type.name));
           break;
       case 'optional':
         this.#loadImports(type.base);
@@ -135,7 +137,7 @@ class Generator {
   }
 
   *generate(): IterableIterator<string> {
-    for (const [pack, values] of this.imports) {
+    for (const [pack, values] of this.#imports) {
       yield `import { `;
       for (const value of values) {
         yield value;
@@ -145,7 +147,7 @@ class Generator {
     }
     yield '\n';
 
-    for (const [name, members] of this.types) {
+    for (const [name, members] of this.#types) {
       yield `export type ${name}\n`
       yield `  = ${members.first()}\n`
       for (const member of members.toSeq().skip(1)) {
@@ -154,7 +156,7 @@ class Generator {
       yield `  ;\n\n`;
     }
 
-    for (const {name, fields} of this.records) {
+    for (const {name, fields} of this.#records) {
       yield `interface Mutable${name} {\n`;
       for (const [key, value] of Seq.Keyed(fields)) {
         yield `  ${key}: ${this.#localName(value)};\n`;
@@ -410,33 +412,39 @@ function parser(): Generator {
     default: optional(expression),
   });
 
-  gen.add('StructDeclare', {
+  const dataLayout = gen.type('DataLayout');
+
+  gen.add('Struct', {
+    pos,
+    symbol,
+    typeParams: list(typeParameterType),
+    fields: map(native('string'), structField),
+    enum: optional(symbol),
+  }, dataLayout);
+
+  gen.add('Tuple', {
+    pos,
+    symbol,
+    typeParams: list(typeParameterType),
+    fields: list(typeExpression),
+    enum: optional(symbol),
+  }, dataLayout);
+
+  gen.add('Atom', {
+    pos,
+    symbol,
+    typeParams: list(typeParameterType),
+    enum: optional(symbol),
+  }, dataLayout);
+
+  gen.add('DataDeclare', {
     pos,
     access,
     symbol,
     name: native('string'),
     typeParams: list(typeParameterType),
-    fields: map(native('string'), structField),
+    layout: dataLayout,
   }, declare);
-
-  const enumVariant = gen.type('EnumVariant');
-
-  gen.add('EnumStructVariant', {
-    pos,
-    symbol,
-    fields: map(native('string'), structField),
-  }, enumVariant);
-
-  gen.add('EnumTupleVariant', {
-    pos,
-    symbol,
-    fields: list(typeExpression),
-  }, enumVariant);
-
-  gen.add('EnumAtomVariant', {
-    pos,
-    symbol,
-  }, enumVariant);
 
   gen.add('EnumDeclare', {
     pos,
@@ -444,7 +452,7 @@ function parser(): Generator {
     symbol,
     name: native('string'),
     typeParams: list(typeParameterType),
-    variants: map(native('string'), enumVariant),
+    variants: map(native('string'), dataLayout),
   }, declare);
 
   gen.add('ConstantDeclare', {
@@ -534,38 +542,37 @@ function checker(): Generator {
     name: symbol,
   }, typeExpression);
 
+  const dataLayoutType = gen.type('DataLayoutType', typeExpression);
+
   gen.add('StructType', {
     pos,
     name: symbol,
     typeParams: list(typeParameterType),
     fields: map(native('string'), typeExpression),
-  }, typeExpression);
+    enum: optional(symbol),
+  }, dataLayoutType);
 
-  const enumTypeVariant = gen.type('EnumTypeVariant', typeExpression);
+  gen.add('TupleType', {
+    pos,
+    name: symbol,
+    typeParams: list(typeParameterType),
+    fields: list(typeExpression),
+    enum: optional(symbol),
+  }, dataLayoutType);
+
+  gen.add('AtomType', {
+    pos,
+    name: symbol,
+    typeParams: list(typeParameterType),
+    enum: optional(symbol),
+  }, dataLayoutType);
 
   gen.add('EnumType', {
     pos,
     name: symbol,
     typeParams: list(typeParameterType),
-    variants: map(native('string'), enumTypeVariant),
+    variants: map(native('string'), dataLayoutType),
   }, typeExpression);
-
-  gen.add('EnumTypeStructVariant', {
-    pos,
-    name: symbol,
-    fields: map(native('string'), typeExpression),
-  }, enumTypeVariant);
-
-  gen.add('EnumTypeTupleVariant', {
-    pos,
-    name: symbol,
-    fields: list(typeExpression),
-  }, enumTypeVariant);
-
-  gen.add('EnumTypeAtomVariant', {
-    pos,
-    name: symbol,
-  }, enumTypeVariant);
 
   gen.add('ListLiteralEx', {
     pos,
@@ -773,33 +780,39 @@ function checker(): Generator {
     default: optional(expression),
   });
 
-  gen.add('StructDeclare', {
+  const dataLayout = gen.type('DataLayout');
+
+  gen.add('Struct', {
+    pos,
+    symbol,
+    typeParams: list(typeParameterType),
+    fields: map(native('string'), structField),
+    enum: optional(symbol),
+  }, dataLayout);
+
+  gen.add('Tuple', {
+    pos,
+    symbol,
+    typeParams: list(typeParameterType),
+    fields: list(typeExpression),
+    enum: optional(symbol),
+  }, dataLayout);
+
+  gen.add('Atom', {
+    pos,
+    symbol,
+    typeParams: list(typeParameterType),
+    enum: optional(symbol),
+  }, dataLayout);
+
+  gen.add('DataDeclare', {
     pos,
     access,
     symbol,
     name: native('string'),
     typeParams: list(typeParameterType),
-    fields: map(native('string'), structField),
+    layout: dataLayout,
   }, declare);
-
-  const enumVariant = gen.type('EnumVariant');
-
-  gen.add('EnumStructVariant', {
-    pos,
-    symbol,
-    fields: map(native('string'), structField),
-  }, enumVariant);
-
-  gen.add('EnumTupleVariant', {
-    pos,
-    symbol,
-    fields: list(typeExpression),
-  }, enumVariant);
-
-  gen.add('EnumAtomVariant', {
-    pos,
-    symbol,
-  }, enumVariant);
 
   gen.add('EnumDeclare', {
     pos,
@@ -807,7 +820,7 @@ function checker(): Generator {
     symbol,
     name: native('string'),
     typeParams: list(typeParameterType),
-    variants: map(native('string'), enumVariant),
+    variants: map(native('string'), dataLayout),
   }, declare);
 
   gen.add('ConstantDeclare', {
@@ -982,25 +995,25 @@ function jsIr(): Generator {
     func,
   }, declare);
 
-  const enumVariants = gen.type('EnumVariant', declare);
+  const dataLayout = gen.type('DataLayout', declare);
 
   const structDeclare = gen.add('StructDeclare', {
     name: native('string'),
     fields: set(native('string')),
-  }, enumVariants);
+  }, dataLayout);
 
   const tupleDeclare = gen.add('TupleDeclare', {
     name: native('string'),
     fields: list(native('string')),
-  }, enumVariants);
+  }, dataLayout);
 
   const atomDeclare = gen.add('AtomDeclare', {
     name: native('string'),
-  }, enumVariants);
+  }, dataLayout);
 
   const enumDeclare = gen.add('EnumDeclare', {
     name: native('string'),
-    variants: list(enumVariants),
+    variants: list(dataLayout),
   }, declare);
 
   const file = gen.add('File', {
@@ -1012,9 +1025,9 @@ function jsIr(): Generator {
 }
 
 const outputs = [
-  ['../src/parser/parserAst.ts', parser],
-  ['../src/checker/checkerAst.ts', checker],
-  ['../src/js/jsIr.ts', jsIr],
+  ['src/parser/parserAst.ts', parser],
+  ['src/checker/checkerAst.ts', checker],
+  ['src/js/jsIr.ts', jsIr],
 ] as const;
 
 

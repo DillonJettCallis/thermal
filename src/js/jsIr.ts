@@ -1,4 +1,4 @@
-import { Map, List, Set, Record,  } from 'immutable';
+import { List, Record, Set, } from 'immutable';
 
 export type JsExpression
   = JsBooleanLiteralEx
@@ -35,11 +35,11 @@ export type JsDeclaration
   = JsImport
   | JsConst
   | JsFunctionDeclare
-  | JsEnumVariant
+  | JsDataLayout
   | JsEnumDeclare
   ;
 
-export type JsEnumVariant
+export type JsDataLayout
   = JsStructDeclare
   | JsTupleDeclare
   | JsAtomDeclare
@@ -456,11 +456,11 @@ export class JsAtomDeclare extends Record<MutableJsAtomDeclare>({
 
 interface MutableJsEnumDeclare {
   name: string;
-  variants: List<JsEnumVariant>;
+  variants: List<JsDataLayout>;
 }
 export class JsEnumDeclare extends Record<MutableJsEnumDeclare>({
   name: undefined as unknown as string,
-  variants: undefined as unknown as List<JsEnumVariant>,
+  variants: undefined as unknown as List<JsDataLayout>,
 }) {
   constructor(props: MutableJsEnumDeclare) {
     super(props);
