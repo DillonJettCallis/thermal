@@ -1,5 +1,4 @@
 
-* Data layout - step away from Immutable, use native objects and arrays with custom data types
 * Core library support - mix together native and non-native code
 * Const evaluation
 * Test and evaluate effect system

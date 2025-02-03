@@ -1,4 +1,4 @@
-import { is } from 'immutable';
+import { equals } from './reflect.js';
 
 class SingletonImpl<Item> implements Flow<Item> {
   readonly #value: Item;
@@ -45,7 +45,7 @@ class VarImpl<Item> implements Var<Item> {
 
   set(value: Item): void {
     // if no actual change is made, don't trigger a recalculate chain
-    if (is(this.#value, value)) {
+    if (equals(this.#value, value)) {
       return;
     }
 
@@ -278,17 +278,6 @@ export function flow<Args extends [...any[]], Item>(sources: { [Index in keyof A
  */
 export function def<Args extends [...any[]], Item>(sources: { [Index in keyof Args]: Flow<Args[Index]> }, calc: (...args: Args) => Flow<Item>): Flow<Item> {
   return new DefImpl(sources, calc);
-}
-
-/** this is a temporary workaround to deal with the fact that checking `is` against a record, tuple and atom types are different
- *
- * This is really NOT good enough long term
- * TODO: replace this with a better idea
- * @param thing
- * @param type
- */
-export function isCheck(thing: any, type: any): boolean {
-  return thing === type || (typeof type === 'function' && thing instanceof type);
 }
 
 export interface EffectContext {

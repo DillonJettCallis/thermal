@@ -140,33 +140,66 @@ class Output {
   }
 
   #writeStruct(dec: JsStructDeclare): void {
-    this.#write('class ');
+    this.#write('const ');
     this.#write(dec.name);
-    this.#write(' extends Record({\n');
+    this.#write(' = {\n');
+    this.#write('  [_thermalClassMarker]: true,\n');
+    this.#write('  fullName: "');
+    this.#write(dec.name); // TODO: include full name with package and version and everything
+    this.#write('",\n');
+    this.#write('  name: "');
+    this.#write(dec.name);
+    this.#write('",\n');
+    this.#write('  generics: [],\n'); // TODO pass generics down to this point
+    this.#write('  type: "struct",\n');
+    this.#write('  enum: undefined,\n'); // TODO: pass enum value to this point
+    this.#write('  fields: {\n');
     dec.fields.forEach(field => {
-      this.#write('  ');
+      this.#write('    ');
       this.#write(field);
-      this.#write(': undefined,\n');
+      this.#write(': undefined,\n'); // TODO: pass field info down to this point
     });
-    this.#write('}) {}');
+    this.#write('  },\n};\n');
   }
 
   #writeTuple(dec: JsTupleDeclare): void {
-    this.#write('class ');
+    this.#write('const ');
     this.#write(dec.name);
-    this.#write(' extends Record({\n');
+    this.#write(' = {\n');
+    this.#write('  [_thermalClassMarker]: true,\n');
+    this.#write('  fullName: "');
+    this.#write(dec.name); // TODO: include full name with package and version and everything
+    this.#write('",\n');
+    this.#write('  name: "');
+    this.#write(dec.name);
+    this.#write('",\n');
+    this.#write('  generics: [],\n'); // TODO pass generics down to this point
+    this.#write('  type: "tuple",\n');
+    this.#write('  enum: undefined,\n'); // TODO: pass enum value to this point
+    this.#write('  fields: {\n');
     dec.fields.forEach(field => {
-      this.#write('  ');
+      this.#write('    ');
       this.#write(field);
-      this.#write(': undefined,\n');
+      this.#write(': undefined,\n'); // TODO: pass field info down to this point
     });
-    this.#write('}) {},');
+    this.#write('  },\n};\n');
   }
 
   #writeAtom(dec: JsAtomDeclare): void {
-    this.#write('new Symbol("');
+    this.#write('const ');
     this.#write(dec.name);
-    this.#write('")');
+    this.#write(' = {\n');
+    this.#write('  [_thermalClassMarker]: true,\n');
+    this.#write('  fullName: "');
+    this.#write(dec.name); // TODO: include full name with package and version and everything
+    this.#write('",\n');
+    this.#write('  name: "');
+    this.#write(dec.name);
+    this.#write('",\n');
+    this.#write('  generics: [],\n'); // TODO pass generics down to this point
+    this.#write('  type: "atom",\n');
+    this.#write('  enum: undefined,\n'); // TODO: pass enum value to this point
+    this.#write('  fields: {\n  },\n};\n');
   }
 
   #writeExpression(ex: JsExpression): void {
@@ -205,9 +238,9 @@ class Output {
       this.#writeExpression(ex.base);
       this.#write(', item => item.');
       this.#write(ex.property);
-      this.#write(', (item, value) => item.set("');
+      this.#write(', (item, value) => ({...item, ');
       this.#write(ex.property);
-      this.#write('", value))');
+      this.#write(': value}))');
     } else if (ex instanceof JsFlow) {
       this.#write('_flow([');
       ex.args.forEach(it => this.#writeExpression(it));
@@ -233,16 +266,16 @@ class Output {
       });
       this.#write(']');
     } else if (ex instanceof JsConstruct) {
-      this.#write('new ');
+      this.#write('{ [_thermalClass]: ');
       this.#writeExpression(ex.base);
-      this.#write('({');
+      this.#write(', ');
       ex.fields.forEach(field => {
         this.#write(field.name);
         this.#write(': ');
         this.#writeExpression(field.value);
         this.#write(', ');
       });
-      this.#write('})');
+      this.#write('}');
     } else if (ex instanceof JsAccess) {
       this.#writeExpression(ex.base)
       this.#write('.');

@@ -83,13 +83,19 @@ import type { ExpressionPhase, FunctionPhase } from "../ast.ts";
 export class JsCompiler {
 
   #nextTempId = 0;
-  #defaultImports = List.of('List', 'Set', 'Map', 'Record').map(take => {
+  #defaultImports = List.of('thermalClass', 'thermalClassMarker', 'is', 'equals', 'hashCode').map(take => {
     return new JsImport({
-      from: 'immutable',
+      from: '../runtime/reflect.ts',
+      take,
+      as: `_${take}`,
+    });
+  }).concat(List.of('List', 'HashMap', 'HashSet').map(take => {
+    return new JsImport({
+      from: '../runtime/reflect.ts',
       take,
       as: undefined,
     });
-  }).concat(List.of('singleton', 'variable', 'projection', 'flow', 'def', 'main').map(take => {
+  })).concat(List.of('singleton', 'variable', 'projection', 'flow', 'def', 'main').map(take => {
     return new JsImport({
       from: '../runtime/runtime.ts',
       take,
@@ -100,11 +106,6 @@ export class JsCompiler {
       from: '../runtime/runtime.ts',
       take: 'effect',
       as: undefined,
-    }),
-    new JsImport({
-      from: '../runtime/runtime.ts',
-      take: 'isCheck',
-      as: 'is',
     }),
     new JsImport({
       from: '../runtime/dom.ts',
@@ -220,12 +221,11 @@ export class JsCompiler {
 
       return base;
     } else if (ex instanceof CheckedListLiteralEx) {
-      return this.#handleListSetLiteral(new JsIdentifierEx({ name: 'List' }), phase, ex.values);
+      return this.#handleListSetLiteral(new JsAccess({ base: new JsIdentifierEx({ name: 'List' }), field: 'of' }), phase, ex.values);
     } else if (ex instanceof CheckedSetLiteralEx) {
-      return this.#handleListSetLiteral(new JsIdentifierEx({ name: 'Set' }), phase, ex.values);
+      return this.#handleListSetLiteral(new JsAccess({ base: new JsIdentifierEx({ name: 'Set' }), field: 'of' }), phase, ex.values);
     } else if (ex instanceof CheckedMapLiteralEx) {
-      // TODO: maybe map should get it's own handler due to maps being weirder
-      return this.#handleMapLiteral(new JsIdentifierEx({ name: 'Map' }), phase, ex.values);
+      return this.#handleMapLiteral(new JsAccess({ base: new JsIdentifierEx({ name: 'Map' }), field: 'of' }), phase, ex.values);
     } else if (ex instanceof CheckedIsEx) {
       if (ex.type instanceof CheckedNominalType) {
         const typeEx = new CheckedIdentifierEx({ pos: ex.pos, name: ex.type.name.name, type: ex.type, phase: 'const' });

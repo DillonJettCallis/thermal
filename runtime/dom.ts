@@ -1,78 +1,168 @@
-import { is, List, Map, Record } from "immutable";
+import { HashMap, is, List, ThermalClass, thermalClass, thermalClassMarker, ThermalObject } from './reflect.js';
 
-export class Text extends Record({
-  text: '',
-}) {
+interface IText {
+  [thermalClass]: typeof Text;
+  text: string;
 }
 
-export class Tag extends Record({
-  tag: '',
-  attributes: Map<string, string>(),
-  onClick: undefined as unknown as (() => void) | undefined,
-  children: List<Tag | Text>(),
-}) {
+const Text: ThermalClass = {
+  [thermalClassMarker]: true,
+
+  fullName: 'dom::Element::Text',
+  name: 'Text',
+  type: 'struct',
+  generics: [],
+  enum: undefined,
+  fields: {
+    text: undefined as unknown as ThermalClass,
+  }
 }
 
-export const Element = {
-  Text: Text,
-  Tag: Tag,
+export interface ITag {
+  [thermalClass]: typeof Tag;
+  tag: string;
+  attributes: HashMap<string, string>;
+  onClick: (() => void) | undefined;
+  children: List<ITag | IText>;
+}
+
+const Tag: ThermalClass = {
+  [thermalClassMarker]: true,
+
+  fullName: 'dom::Element::Text',
+  name: 'Text',
+  type: 'struct',
+  generics: [],
+  enum: undefined,
+  fields: {
+    tag: undefined as unknown as ThermalClass,
+    attributes: undefined as unknown as ThermalClass,
+    onClick: undefined as unknown as ThermalClass,
+    children: undefined as unknown as ThermalClass,
+  }
+}
+
+type IElement = ITag | IText;
+
+export const Element: ThermalClass = {
+  [thermalClassMarker]: true,
+  fullName: 'dom::Element',
+  name: 'Element',
+  type: 'enum',
+  generics: [],
+  enum: undefined,
+  fields: {
+    Text,
+    Tag,
+  }
 };
 
-export class Head extends Record({
-  title: '',
-}) {
+Text.enum = Element;
+Tag.enum = Element;
+
+
+interface IHead {
+  [thermalClass]: typeof Head;
+  title: string;
 }
 
-export class Html extends Record({
-  head: undefined as unknown as Head,
-  body: undefined as unknown as Tag,
-}) {
+export const Head: ThermalClass = {
+  [thermalClassMarker]: true,
+  fullName: 'dom::Head',
+  name: 'Head',
+  type: 'struct',
+  generics: [],
+  enum: undefined,
+  fields: {
+    title: undefined as unknown as ThermalClass,
+  }
 }
 
-export function head(title: string): Head {
-  return new Head({
+interface IHtml {
+  [thermalClass]: typeof Html;
+  head: IHead;
+  body: ITag;
+}
+
+export const Html = {
+  [thermalClassMarker]: true,
+  fullName: 'dom::Html',
+  name: 'Html',
+  type: 'struct',
+  generics: [],
+  enum: undefined,
+  fields: {
+    head: undefined as unknown as ThermalClass,
+    body: undefined as unknown as ThermalClass,
+  }
+}
+
+export function head(title: string): IHead {
+  return {
+    [thermalClass]: Head,
     title,
-  });
+  };
 }
 
-export function text(text: string): Text {
-  return new Text({text});
+export function text(text: string): IText {
+  return { [thermalClass]: Text, text};
 }
 
-export function tag(tag: string, mods: List<(tag: Tag) => Tag> | undefined): Tag {
-  const base = new Tag({
+export function tag(tag: string, mods: List<(tag: ITag) => ITag> | undefined): ITag {
+  const base: ITag = {
+    [thermalClass]: Tag,
     tag,
-    attributes: Map(),
+    attributes: HashMap.EMPTY,
     onClick: undefined,
-    children: List(),
-  });
+    children: List.EMPTY,
+  };
 
   if (mods === undefined) {
     return base;
   } else {
-    return mods.reduce((prev, next) => next(prev), base);
+    return mods.fold(base, (prev, next) => next(prev));
   }
 }
 
-export function content(children: List<Tag | Text>): (tag: Tag) => Tag {
-  return tag => tag.update('children', prev => prev.concat(children));
+export function content(children: List<ITag | IText>): (tag: ITag) => ITag {
+  return tag => {
+    return {
+      ...tag,
+      children: tag.children.concat(children)
+    };
+  }
 }
 
-export function onClick(action: () => void): (tag: Tag) => Tag {
-  return tag => tag.set('onClick', action);
+export function onClick(action: () => void): (tag: ITag) => ITag {
+  return tag => {
+    return {
+      ...tag,
+      onClick: action,
+    }
+  };
 }
 
-export function attr(key: string, value: string): (tag: Tag) => Tag {
-  return tag => tag.update('attributes', attr => attr.set(key, value));
+export function attr(key: string, value: string): (tag: ITag) => ITag {
+  return tag => {
+    return {
+      ...tag,
+      attributes: tag.attributes.set(key, value),
+    }
+  }
 }
 
-export function style(style: string): (tag: Tag) => Tag {
-  return tag => tag.update('attributes', attr => attr.update('style', prev => (prev === undefined ? '' : prev + ';') + style));
+export function style(style: string): (tag: ITag) => ITag {
+  return tag => {
+    return {
+      ...tag,
+      attributes: tag.attributes.update('style', prev => (prev === undefined ? '' : prev + ';') + style)
+    }
+  }
 }
 
-let prev: Html | undefined;
+let prev: IHtml | undefined;
 
-export function domRenderer(next: Html): void {
+export function domRenderer(next: IHtml): void {
   if (prev === undefined) {
     document.title = next.head.title;
     createTag(document.body, next.body);
@@ -86,19 +176,27 @@ export function domRenderer(next: Html): void {
   prev = next;
 }
 
-function update(elem: Node, prev: Tag | Text, next: Tag | Text) {
+function isTag(obj: ThermalObject): obj is ITag {
+  return obj[thermalClass] === Tag;
+}
+
+function isText(obj: ThermalObject): obj is IText {
+  return obj[thermalClass] === Text;
+}
+
+function update(elem: Node, prev: ITag | IText, next: ITag | IText) {
   // nothing has changed, do nothing
   if (is(prev, next)) {
     return;
   }
 
   // if everything agrees that this is a tag, update
-  if (elem instanceof HTMLElement && prev instanceof Tag && next instanceof Tag) {
+  if (elem instanceof HTMLElement && isTag(prev) && isTag(next)) {
     updateTag(elem, prev, next);
   } else {
     // otherwise, destroy and recreate
 
-    if (next instanceof Text) {
+    if (isText(next)) {
       const parent = elem.parentElement!;
       const newNode = document.createTextNode(next.text);
       parent.replaceChild(newNode, elem);
@@ -112,7 +210,7 @@ function update(elem: Node, prev: Tag | Text, next: Tag | Text) {
 
 }
 
-function updateTag(elem: HTMLElement, prev: Tag, next: Tag): void {
+function updateTag(elem: HTMLElement, prev: ITag, next: ITag): void {
   if (prev.tag !== next.tag) {
     // if the tag itself has changed, just replace it with a newly created one
     const parent = elem.parentElement!;
@@ -158,8 +256,8 @@ function updateTag(elem: HTMLElement, prev: Tag, next: Tag): void {
   }
 }
 
-function create(parent: HTMLElement, node: Tag | Text): void {
-  if (node instanceof Text) {
+function create(parent: HTMLElement, node: ITag | IText): void {
+  if (isText(node)) {
     const newNode = document.createTextNode(node.text);
     parent.appendChild(newNode);
   } else {
@@ -169,7 +267,7 @@ function create(parent: HTMLElement, node: Tag | Text): void {
   }
 }
 
-function createTag(elem: HTMLElement, node: Tag): void {
+function createTag(elem: HTMLElement, node: ITag): void {
   node.attributes.forEach((value, key) => {
     elem.setAttribute(key, value);
   });
@@ -183,7 +281,7 @@ function createTag(elem: HTMLElement, node: Tag): void {
   });
 }
 
-function* multiZip(elem: HTMLElement, prev: List<Text | Tag>, next: List<Text | Tag>): IterableIterator<{ elemChild: Node | undefined, prevChild: Text | Tag | undefined, nextChild: Text | Tag | undefined }> {
+function* multiZip(elem: HTMLElement, prev: List<IText | ITag>, next: List<IText | ITag>): IterableIterator<{ elemChild: Node | undefined, prevChild: IText | ITag | undefined, nextChild: IText | ITag | undefined }> {
   const elemChildren = safeChildNodes(elem);
   const max = Math.max(elemChildren.length, prev.size, next.size);
 
