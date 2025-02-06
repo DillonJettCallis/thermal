@@ -1,5 +1,5 @@
-import { List, Map, Record, } from 'immutable';
-import { type Access, type ExpressionPhase, type FunctionPhase, PackageName, Position, Symbol, } from '../ast.ts';
+import { List, Map, Record } from 'immutable';
+import { type Access, type ExpressionPhase, type FunctionPhase, PackageName, Position, Symbol } from '../ast.ts';
 
 export type CheckedTypeExpression
   = CheckedNominalType
@@ -52,6 +52,7 @@ export type CheckedStatement
 export type CheckedDeclaration
   = CheckedImportDeclaration
   | CheckedFunctionDeclare
+  | CheckedFunctionExternDeclare
   | CheckedDataDeclare
   | CheckedEnumDeclare
   | CheckedConstantDeclare
@@ -763,19 +764,42 @@ export class CheckedImportDeclaration extends Record<MutableCheckedImportDeclara
 
 interface MutableCheckedFunctionDeclare {
   pos: Position;
-  extern: boolean;
   access: Access;
   symbol: Symbol;
   func: CheckedFunctionStatement;
 }
 export class CheckedFunctionDeclare extends Record<MutableCheckedFunctionDeclare>({
   pos: undefined as unknown as Position,
-  extern: undefined as unknown as boolean,
   access: undefined as unknown as Access,
   symbol: undefined as unknown as Symbol,
   func: undefined as unknown as CheckedFunctionStatement,
 }) {
   constructor(props: MutableCheckedFunctionDeclare) {
+    super(props);
+  }
+}
+
+interface MutableCheckedFunctionExternDeclare {
+  pos: Position;
+  access: Access;
+  symbol: Symbol;
+  name: string;
+  functionPhase: FunctionPhase;
+  typeParams: List<CheckedTypeParameterType>;
+  result: CheckedTypeExpression;
+  params: List<CheckedParameter>;
+}
+export class CheckedFunctionExternDeclare extends Record<MutableCheckedFunctionExternDeclare>({
+  pos: undefined as unknown as Position,
+  access: undefined as unknown as Access,
+  symbol: undefined as unknown as Symbol,
+  name: undefined as unknown as string,
+  functionPhase: undefined as unknown as FunctionPhase,
+  typeParams: undefined as unknown as List<CheckedTypeParameterType>,
+  result: undefined as unknown as CheckedTypeExpression,
+  params: undefined as unknown as List<CheckedParameter>,
+}) {
+  constructor(props: MutableCheckedFunctionExternDeclare) {
     super(props);
   }
 }

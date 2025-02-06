@@ -1,12 +1,12 @@
 
 * Core library support - mix together native and non-native code
+* Methods
 * Const evaluation
 * Test and evaluate effect system
 * Named arguments - if we do them, how we will do them - possibly unify constructors
 * Extend and fill out both dom library and effects like http fetch, timeouts, mouse and keyboard events
 * Output multiple files
 * Handle libraries
-* Methods
 * Type classes - at least a simple system
 * Documentation - find a way to better describe all possible combinations of phases
 * Pattern matching - will depend at least partly on data types

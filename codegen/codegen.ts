@@ -1,4 +1,4 @@
-import { List, Map, Seq, Set } from "immutable";
+import { List, Map, Seq, Set } from 'immutable';
 import { createWriteStream } from 'node:fs';
 import { Stream } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -400,10 +400,20 @@ function parser(): Generator {
 
   gen.add('FunctionDeclare', {
     pos,
-    extern: native('boolean'),
     access,
     symbol,
     func,
+  }, declare);
+
+  gen.add('FunctionExternDeclare', {
+    pos,
+    access,
+    symbol,
+    name: native('string'),
+    functionPhase,
+    typeParams: list(typeParameterType),
+    result: typeExpression,
+    params: list(lambdaParameter),
   }, declare);
 
   const structField = gen.add('StructField', {
@@ -768,10 +778,20 @@ function checker(): Generator {
 
   gen.add('FunctionDeclare', {
     pos,
-    extern: native('boolean'),
     access,
     symbol,
     func,
+  }, declare);
+
+  gen.add('FunctionExternDeclare', {
+    pos,
+    access,
+    symbol,
+    name: native('string'),
+    functionPhase,
+    typeParams: list(typeParameterType),
+    result: typeExpression,
+    params: list(lambdaParameter),
   }, declare);
 
   const structField = gen.add('StructField', {
@@ -985,6 +1005,10 @@ function jsIr(): Generator {
     as: optional(native('string')),
   }, declare);
 
+  const exportDeclare = gen.add('Export', {
+    name: native('string'),
+  }, declare);
+
   const constDeclare = gen.add('Const', {
     name: native('string'),
     body: expression,
@@ -995,29 +1019,36 @@ function jsIr(): Generator {
     func,
   }, declare);
 
-  const dataLayout = gen.type('DataLayout', declare);
+  const dataLayout = gen.type('DataLayout');
 
-  const structDeclare = gen.add('StructDeclare', {
+  const structDeclare = gen.add('StructLayout', {
     name: native('string'),
     fields: set(native('string')),
   }, dataLayout);
 
-  const tupleDeclare = gen.add('TupleDeclare', {
+  const tupleDeclare = gen.add('TupleLayout', {
     name: native('string'),
     fields: list(native('string')),
   }, dataLayout);
 
-  const atomDeclare = gen.add('AtomDeclare', {
+  const atomDeclare = gen.add('AtomLayout', {
     name: native('string'),
   }, dataLayout);
 
+  const dataDeclare = gen.add('DataDeclare', {
+    export: native('boolean'),
+    layout: dataLayout,
+  }, declare);
+
   const enumDeclare = gen.add('EnumDeclare', {
+    export: native('boolean'),
     name: native('string'),
     variants: list(dataLayout),
   }, declare);
 
   const file = gen.add('File', {
     name: native('string'),
+    main: native('boolean'),
     declarations: list(declare),
   });
 

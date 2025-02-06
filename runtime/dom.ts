@@ -1,163 +1,27 @@
-import { HashMap, is, List, ThermalClass, thermalClass, thermalClassMarker, ThermalObject } from './reflect.js';
+import { equals, HashMap, List, type ThermalClass, thermalClass, type ThermalObject } from './reflect.js';
 
 interface IText {
-  [thermalClass]: typeof Text;
+  [thermalClass]: ThermalClass;
   text: string;
 }
 
-const Text: ThermalClass = {
-  [thermalClassMarker]: true,
-
-  fullName: 'dom::Element::Text',
-  name: 'Text',
-  type: 'struct',
-  generics: [],
-  enum: undefined,
-  fields: {
-    text: undefined as unknown as ThermalClass,
-  }
-}
-
 export interface ITag {
-  [thermalClass]: typeof Tag;
+  [thermalClass]: ThermalClass;
   tag: string;
   attributes: HashMap<string, string>;
   onClick: (() => void) | undefined;
   children: List<ITag | IText>;
 }
 
-const Tag: ThermalClass = {
-  [thermalClassMarker]: true,
-
-  fullName: 'dom::Element::Text',
-  name: 'Text',
-  type: 'struct',
-  generics: [],
-  enum: undefined,
-  fields: {
-    tag: undefined as unknown as ThermalClass,
-    attributes: undefined as unknown as ThermalClass,
-    onClick: undefined as unknown as ThermalClass,
-    children: undefined as unknown as ThermalClass,
-  }
-}
-
-type IElement = ITag | IText;
-
-export const Element: ThermalClass = {
-  [thermalClassMarker]: true,
-  fullName: 'dom::Element',
-  name: 'Element',
-  type: 'enum',
-  generics: [],
-  enum: undefined,
-  fields: {
-    Text,
-    Tag,
-  }
-};
-
-Text.enum = Element;
-Tag.enum = Element;
-
-
 interface IHead {
-  [thermalClass]: typeof Head;
+  [thermalClass]: ThermalClass;
   title: string;
 }
 
-export const Head: ThermalClass = {
-  [thermalClassMarker]: true,
-  fullName: 'dom::Head',
-  name: 'Head',
-  type: 'struct',
-  generics: [],
-  enum: undefined,
-  fields: {
-    title: undefined as unknown as ThermalClass,
-  }
-}
-
 interface IHtml {
-  [thermalClass]: typeof Html;
+  [thermalClass]: ThermalClass;
   head: IHead;
   body: ITag;
-}
-
-export const Html = {
-  [thermalClassMarker]: true,
-  fullName: 'dom::Html',
-  name: 'Html',
-  type: 'struct',
-  generics: [],
-  enum: undefined,
-  fields: {
-    head: undefined as unknown as ThermalClass,
-    body: undefined as unknown as ThermalClass,
-  }
-}
-
-export function head(title: string): IHead {
-  return {
-    [thermalClass]: Head,
-    title,
-  };
-}
-
-export function text(text: string): IText {
-  return { [thermalClass]: Text, text};
-}
-
-export function tag(tag: string, mods: List<(tag: ITag) => ITag> | undefined): ITag {
-  const base: ITag = {
-    [thermalClass]: Tag,
-    tag,
-    attributes: HashMap.EMPTY,
-    onClick: undefined,
-    children: List.EMPTY,
-  };
-
-  if (mods === undefined) {
-    return base;
-  } else {
-    return mods.fold(base, (prev, next) => next(prev));
-  }
-}
-
-export function content(children: List<ITag | IText>): (tag: ITag) => ITag {
-  return tag => {
-    return {
-      ...tag,
-      children: tag.children.concat(children)
-    };
-  }
-}
-
-export function onClick(action: () => void): (tag: ITag) => ITag {
-  return tag => {
-    return {
-      ...tag,
-      onClick: action,
-    }
-  };
-}
-
-export function attr(key: string, value: string): (tag: ITag) => ITag {
-  return tag => {
-    return {
-      ...tag,
-      attributes: tag.attributes.set(key, value),
-    }
-  }
-}
-
-export function style(style: string): (tag: ITag) => ITag {
-  return tag => {
-    return {
-      ...tag,
-      attributes: tag.attributes.update('style', prev => (prev === undefined ? '' : prev + ';') + style)
-    }
-  }
 }
 
 let prev: IHtml | undefined;
@@ -167,7 +31,7 @@ export function domRenderer(next: IHtml): void {
     document.title = next.head.title;
     createTag(document.body, next.body);
   } else {
-    if (!is(prev.head, next.head)) {
+    if (!equals(prev.head, next.head)) {
       document.title = next.head.title;
     }
     updateTag(document.body, prev.body, next.body);
@@ -177,16 +41,16 @@ export function domRenderer(next: IHtml): void {
 }
 
 function isTag(obj: ThermalObject): obj is ITag {
-  return obj[thermalClass] === Tag;
+  return obj[thermalClass].name === "Tag";
 }
 
 function isText(obj: ThermalObject): obj is IText {
-  return obj[thermalClass] === Text;
+  return obj[thermalClass].name === "Text";
 }
 
 function update(elem: Node, prev: ITag | IText, next: ITag | IText) {
   // nothing has changed, do nothing
-  if (is(prev, next)) {
+  if (equals(prev, next)) {
     return;
   }
 

@@ -6,7 +6,7 @@ import {
   type FunctionPhase,
   isAccess,
   isExpressionPhase,
-  isFunctionPhase,
+  isFunctionPhase
 } from '../ast.ts';
 import { List, Map, Set } from 'immutable';
 import {
@@ -29,6 +29,7 @@ import {
   ParserFile,
   ParserFloatLiteralEx,
   ParserFunctionDeclare,
+  ParserFunctionExternDeclare,
   ParserFunctionStatement,
   ParserFunctionType,
   ParserFunctionTypeParameter,
@@ -59,7 +60,7 @@ import {
   ParserStructField,
   ParserTuple,
   type ParserTypeExpression,
-  ParserTypeParameterType,
+  ParserTypeParameterType
 } from './parserAst.ts';
 
 export class Parser {
@@ -188,31 +189,20 @@ export class Parser {
       return this.#parseImportDeclare(first.pos);
     }
 
-    const extern = this.#checkKeyword('extern');
-
     const [access, keyword] = isAccess(first.value)
       ? [first.value, this.#assertKind('keyword')]
       : ['internal' as const, first];
 
     switch (keyword.value) {
       case 'const':
-        if (extern) {
-          keyword.pos.fail('Structs cannot be \'extern\'');
-        }
         return this.#parseConstDeclare(access, first.pos);
       case 'fun':
       case 'def':
       case 'sig':
-        return this.#parseFunctionDeclare(extern, access, keyword.value, first.pos);
+        return this.#parseFunctionDeclare(access, keyword.value, first.pos);
       case 'data':
-        if (extern) {
-          keyword.pos.fail('Structs cannot be \'extern\'');
-        }
         return this.#parseDataDeclare(access, first.pos);
       case 'enum':
-        if (extern) {
-          keyword.pos.fail('Enums cannot be \'extern\'');
-        }
         return this.#parseEnumDeclare(access, first.pos);
       case 'import':
       default:
@@ -283,15 +273,49 @@ export class Parser {
     });
   }
 
-  #parseFunctionDeclare(extern: boolean, access: Access, phase: FunctionPhase, pos: Position): ParserFunctionDeclare {
-    const func = this.#parseFunctionStatement(phase, 'const', pos);
+  #parseFunctionDeclare(access: Access, functionPhase: FunctionPhase, pos: Position): ParserDeclaration {
+    const { name, typeParams, params, result } = this.#parseFunctionSignature();
+    const symbol = this.#module.child(name);
+
+    const final = this.#assertKind('symbol');
+
+    if (final.value === '=' && this.#checkKeyword('extern')) {
+      this.#skip();
+      return new ParserFunctionExternDeclare({
+        pos,
+        access,
+        functionPhase,
+        name,
+        symbol,
+        typeParams,
+        params,
+        result,
+      })
+    }
+
+    const body = final.value === '='
+      ? this.#parseExpression()
+      : final.value === '{'
+        ? this.#parseBlockExpression(final.pos)
+        : final.pos.fail('Expected function body');
 
     return new ParserFunctionDeclare({
-      func,
-      extern,
-      access,
-      symbol: this.#module.child(func.name),
       pos,
+      access,
+      symbol,
+      func: new ParserFunctionStatement({
+        pos,
+        phase: 'const',
+        name,
+        typeParams,
+        result,
+        lambda: new ParserLambdaEx({
+          pos,
+          functionPhase,
+          params,
+          body,
+        }),
+      })
     });
   }
 
@@ -322,8 +346,6 @@ export class Parser {
       const nameToken = this.#assertKind('identifier');
       const name = nameToken.value;
       const pos = nameToken.pos;
-      const next = this.#assertKind('symbol');
-
       const layout = this.#parseDataLayout(pos, symbol.child(name), typeParams, symbol);
 
       return [name, layout] as const;
@@ -353,10 +375,6 @@ export class Parser {
         return new ParserTuple({ pos, fields, symbol, typeParams, enum: enumName });
       }
       default: {
-        if (!typeParams.isEmpty()) {
-          pos.fail('Atom types are not allowed to declare generics');
-        }
-
         return new ParserAtom({pos, symbol, typeParams, enum: enumName});
       }
     }
@@ -382,7 +400,7 @@ export class Parser {
     ];
   }
 
-  #parseFunctionStatement(functionPhase: FunctionPhase, phase: ExpressionPhase, pos: Position): ParserFunctionStatement {
+  #parseFunctionSignature(): { name: string, typeParams: List<ParserTypeParameterType>, params: List<ParserParameter>, result: ParserTypeExpression } {
     // the word 'fun' has already been parsed by this point
     const name = this.#assertKind('identifier').value;
     const typeParams = this.#parseTypeParams();
@@ -417,6 +435,12 @@ export class Parser {
     });
     this.#assertSymbol(':');
     const result = this.#parseTypeExpression();
+
+    return { name, typeParams, params, result };
+  }
+
+  #parseFunctionStatement(functionPhase: FunctionPhase, phase: ExpressionPhase, pos: Position): ParserFunctionStatement {
+    const { name, typeParams, params, result } = this.#parseFunctionSignature();
 
     const final = this.#assertKind('symbol');
     const body = final.value === '='

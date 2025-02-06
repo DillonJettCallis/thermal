@@ -30,14 +30,13 @@ import {
   CheckedStructType,
   CheckedTupleType,
   type CheckedTypeExpression,
-  CheckedTypeParameterType,
+  CheckedTypeParameterType
 } from './checkerAst.ts';
-
 
 /**
  * Given this file of parsed things, return a map of all symbols with their access level and type
  */
-export function collectSymbols(files: Array<ParserFile>, manager: DependencyManager, preamble: Map<string, Symbol>): Map<Symbol, CheckedAccessRecord> {
+export function collectSymbols(files: List<ParserFile>, manager: DependencyManager, preamble: Map<string, Symbol>): Map<Symbol, CheckedAccessRecord> {
   const declarations = Map<Symbol, CheckedAccessRecord>().asMutable();
 
   files.forEach(file => {

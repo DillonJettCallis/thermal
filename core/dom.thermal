@@ -1,0 +1,79 @@
+
+public enum Element {
+  Text { text: String },
+  Tag {
+    tag: String,
+    attributes: Map<String, String>,
+    onClick: sig { -> Boolean },
+    children: List<Element>,
+  },
+}
+
+public data Head {
+  title: String,
+}
+
+public data Html {
+  head: Head,
+  body: Element::Tag,
+}
+
+public fun head(title: String): Head = Head { title };
+
+public fun text(text: String): Element::Text = Element::Text { text };
+
+public fun tag(tag: String, mods: List<fun { Element::Tag -> Element::Tag }>): Element::Tag {
+  val init = Element::Tag {
+    tag: tag,
+    attributes: #[],
+    onClick: sig { => false },
+    children: [],
+  }
+
+  return List::fold(mods, init, fun { sum, next => next(sum) });
+}
+
+public fun content(children: List<Element>): fun { Element::Tag -> Element::Tag } {
+  return fun { tag =>
+    Element::Tag {
+      tag: tag.tag,
+      attributes: tag.attributes,
+      onClick: tag.onClick,
+      children: List::concat(tag.children, children),
+    }
+  }
+}
+
+public fun onClick(action: sig { -> Boolean }): fun { Element::Tag -> Element::Tag } {
+  return fun { tag =>
+    Element::Tag {
+      tag: tag.tag,
+      attributes: tag.attributes,
+      onClick: action,
+      children: tag.children,
+    }
+  }
+}
+
+public fun attr(key: String, value: String): fun { Element::Tag -> Element::Tag } {
+  return fun { tag =>
+    Element::Tag {
+      tag: tag.tag,
+      attributes: Map::set(tag.attributes, key, value),
+      onClick: tag.onClick,
+      children: tag.children,
+    }
+  }
+}
+
+public fun style(style: String): fun { Element::Tag -> Element::Tag } {
+  return fun { tag =>
+    Element::Tag {
+      tag: tag.tag,
+      attributes: Map::update(tag.attributes, "style", fun { prev => stringConcat(stringConcat(prev, ";"), style) }),
+      onClick: tag.onClick,
+      children: tag.children,
+    }
+  }
+}
+

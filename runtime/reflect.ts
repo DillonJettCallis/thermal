@@ -32,6 +32,10 @@ function isThermalClass(obj: any): obj is ThermalClass {
   return obj != null && typeof obj === 'object' && thermalClassMarker in obj;
 }
 
+export function stringConcat(left: string, right: string): string {
+  return left + right;
+}
+
 export function is(obj: any, type: any): boolean {
   if (obj == null) {
     return false;
@@ -421,6 +425,10 @@ export class List<Item> implements Iterable<Item> {
     }
   }
 
+  static concat<Item>(left: List<Item>, right: List<Item>): List<Item> {
+    return left.concat(right);
+  }
+
   concat(other: Iterable<Item>): List<Item> {
     if (this.#size === 0) {
       if (other instanceof List) {
@@ -489,6 +497,10 @@ export class List<Item> implements Iterable<Item> {
     for (const next of this) {
       action(next);
     }
+  }
+
+  static fold<Item, Out>(list: List<Item>, init: Out, mapper: (sum: Out, next: Item) => Out): Out {
+    return list.fold(init, mapper);
   }
 
   fold<Out>(init: Out, mapper: (sum: Out, next: Item) => Out): Out {
@@ -645,6 +657,10 @@ export class HashMap<Key, Value> implements Iterable<readonly [Key, Value]> {
     }
   }
 
+  static set<Key, Value>(self: HashMap<Key, Value>, key: Key, value: Value): HashMap<Key, Value> {
+    return self.set(key, value);
+  }
+
   set(key: Key, value: Value): HashMap<Key, Value> {
     const hash = hashCode(key);
     const newEntry: Entry<Key, Value> = { hash, key, value };
@@ -744,6 +760,10 @@ export class HashMap<Key, Value> implements Iterable<readonly [Key, Value]> {
         return new HashMap(bucketsCopy, this.#size + 1);
       }
     }
+  }
+
+  static update<Key, Value>(self: HashMap<Key, Value>, key: Key, updater: (old: Value | undefined) => Value | undefined): HashMap<Key, Value> {
+    return self.update(key, updater);
   }
 
   update(key: Key, updater: (old: Value | undefined) => Value | undefined): HashMap<Key, Value> {

@@ -2,15 +2,18 @@ import {
   JsAccess,
   JsArray,
   JsAssign,
-  JsAtomDeclare,
+  JsAtomLayout,
   JsBinaryOp,
   JsBooleanLiteralEx,
   JsCall,
   JsConst,
   JsConstruct,
+  JsDataDeclare,
+  type JsDataLayout,
   JsDeclareVar,
   JsDef,
   JsEnumDeclare,
+  JsExport,
   type JsExpression,
   type JsFile,
   JsFlow,
@@ -27,13 +30,12 @@ import {
   JsSingleton,
   type JsStatement,
   JsStringLiteralEx,
-  JsStructDeclare,
-  JsTupleDeclare,
+  JsStructLayout,
+  JsTupleLayout,
   JsUndefined,
   JsVariable
-} from "./jsIr.ts";
-import { createWriteStream, mkdirSync, existsSync, WriteStream } from 'node:fs';
-
+} from './jsIr.ts';
+import { createWriteStream, existsSync, mkdirSync, WriteStream } from 'node:fs';
 
 export class JsEmitter {
   readonly #dir: string;
@@ -95,13 +97,23 @@ class Output {
           this.#write(dec.from);
         }
         this.#write('";\n');
-      } else if (dec instanceof JsStructDeclare) {
-        this.#writeStruct(dec);
-      } else if (dec instanceof JsTupleDeclare) {
-        this.#writeTuple(dec);
-      } else if (dec instanceof JsAtomDeclare) {
-        this.#writeAtom(dec);
+      } else if (dec instanceof JsExport) {
+        this.#write('export { ');
+        this.#write(dec.name);
+        this.#write(' };\n');
+      } else if (dec instanceof JsDataDeclare) {
+        if (dec.export) {
+          this.#write('export ');
+        }
+        this.#write('const ');
+        this.#write(dec.layout.name);
+        this.#write(' = ');
+        this.#writeDataLayout(dec.layout);
+        this.#write(';\n');
       } else if (dec instanceof JsEnumDeclare) {
+        if (dec.export) {
+          this.#write('export ');
+        }
         this.#write('const ');
         this.#write(dec.name);
         this.#write(' = {\n');
@@ -109,15 +121,7 @@ class Output {
           this.#write('  ');
           this.#write(v.name);
           this.#write(': ');
-
-          if (v instanceof JsStructDeclare) {
-            this.#writeStruct(v);
-          } else if (v instanceof JsTupleDeclare) {
-            this.#writeTuple(v);
-          } else {
-            this.#writeAtom(v);
-          }
-
+          this.#writeDataLayout(v);
           this.#write(',\n');
         });
         this.#write('};\n');
@@ -136,13 +140,23 @@ class Output {
       }
     });
 
-    this.#write('_main(main, _domRenderer);\n');
+    if (file.main) {
+      this.#write('_main(main, _domRenderer);\n');
+    }
   }
 
-  #writeStruct(dec: JsStructDeclare): void {
-    this.#write('const ');
-    this.#write(dec.name);
-    this.#write(' = {\n');
+  #writeDataLayout(layout: JsDataLayout): void {
+    if (layout instanceof JsStructLayout) {
+      this.#writeStruct(layout);
+    } else if (layout instanceof JsTupleLayout) {
+      this.#writeTuple(layout);
+    } else {
+      this.#writeAtom(layout);
+    }
+  }
+
+  #writeStruct(dec: JsStructLayout): void {
+    this.#write('{\n');
     this.#write('  [_thermalClassMarker]: true,\n');
     this.#write('  fullName: "');
     this.#write(dec.name); // TODO: include full name with package and version and everything
@@ -159,13 +173,11 @@ class Output {
       this.#write(field);
       this.#write(': undefined,\n'); // TODO: pass field info down to this point
     });
-    this.#write('  },\n};\n');
+    this.#write('  },\n}');
   }
 
-  #writeTuple(dec: JsTupleDeclare): void {
-    this.#write('const ');
-    this.#write(dec.name);
-    this.#write(' = {\n');
+  #writeTuple(dec: JsTupleLayout): void {
+    this.#write('{\n');
     this.#write('  [_thermalClassMarker]: true,\n');
     this.#write('  fullName: "');
     this.#write(dec.name); // TODO: include full name with package and version and everything
@@ -182,13 +194,11 @@ class Output {
       this.#write(field);
       this.#write(': undefined,\n'); // TODO: pass field info down to this point
     });
-    this.#write('  },\n};\n');
+    this.#write('  },\n}');
   }
 
-  #writeAtom(dec: JsAtomDeclare): void {
-    this.#write('const ');
-    this.#write(dec.name);
-    this.#write(' = {\n');
+  #writeAtom(dec: JsAtomLayout): void {
+    this.#write('{\n');
     this.#write('  [_thermalClassMarker]: true,\n');
     this.#write('  fullName: "');
     this.#write(dec.name); // TODO: include full name with package and version and everything
@@ -199,7 +209,7 @@ class Output {
     this.#write('  generics: [],\n'); // TODO pass generics down to this point
     this.#write('  type: "atom",\n');
     this.#write('  enum: undefined,\n'); // TODO: pass enum value to this point
-    this.#write('  fields: {\n  },\n};\n');
+    this.#write('  fields: {\n  },\n}');
   }
 
   #writeExpression(ex: JsExpression): void {

@@ -1,4 +1,4 @@
-import { List, Record, Set, } from 'immutable';
+import { List, Record, Set } from 'immutable';
 
 export type JsExpression
   = JsBooleanLiteralEx
@@ -33,16 +33,17 @@ export type JsStatement
 
 export type JsDeclaration
   = JsImport
+  | JsExport
   | JsConst
   | JsFunctionDeclare
-  | JsDataLayout
+  | JsDataDeclare
   | JsEnumDeclare
   ;
 
 export type JsDataLayout
-  = JsStructDeclare
-  | JsTupleDeclare
-  | JsAtomDeclare
+  = JsStructLayout
+  | JsTupleLayout
+  | JsAtomLayout
   ;
 
 interface MutableJsBlock {
@@ -391,6 +392,17 @@ export class JsImport extends Record<MutableJsImport>({
   }
 }
 
+interface MutableJsExport {
+  name: string;
+}
+export class JsExport extends Record<MutableJsExport>({
+  name: undefined as unknown as string,
+}) {
+  constructor(props: MutableJsExport) {
+    super(props);
+  }
+}
+
 interface MutableJsConst {
   name: string;
   body: JsExpression;
@@ -417,48 +429,63 @@ export class JsFunctionDeclare extends Record<MutableJsFunctionDeclare>({
   }
 }
 
-interface MutableJsStructDeclare {
+interface MutableJsStructLayout {
   name: string;
   fields: Set<string>;
 }
-export class JsStructDeclare extends Record<MutableJsStructDeclare>({
+export class JsStructLayout extends Record<MutableJsStructLayout>({
   name: undefined as unknown as string,
   fields: undefined as unknown as Set<string>,
 }) {
-  constructor(props: MutableJsStructDeclare) {
+  constructor(props: MutableJsStructLayout) {
     super(props);
   }
 }
 
-interface MutableJsTupleDeclare {
+interface MutableJsTupleLayout {
   name: string;
   fields: List<string>;
 }
-export class JsTupleDeclare extends Record<MutableJsTupleDeclare>({
+export class JsTupleLayout extends Record<MutableJsTupleLayout>({
   name: undefined as unknown as string,
   fields: undefined as unknown as List<string>,
 }) {
-  constructor(props: MutableJsTupleDeclare) {
+  constructor(props: MutableJsTupleLayout) {
     super(props);
   }
 }
 
-interface MutableJsAtomDeclare {
+interface MutableJsAtomLayout {
   name: string;
 }
-export class JsAtomDeclare extends Record<MutableJsAtomDeclare>({
+export class JsAtomLayout extends Record<MutableJsAtomLayout>({
   name: undefined as unknown as string,
 }) {
-  constructor(props: MutableJsAtomDeclare) {
+  constructor(props: MutableJsAtomLayout) {
+    super(props);
+  }
+}
+
+interface MutableJsDataDeclare {
+  export: boolean;
+  layout: JsDataLayout;
+}
+export class JsDataDeclare extends Record<MutableJsDataDeclare>({
+  export: undefined as unknown as boolean,
+  layout: undefined as unknown as JsDataLayout,
+}) {
+  constructor(props: MutableJsDataDeclare) {
     super(props);
   }
 }
 
 interface MutableJsEnumDeclare {
+  export: boolean;
   name: string;
   variants: List<JsDataLayout>;
 }
 export class JsEnumDeclare extends Record<MutableJsEnumDeclare>({
+  export: undefined as unknown as boolean,
   name: undefined as unknown as string,
   variants: undefined as unknown as List<JsDataLayout>,
 }) {
@@ -469,10 +496,12 @@ export class JsEnumDeclare extends Record<MutableJsEnumDeclare>({
 
 interface MutableJsFile {
   name: string;
+  main: boolean;
   declarations: List<JsDeclaration>;
 }
 export class JsFile extends Record<MutableJsFile>({
   name: undefined as unknown as string,
+  main: undefined as unknown as boolean,
   declarations: undefined as unknown as List<JsDeclaration>,
 }) {
   constructor(props: MutableJsFile) {

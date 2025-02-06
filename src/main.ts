@@ -1,17 +1,17 @@
 import { Parser } from './parser/parser.ts';
 import { DependencyDictionary, PackageName, Symbol, Version } from './ast.ts';
-import { coreLib } from './lib.ts';
+import { coreLib, domLib } from './lib.ts';
 import { collectSymbols } from './checker/collector.ts';
-import { Map } from 'immutable';
+import { List, Map } from 'immutable';
 import { verifyImports } from './checker/verifier.ts';
 import { Checker } from './checker/checker.ts';
-import { readdirSync } from 'node:fs';
 import { substringBeforeLast } from './utils.ts';
 import type { CheckedAccessRecord } from './checker/checkerAst.ts';
-import { JsCompiler } from "./js/jsCompiler.ts";
-import { JsEmitter } from "./js/jsEmitter.ts";
+import { JsCompiler } from './js/jsCompiler.ts';
+import { JsEmitter } from './js/jsEmitter.ts';
 
 async function main(): Promise<void> {
+  const workingDir = `.`;
   const dir = 'sample';
 
   const version = new Version(0, 1, 0);
@@ -24,14 +24,19 @@ async function main(): Promise<void> {
   depDict.addManager(corePackage.name);
   rootManager.addDependency(corePackage.name);
 
-  // const sources = readdirSync(dir);
-  const sources = ['simple.thermal'];
+  const domPackage = domLib(workingDir, corePackage, coreTypes, rootManager, preamble);
+  depDict.addManager(domPackage.name).addDependency(corePackage.name);
+  rootManager.addDependency(domPackage.name);
 
-  const allFiles = sources.map(file => Parser.parseFile(`${dir}/${file}`, root.child(substringBeforeLast(file, '.thermal'))));
+  // const sources = readdirSync(dir);
+  const sources = List.of('simple.thermal');
+
+  const allFiles = sources.map(file => Parser.parseFile(`${workingDir}/${dir}/${file}`, root.child(substringBeforeLast(file, '.thermal'))));
   // const allFiles = [Parser.parseFile(`${dir}/simple.thermal`, root.child('simple'))];
   const allApplicationSymbols = collectSymbols(allFiles, rootManager, preamble);
   const allProgramSymbols = Map<PackageName, Map<Symbol, CheckedAccessRecord>>().asMutable();
   allProgramSymbols.set(corePackage.name, corePackage.declarations);
+  allProgramSymbols.set(domPackage.name, domPackage.declarations);
   allProgramSymbols.set(packageName, allApplicationSymbols);
 
   // throws exception if an import is invalid
@@ -39,17 +44,15 @@ async function main(): Promise<void> {
 
   const checker = new Checker(rootManager, allProgramSymbols, coreTypes, preamble);
 
-  const checkedFiles = allFiles.map(file => checker.checkFile(file));
+  const checkedFiles = allFiles.map(file => checker.checkFile(file)).concat(domPackage.files);
 
   const jsCompiler = new JsCompiler();
-  const jsCompilePrep = checkedFiles.map(file => jsCompiler.compileFile(file));
+  const jsCompilePrep = checkedFiles.map(file => jsCompiler.compileFile(file, Map()));
 
-  const jsEmitter = new JsEmitter('dist');
+  const jsEmitter = new JsEmitter(`${workingDir}/dist`);
   for (const file of jsCompilePrep) {
-    await jsEmitter.emitFile(file.set('name', 'simple.js'));
+    await jsEmitter.emitFile(file);
   }
-
-  console.log(jsCompilePrep);
 }
 
 await main();

@@ -1,4 +1,4 @@
-import core/dom::{ Html, head, tag, text, content, Element, style, onClick };
+import dom/dom::{ Html, head, tag, text, content, Element, style, onClick };
 
 data Status {
   reset: Boolean

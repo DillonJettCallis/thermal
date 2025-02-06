@@ -1,5 +1,5 @@
-import { List, Map, Record, } from 'immutable';
-import { type Access, type ExpressionPhase, type FunctionPhase, PackageName, Position, Symbol, } from '../ast.ts';
+import { List, Map, Record } from 'immutable';
+import { type Access, type ExpressionPhase, type FunctionPhase, PackageName, Position, Symbol } from '../ast.ts';
 
 export type ParserTypeExpression
   = ParserNominalType
@@ -42,6 +42,7 @@ export type ParserStatement
 export type ParserDeclaration
   = ParserImportDeclaration
   | ParserFunctionDeclare
+  | ParserFunctionExternDeclare
   | ParserDataDeclare
   | ParserEnumDeclare
   | ParserConstantDeclare
@@ -577,19 +578,42 @@ export class ParserImportDeclaration extends Record<MutableParserImportDeclarati
 
 interface MutableParserFunctionDeclare {
   pos: Position;
-  extern: boolean;
   access: Access;
   symbol: Symbol;
   func: ParserFunctionStatement;
 }
 export class ParserFunctionDeclare extends Record<MutableParserFunctionDeclare>({
   pos: undefined as unknown as Position,
-  extern: undefined as unknown as boolean,
   access: undefined as unknown as Access,
   symbol: undefined as unknown as Symbol,
   func: undefined as unknown as ParserFunctionStatement,
 }) {
   constructor(props: MutableParserFunctionDeclare) {
+    super(props);
+  }
+}
+
+interface MutableParserFunctionExternDeclare {
+  pos: Position;
+  access: Access;
+  symbol: Symbol;
+  name: string;
+  functionPhase: FunctionPhase;
+  typeParams: List<ParserTypeParameterType>;
+  result: ParserTypeExpression;
+  params: List<ParserParameter>;
+}
+export class ParserFunctionExternDeclare extends Record<MutableParserFunctionExternDeclare>({
+  pos: undefined as unknown as Position,
+  access: undefined as unknown as Access,
+  symbol: undefined as unknown as Symbol,
+  name: undefined as unknown as string,
+  functionPhase: undefined as unknown as FunctionPhase,
+  typeParams: undefined as unknown as List<ParserTypeParameterType>,
+  result: undefined as unknown as ParserTypeExpression,
+  params: undefined as unknown as List<ParserParameter>,
+}) {
+  constructor(props: MutableParserFunctionExternDeclare) {
     super(props);
   }
 }

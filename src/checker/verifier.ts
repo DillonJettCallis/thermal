@@ -1,7 +1,7 @@
-import type { Map } from 'immutable';
+import { List, Map } from 'immutable';
 import type { Access, DependencyManager, PackageName, Symbol } from '../ast.ts';
 import type { CheckedAccessRecord } from './checkerAst.ts';
-import type { ParserFile} from '../parser/parserAst.ts';
+import type { ParserFile } from '../parser/parserAst.ts';
 import { ParserImportDeclaration } from '../parser/parserAst.ts';
 
 /**
@@ -9,7 +9,7 @@ import { ParserImportDeclaration } from '../parser/parserAst.ts';
  *
  * Does not check anything about the uses of the imports, just that they point to real things that can be found.
  */
-export function verifyImports(files: Array<ParserFile>, manager: DependencyManager, declarations: Map<PackageName, Map<Symbol, CheckedAccessRecord>>): void {
+export function verifyImports(files: List<ParserFile>, manager: DependencyManager, declarations: Map<PackageName, Map<Symbol, CheckedAccessRecord>>): void {
   files.forEach(file => {
     file.declarations.forEach(dec => {
       if (dec instanceof ParserImportDeclaration) {

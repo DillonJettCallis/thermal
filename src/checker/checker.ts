@@ -27,6 +27,7 @@ import {
   CheckedFile,
   CheckedFloatLiteralEx,
   CheckedFunctionDeclare,
+  CheckedFunctionExternDeclare,
   CheckedFunctionStatement,
   CheckedFunctionType,
   CheckedFunctionTypeParameter,
@@ -61,7 +62,7 @@ import {
   CheckedTuple,
   CheckedTupleType,
   type CheckedTypeExpression,
-  CheckedTypeParameterType,
+  CheckedTypeParameterType
 } from './checkerAst.ts';
 import {
   ParserAccessEx,
@@ -80,6 +81,7 @@ import {
   type ParserFile,
   ParserFloatLiteralEx,
   ParserFunctionDeclare,
+  ParserFunctionExternDeclare,
   type ParserFunctionStatement,
   ParserIdentifierEx,
   ParserIfEx,
@@ -102,6 +104,8 @@ import {
   ParserStringLiteralEx,
   ParserStruct,
   ParserTuple,
+  type ParserTypeExpression,
+  ParserTypeParameterType
 } from '../parser/parserAst.ts';
 
 export class Checker {
@@ -135,11 +139,23 @@ export class Checker {
 
         return new CheckedFunctionDeclare({
           pos: dec.pos,
-          extern: dec.extern,
           access: dec.access,
           symbol: dec.symbol,
           func,
         });
+      } else if (dec instanceof ParserFunctionExternDeclare) {
+        const { typeParams, params, result } = this.#checkFunctionSignature(dec, fileScope, file.module);
+
+        return new CheckedFunctionExternDeclare({
+          pos: dec.pos,
+          access: dec.access,
+          symbol: dec.symbol,
+          name: dec.name,
+          functionPhase: dec.functionPhase,
+          typeParams,
+          params,
+          result,
+        })
       } else if (dec instanceof ParserConstantDeclare) {
         const type = fileScope.qualifier.checkTypeExpression(dec.type);
         const expression = this.#checkExpression(dec.expression, fileScope, type);
@@ -384,7 +400,9 @@ export class Checker {
 
     for (const next of rest) {
       if (prev instanceof CheckedModuleType) {
-        const child = this.#declarations.get(prev.name.package)?.get(prev.name.child(next.name)) ?? next.pos.fail(`No such import found ${prev.name}`);
+        const childName = prev.name.child(next.name);
+
+        const child = this.#declarations.get(prev.name.package)?.get(childName) ?? next.pos.fail(`No such import found ${childName}`);
         path.push(new CheckedIdentifierEx({
           pos: next.pos,
           name: next.name,
@@ -401,6 +419,18 @@ export class Checker {
           phase: 'const',
         }));
         prev = variant;
+      } else if (prev instanceof CheckedStructType) {
+        // TODO: actual method syntax, not this work around
+        const childName = prev.name.child(next.name);
+
+        const child = this.#declarations.get(prev.name.package)?.get(childName) ?? next.pos.fail(`No such import found ${childName}`);
+        path.push(new CheckedIdentifierEx({
+          pos: next.pos,
+          name: next.name,
+          type: child.type,
+          phase: 'const',
+        }));
+        prev = child.type;
       } else {
         return next.pos.fail('No static members found');
       }
@@ -853,10 +883,15 @@ export class Checker {
     });
   }
 
-  checkFunctionStatement(state: ParserFunctionStatement, scope: Scope, parent: Symbol): CheckedFunctionStatement {
+  #checkFunctionSignature(state: { typeParams: List<ParserTypeParameterType>, params: List<ParserParameter>, functionPhase: FunctionPhase, result: ParserTypeExpression }, scope: Scope, symbol: Symbol): { typeParams: List<CheckedTypeParameterType>, params: List<CheckedParameter>, result: CheckedTypeExpression } {
     // TODO: use the lambda expression checker internally to cut down on duplicated logic
-    const symbol = parent.child(state.name);
-    const params = state.lambda.params.map(it => {
+    const typeParams = state.typeParams.map(typeParam => {
+      return new CheckedTypeParameterType({
+        name: symbol.child(typeParam.name),
+      });
+    });
+
+    const params = state.params.map(it => {
       if (it.type === undefined) {
         return it.pos.fail('Unable to determine type from context!');
       }
@@ -871,7 +906,7 @@ export class Checker {
       });
     });
 
-    switch (state.lambda.functionPhase) {
+    switch (state.functionPhase) {
       case 'fun':
         for (const param of params) {
           if (param.phase === 'var' || param.phase === 'flow') {
@@ -892,13 +927,20 @@ export class Checker {
 
     const result = scope.qualifier.checkTypeExpression(state.result);
 
-    const childScope = scope.childFunction(symbol, result, state.lambda.functionPhase);
+    return { typeParams, params, result };
+  }
 
-    const typeParams = state.typeParams.map(typeParam => {
-      return new CheckedTypeParameterType({
-        name: symbol.child(typeParam.name),
-      });
-    });
+  checkFunctionStatement(state: ParserFunctionStatement, scope: Scope, parent: Symbol): CheckedFunctionStatement {
+    const symbol = parent.child(state.name);
+
+    const { typeParams, params, result } = this.#checkFunctionSignature({
+      typeParams: state.typeParams,
+      params: state.lambda.params,
+      result: state.result,
+      functionPhase: state.lambda.functionPhase,
+    }, scope, symbol);
+
+    const childScope = scope.childFunction(symbol, result, state.lambda.functionPhase);
 
     for (const typeParam of typeParams) {
       childScope.set(typeParam.name.name, new PhaseType(typeParam, 'val', state.pos));
@@ -1199,7 +1241,7 @@ export class Checker {
 
     return {
       typeArgs: actualTypeArgs,
-      args: checkedArgs,
+      args: checkedArgs.asImmutable(),
     };
   }
 

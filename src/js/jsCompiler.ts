@@ -13,6 +13,7 @@ import {
   type CheckedFile,
   CheckedFloatLiteralEx,
   CheckedFunctionDeclare,
+  CheckedFunctionExternDeclare,
   CheckedFunctionStatement,
   CheckedFunctionType,
   CheckedIdentifierEx,
@@ -38,12 +39,12 @@ import {
   CheckedStruct,
   CheckedTuple,
   CheckedTupleType
-} from "../checker/checkerAst.ts";
+} from '../checker/checkerAst.ts';
 import {
   JsAccess,
   JsArray,
   JsAssign,
-  JsAtomDeclare,
+  JsAtomLayout,
   JsBinaryOp,
   JsBlock,
   JsBooleanLiteralEx,
@@ -51,10 +52,12 @@ import {
   JsConst,
   JsConstruct,
   JsConstructField,
+  JsDataDeclare,
   type JsDataLayout,
   type JsDeclaration,
   JsDeclareVar,
   JsEnumDeclare,
+  JsExport,
   type JsExpression,
   JsExpressionStatement,
   JsFile,
@@ -72,13 +75,15 @@ import {
   JsSingleton,
   type JsStatement,
   JsStringLiteralEx,
-  JsStructDeclare,
-  JsTupleDeclare,
+  JsStructLayout,
+  JsTupleLayout,
   JsUnaryOp,
   JsUndefined
-} from "./jsIr.ts";
-import { List, Seq } from 'immutable';
-import type { ExpressionPhase, FunctionPhase } from "../ast.ts";
+} from './jsIr.ts';
+import { List, Map, Seq } from 'immutable';
+import type { ExpressionPhase, FunctionPhase, Symbol } from '../ast.ts';
+import { Extern } from '../lib.ts';
+import { substringAfterLast } from '../utils.ts';
 
 export class JsCompiler {
 
@@ -89,13 +94,28 @@ export class JsCompiler {
       take,
       as: `_${take}`,
     });
-  }).concat(List.of('List', 'HashMap', 'HashSet').map(take => {
-    return new JsImport({
+  }).concat(List.of(
+    new JsImport({
       from: '../runtime/reflect.ts',
-      take,
+      take: 'List',
       as: undefined,
-    });
-  })).concat(List.of('singleton', 'variable', 'projection', 'flow', 'def', 'main').map(take => {
+    }),
+    new JsImport({
+      from: '../runtime/reflect.ts',
+      take: 'HashMap',
+      as: 'Map',
+    }),
+    new JsImport({
+      from: '../runtime/reflect.ts',
+      take: 'HashSet',
+      as: 'Set',
+    }),
+    new JsImport({
+      from: '../runtime/reflect.ts',
+      take: 'stringConcat',
+      as: undefined,
+    }),
+  )).concat(List.of('singleton', 'variable', 'projection', 'flow', 'def', 'main').map(take => {
     return new JsImport({
       from: '../runtime/runtime.ts',
       take,
@@ -114,10 +134,10 @@ export class JsCompiler {
     }),
   );
 
-  compileFile(src: CheckedFile): JsFile {
+  compileFile(src: CheckedFile, externals: Map<Symbol, Extern>): JsFile {
     const decs = src.declarations.flatMap<JsDeclaration>(dec => {
       if (dec instanceof CheckedImportDeclaration) {
-        return Seq(this.#deconstructImport(dec.package.name, dec.ex));
+        return Seq(this.#deconstructImport('.', dec.ex));
       } else if (dec instanceof CheckedConstantDeclare) {
         const value = this.#compileExpression(dec.expression, 'fun');
 
@@ -143,10 +163,37 @@ export class JsCompiler {
           export: dec.access !== 'private',
           func: this.#compileFunctionStatement(dec.func),
         }));
+      } else if (dec instanceof CheckedFunctionExternDeclare) {
+        const ex = externals.get(dec.symbol);
+
+        if (ex === undefined) {
+          return dec.pos.fail(`No externally defined implementation was found for ${dec.symbol}`);
+        }
+
+        const importDec = new JsImport({
+          from: ex.srcFile,
+          take: ex.import,
+          as: dec.name,
+        });
+
+        if (dec.access === 'private') {
+          return Seq.Indexed.of(importDec);
+        } else {
+          return Seq.Indexed.of<JsDeclaration>(
+            importDec,
+            new JsExport({
+              name: dec.name,
+            }),
+          )
+        }
       } else if (dec instanceof CheckedDataDeclare) {
-        return Seq.Indexed.of(this.#compileDataLayout(dec.name, dec.layout));
+        return Seq.Indexed.of(new JsDataDeclare({
+          export: dec.access !== 'private',
+          layout: this.#compileDataLayout(dec.name, dec.layout),
+        }));
       } else {
         return Seq.Indexed.of(new JsEnumDeclare({
+          export: dec.access !== 'private',
           name: dec.name,
           variants: dec.variants.entrySeq().map(([name, variant]) => {
             return this.#compileDataLayout(name, variant);
@@ -156,24 +203,25 @@ export class JsCompiler {
     });
 
     return new JsFile({
-      name: src.src,
+      name: substringAfterLast(src.src, '/').replace(/\.thermal$/, '.js'),
+      main: src.declarations.some(dec => dec instanceof CheckedFunctionDeclare && dec.func.name === 'main'),
       declarations: this.#defaultImports.concat(decs),
     })
   }
 
   #compileDataLayout(name: string, variant: CheckedDataLayout): JsDataLayout {
     if (variant instanceof CheckedStruct) {
-      return new JsStructDeclare({
+      return new JsStructLayout({
         name,
         fields: variant.fields.keySeq().toSet(),
       });
     } else if (variant instanceof CheckedTuple) {
-      return new JsTupleDeclare({
+      return new JsTupleLayout({
         name,
         fields: variant.fields.map((_, index) => `$${index}`).toList(),
       });
     } else {
-      return new JsAtomDeclare({
+      return new JsAtomLayout({
         name,
       })
     }
@@ -186,7 +234,7 @@ export class JsCompiler {
   *#deconstructImport(base: string, ex: CheckedImportExpression): IterableIterator<JsImport> {
     if (ex instanceof CheckedNominalImportExpression) {
       yield new JsImport({
-        from: base,
+        from: base + '.js',
         take: ex.name,
         as: undefined,
       });
