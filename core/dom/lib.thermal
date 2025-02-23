@@ -77,3 +77,4 @@ public fun style(style: String): fun { Element::Tag -> Element::Tag } {
   }
 }
 
+public sig domRenderer(next: Html): Unit = extern
