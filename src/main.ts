@@ -1,5 +1,5 @@
 import { Parser } from './parser/parser.ts';
-import { DependencyDictionary, PackageName, Symbol, Version } from './ast.ts';
+import { DependencyDictionary, PackageName, Symbol, TypeDictionary, Version } from './ast.ts';
 import { coreLib, domLib } from './lib.ts';
 import { collectSymbols } from './checker/collector.ts';
 import { List, Map } from 'immutable';
@@ -33,16 +33,17 @@ async function main(): Promise<void> {
 
   const allFiles = sources.map(file => Parser.parseFile(`${workingDir}/${dir}/${file}`, root.child(substringBeforeLast(file, '.thermal'))));
   // const allFiles = [Parser.parseFile(`${dir}/simple.thermal`, root.child('simple'))];
-  const allApplicationSymbols = collectSymbols(allFiles, rootManager, preamble);
-  const allProgramSymbols = Map<PackageName, Map<Symbol, CheckedAccessRecord>>().asMutable();
-  allProgramSymbols.set(corePackage.name, corePackage.declarations);
-  allProgramSymbols.set(domPackage.name, domPackage.declarations);
-  allProgramSymbols.set(packageName, allApplicationSymbols);
+  const typeDict = new TypeDictionary();
+  typeDict.loadPackage(corePackage.declarations, Map());
+  typeDict.loadPackage(domPackage.declarations, Map());
+
+  const { symbols, methods } = collectSymbols(allFiles, rootManager, preamble);
+  typeDict.loadPackage(symbols, methods);
 
   // throws exception if an import is invalid
-  verifyImports(allFiles, rootManager, allProgramSymbols);
+  verifyImports(allFiles, rootManager, typeDict);
 
-  const checker = new Checker(rootManager, allProgramSymbols, coreTypes, preamble);
+  const checker = new Checker(rootManager, typeDict, coreTypes, preamble);
 
   const checkedFiles = allFiles.map(file => checker.checkFile(file)).concat(domPackage.files);
 

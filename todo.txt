@@ -1,6 +1,8 @@
 
+* Better parsing of more complex expressions
+* Assignment to fields
 * Core library support - mix together native and non-native code
-* Methods
+* Methods - static vs instance, self handling
 * Const evaluation
 * Test and evaluate effect system
 * Named arguments - if we do them, how we will do them - possibly unify constructors

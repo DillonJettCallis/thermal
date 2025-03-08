@@ -212,16 +212,18 @@ function parser(): Generator {
     name: native('string'),
   }, expression);
 
+  const concreteType = gen.type('ConcreteType', typeExpression);
+
   const nominalType = gen.add('NominalType', {
     pos,
     name: list(identifierEx),
-  }, typeExpression);
+  }, concreteType);
 
   gen.add('ParameterizedType', {
     pos,
     base: nominalType,
     args: list(typeExpression),
-  }, typeExpression);
+  }, concreteType);
 
   const functionTypeParameterType = gen.add('FunctionTypeParameter', {
     pos,
@@ -398,12 +400,15 @@ function parser(): Generator {
     ex: importEx,
   }, declare);
 
+  const funcDeclare = gen.type('FuncDeclare', declare);
+
   gen.add('FunctionDeclare', {
     pos,
     access,
+    name: native('string'),
     symbol,
     func,
-  }, declare);
+  }, funcDeclare);
 
   gen.add('FunctionExternDeclare', {
     pos,
@@ -414,7 +419,7 @@ function parser(): Generator {
     typeParams: list(typeParameterType),
     result: typeExpression,
     params: list(lambdaParameter),
-  }, declare);
+  }, funcDeclare);
 
   const structField = gen.add('StructField', {
     pos,
@@ -474,22 +479,19 @@ function parser(): Generator {
     type: typeExpression,
   }, declare);
 
-  const file = gen.add('File', {
+  // TODO: handle protocol implementations in the future
+  gen.add('ImplDeclare', {
+    pos,
+    symbol,
+    typeParams: list(typeParameterType),
+    base: concreteType,
+    methods: map(native('string'), funcDeclare),
+  }, declare);
+
+  gen.add('File', {
     src: native('string'),
     module: symbol,
     declarations: list(declare),
-  });
-
-  const accessRecord = gen.add('AccessRecord', {
-    access,
-    module: symbol,
-    type: typeExpression,
-  });
-
-  gen.add('Package', {
-    name: packageName,
-    files: list(file),
-    declarations: map(symbol, accessRecord),
   });
 
   return gen;
@@ -518,14 +520,16 @@ function checker(): Generator {
     phase: expressionPhase,
   }, expression);
 
+  const concreteType = gen.type('ConcreteType', typeExpression);
+
   const nominalType = gen.add('NominalType', {
     name: symbol,
-  }, typeExpression);
+  }, concreteType);
 
   gen.add('ParameterizedType', {
     base: nominalType,
     args: list(typeExpression),
-  }, typeExpression);
+  }, concreteType);
 
   const functionTypeParameterType = gen.add('FunctionTypeParameter', {
     phase: optional(expressionPhase),
@@ -658,6 +662,14 @@ function checker(): Generator {
     phase: expressionPhase,
   }, expression);
 
+  gen.add('StaticReferenceEx', {
+    pos,
+    symbol,
+    module: symbol,
+    type: typeExpression,
+    phase: expressionPhase,
+  }, expression);
+
   const constructEntry = gen.add('ConstructEntry', {
     pos,
     name: native('string'),
@@ -776,12 +788,15 @@ function checker(): Generator {
     ex: importEx,
   }, declare);
 
+  const funcDeclare = gen.type('FuncDeclare', declare);
+
   gen.add('FunctionDeclare', {
     pos,
     access,
+    name: native('string'),
     symbol,
     func,
-  }, declare);
+  }, funcDeclare);
 
   gen.add('FunctionExternDeclare', {
     pos,
@@ -792,7 +807,7 @@ function checker(): Generator {
     typeParams: list(typeParameterType),
     result: typeExpression,
     params: list(lambdaParameter),
-  }, declare);
+  }, funcDeclare);
 
   const structField = gen.add('StructField', {
     pos,
@@ -843,6 +858,15 @@ function checker(): Generator {
     variants: map(native('string'), dataLayout),
   }, declare);
 
+  // TODO: handle protocol implementations in the future
+  gen.add('ImplDeclare', {
+    pos,
+    symbol,
+    typeParams: list(typeParameterType),
+    base: concreteType,
+    methods: map(native('string'), funcDeclare),
+  }, declare);
+
   gen.add('ConstantDeclare', {
     pos,
     access,
@@ -860,6 +884,7 @@ function checker(): Generator {
 
   const accessRecord = gen.add('AccessRecord', {
     access,
+    name: symbol,
     module: symbol,
     type: typeExpression,
   });

@@ -1,7 +1,7 @@
 import {
   CheckedAccessEx,
   CheckedAndEx,
-  CheckedAssignmentStatement,
+  CheckedAssignmentStatement, CheckedBlockEx,
   CheckedBooleanLiteralEx,
   CheckedCallEx,
   CheckedConstantDeclare,
@@ -17,7 +17,7 @@ import {
   CheckedFunctionStatement,
   CheckedFunctionType,
   CheckedIdentifierEx,
-  CheckedIfEx,
+  CheckedIfEx, CheckedImplDeclare,
   CheckedImportDeclaration,
   type CheckedImportExpression,
   CheckedIntLiteralEx,
@@ -34,7 +34,7 @@ import {
   CheckedReturnEx,
   CheckedSetLiteralEx,
   type CheckedStatement,
-  CheckedStaticAccessEx,
+  CheckedStaticAccessEx, CheckedStaticReferenceEx,
   CheckedStringLiteralEx,
   CheckedStruct,
   CheckedTuple,
@@ -135,6 +135,47 @@ export class JsCompiler {
   );
 
   compileFile(src: CheckedFile, externals: Map<Symbol, Extern>): JsFile {
+    const staticImportReferences = src.declarations.toSeq()
+      .flatMap(dec => {
+        if (dec instanceof CheckedImportDeclaration) {
+          return Seq.Indexed<CheckedStaticReferenceEx>();
+        } else if (dec instanceof CheckedConstantDeclare) {
+          return this.#seekStaticReferences(dec.expression);
+        } else if (dec instanceof CheckedFunctionDeclare) {
+          return this.#seekStaticReferences(dec.func.lambda);
+        } else if (dec instanceof CheckedFunctionExternDeclare) {
+          return Seq.Indexed<CheckedStaticReferenceEx>();
+        } else if (dec instanceof CheckedDataDeclare) {
+          return Seq.Indexed<CheckedStaticReferenceEx>();
+        } else if (dec instanceof CheckedImplDeclare) {
+          return dec.methods.valueSeq()
+            .flatMap(funcDec => {
+              if (funcDec instanceof CheckedFunctionDeclare) {
+                return this.#seekStaticReferences(funcDec.func.lambda);
+              } else {
+                return Seq.Indexed<CheckedStaticReferenceEx>();
+              }
+            });
+        } else {
+          // enum
+          return Seq.Indexed<CheckedStaticReferenceEx>();
+        }
+      }).groupBy(it => it.module)
+      .remove(src.module) // don't import from yourself!
+      .entrySeq()
+      .flatMap(([module, list]) => {
+        const modulePathSize = module.serializedName().length;
+
+        return list.toSeq().map(it => it.symbol.serializedName().substring(modulePathSize)).toSet()
+          .map(path => {
+            return new JsImport({
+              from: `./${module.name}.js`,
+              take: path,
+              as: undefined,
+            })
+          })
+      }).toList();
+
     const decs = src.declarations.flatMap<JsDeclaration>(dec => {
       if (dec instanceof CheckedImportDeclaration) {
         return Seq(this.#deconstructImport('.', dec.ex));
@@ -191,6 +232,41 @@ export class JsCompiler {
           export: dec.access !== 'private',
           layout: this.#compileDataLayout(dec.name, dec.layout),
         }));
+      } else if (dec instanceof CheckedImplDeclare) {
+        const prefix = dec.symbol.serializedName();
+
+        return dec.methods.valueSeq()
+          .flatMap(funcDec => {
+            if (funcDec instanceof CheckedFunctionDeclare) {
+              return Seq.Indexed.of(new JsFunctionDeclare({
+                export: funcDec.access !== 'private',
+                func: this.#compileFunctionStatement(funcDec.func.update('name', base => `${prefix}_${base}`)),
+              }));
+            } else {
+              const ex = externals.get(dec.symbol);
+
+              if (ex === undefined) {
+                return dec.pos.fail(`No externally defined implementation was found for ${dec.symbol}`);
+              }
+
+              const importDec = new JsImport({
+                from: ex.srcFile,
+                take: ex.import,
+                as: `${prefix}_${funcDec.name}`,
+              });
+
+              if (funcDec.access === 'private') {
+                return Seq.Indexed.of(importDec);
+              } else {
+                return Seq.Indexed.of<JsDeclaration>(
+                  importDec,
+                  new JsExport({
+                    name: funcDec.name,
+                  }),
+                )
+              }
+            }
+          });
       } else {
         return Seq.Indexed.of(new JsEnumDeclare({
           export: dec.access !== 'private',
@@ -205,8 +281,81 @@ export class JsCompiler {
     return new JsFile({
       name: substringAfterLast(src.src, '/').replace(/\.thermal$/, '.js'),
       main: src.declarations.some(dec => dec instanceof CheckedFunctionDeclare && dec.func.name === 'main'),
-      declarations: this.#defaultImports.concat(decs),
+      declarations: this.#defaultImports.concat(staticImportReferences, decs),
     })
+  }
+
+  /**
+   * Recursively seek out static symbol imports
+   */
+  #seekStaticReferences(ex: CheckedExpression): Seq.Indexed<CheckedStaticReferenceEx> {
+    if (ex instanceof CheckedBooleanLiteralEx) {
+      return Seq.Indexed.of();
+    } else if (ex instanceof CheckedIntLiteralEx) {
+      return Seq.Indexed.of();
+    } else if (ex instanceof CheckedFloatLiteralEx) {
+      return Seq.Indexed.of();
+    } else if (ex instanceof CheckedStringLiteralEx) {
+      return Seq.Indexed.of();
+    } else if (ex instanceof CheckedIdentifierEx) {
+      return Seq.Indexed.of();
+    } else if (ex instanceof CheckedListLiteralEx) {
+      return ex.values.toSeq().flatMap(it => this.#seekStaticReferences(it));
+    } else if (ex instanceof CheckedSetLiteralEx) {
+      return ex.values.toSeq().flatMap(it => this.#seekStaticReferences(it));
+    } else if (ex instanceof CheckedMapLiteralEx) {
+      return ex.values.toSeq().flatMap(entry => {
+        return Seq.Indexed.of(entry.key, entry.value)
+          .flatMap(it => this.#seekStaticReferences(it));
+      });
+    } else if (ex instanceof CheckedIsEx) {
+      return this.#seekStaticReferences(ex.base);
+    } else if (ex instanceof CheckedNotEx) {
+      return this.#seekStaticReferences(ex.base);
+    } else if (ex instanceof CheckedOrEx) {
+      return Seq.Indexed.of(ex.left, ex.right)
+        .flatMap(it => this.#seekStaticReferences(it));
+    } else if (ex instanceof CheckedAndEx) {
+      return Seq.Indexed.of(ex.left, ex.right)
+        .flatMap(it => this.#seekStaticReferences(it));
+    } else if (ex instanceof CheckedAccessEx) {
+      return this.#seekStaticReferences(ex.base);
+    } else if (ex instanceof CheckedStaticAccessEx) {
+      return ex.path.toSeq().flatMap(it => this.#seekStaticReferences(it));
+    } else if (ex instanceof CheckedStaticReferenceEx) {
+      return Seq.Indexed.of(ex);
+    } else if (ex instanceof CheckedConstructEx) {
+      return Seq.Indexed.of(ex.base).concat(ex.fields.toSeq().map(it => it.value))
+        .flatMap(it => this.#seekStaticReferences(it));
+    } else if (ex instanceof CheckedLambdaEx) {
+      return this.#seekStaticReferences(ex.body);
+    } else if (ex instanceof CheckedBlockEx) {
+      return ex.body.toSeq()
+        .map<CheckedExpression>(state => {
+          if (state instanceof CheckedExpressionStatement) {
+            return state.expression;
+          } else if (state instanceof CheckedAssignmentStatement) {
+            return state.expression;
+          } else if (state instanceof CheckedReassignmentStatement) {
+            return state.expression;
+          } else {
+            return state.lambda;
+          }
+        }).flatMap(it => this.#seekStaticReferences(it));
+    } else if (ex instanceof CheckedCallEx) {
+      return ex.args.push(ex.func).toSeq().flatMap(it => this.#seekStaticReferences(it));
+    } else if (ex instanceof CheckedIfEx) {
+      return Seq.Indexed.of(ex.condition, ex.thenEx, ex.elseEx)
+        .flatMap(it => {
+          if (it === undefined) {
+            return Seq.Indexed.of();
+          } else {
+            return this.#seekStaticReferences(it);
+          }
+        });
+    } else {
+      return this.#seekStaticReferences(ex.base);
+    }
   }
 
   #compileDataLayout(name: string, variant: CheckedDataLayout): JsDataLayout {
@@ -311,6 +460,8 @@ export class JsCompiler {
           });
         }
       }, undefined)!;
+    } else if (ex instanceof CheckedStaticReferenceEx) {
+      return new JsIdentifierEx({ name: ex.symbol.serializedName() });
     } else if (ex instanceof CheckedConstructEx) {
       return this.#handleAction(phase, 'fun', ex.fields.map(() => undefined).unshift(undefined), ex.fields.map(it => it.value).unshift(ex.base), args => {
         const fields = ex.fields.zipWith<JsExpression, JsConstructField>(( param, arg) => {

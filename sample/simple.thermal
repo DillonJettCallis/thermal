@@ -1,24 +1,32 @@
 import dom/dom::{ Html, head, tag, text, content, Element, style, onClick };
 
 data Status {
-  reset: Boolean
+  state: Boolean
+}
+
+implement Status {
+
+  fun reset(self: Status): Boolean {
+    return self.state;
+  }
+
 }
 
 def main(): Html {
-  var reset = Status { reset: false }
+  var reset = Status { state: false }
 
   return Html {
     head: head('Button Test'),
     body: tag('body', [
       content([
-        clickCounter(reset, reset.reset)
+        clickCounter(reset, reset.state)
       ])
     ]),
   }
 }
 
 
-def clickCounter(reset: Status, var resetter: Boolean): Element {
+def clickCounter(status: Status, var resetter: Boolean): Element {
   var count = 0;
 
   tag('div', [
@@ -34,7 +42,7 @@ def clickCounter(reset: Status, var resetter: Boolean): Element {
         content([text('Click here')]),
       ]),
       tag('button', [
-        onClick(sig { => resetter = !resetter; true }),
+        onClick(sig { => val oldState = status.reset(); resetter = !oldState; true }),
         content([text('Reset')]),
       ])
     ])

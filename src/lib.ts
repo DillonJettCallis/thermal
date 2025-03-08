@@ -1,4 +1,12 @@
-import { DependencyManager, type FunctionPhase, PackageName, Position, Symbol, Version } from './ast.ts';
+import {
+  DependencyManager,
+  type FunctionPhase,
+  PackageName,
+  Position,
+  Symbol,
+  TypeDictionary,
+  Version
+} from './ast.ts';
 import { List, Map, Record as ImmutableRecord } from 'immutable';
 import {
   CheckedAccessRecord,
@@ -43,22 +51,27 @@ export function domLib(workingDir: string, corePackage: CheckedPackage, coreType
 
   const allFiles = List.of(Parser.parseFile(`${workingDir}/core/dom.thermal`, root.child('dom')));
   // const allFiles = [Parser.parseFile(`${dir}/simple.thermal`, root.child('simple'))];
-  const allApplicationSymbols = collectSymbols(allFiles, rootManager, preamble);
+  const typeDict = new TypeDictionary();
+  typeDict.loadPackage(corePackage.declarations, Map());
+
+  const { symbols, methods } = collectSymbols(allFiles, rootManager, preamble);
+  typeDict.loadPackage(symbols, methods);
+
   const allProgramSymbols = Map<PackageName, Map<Symbol, CheckedAccessRecord>>().asMutable();
   allProgramSymbols.set(corePackage.name, corePackage.declarations);
-  allProgramSymbols.set(packageName, allApplicationSymbols);
+  allProgramSymbols.set(packageName, symbols);
 
   // throws exception if an import is invalid
-  verifyImports(allFiles, rootManager, allProgramSymbols);
+  verifyImports(allFiles, rootManager, typeDict);
 
-  const checker = new Checker(rootManager, allProgramSymbols, coreTypes, preamble);
+  const checker = new Checker(rootManager, typeDict, coreTypes, preamble);
 
   const checkedFiles = List(allFiles.map(file => checker.checkFile(file)));
 
   return new CheckedPackage({
     name: packageName,
     files: checkedFiles,
-    declarations: allApplicationSymbols,
+    declarations: symbols,
   });
 }
 
@@ -129,6 +142,7 @@ export function coreLib(): { package: CheckedPackage, coreTypes: CoreTypes, prea
 
   declarations.set(coreSymbol, new CheckedAccessRecord({
     access: 'public',
+    name: coreSymbol,
     module: coreSymbol,
     type: new CheckedModuleType({
       name: coreSymbol,
@@ -193,6 +207,7 @@ function boolLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: Core
 
   declarations.set(boolSymbol.child('&&'), new CheckedAccessRecord({
     access: 'public',
+    name: boolSymbol.child('&&'),
     module: boolSymbol,
     type: unphasedFunction([coreTypes.boolean, coreTypes.boolean], coreTypes.boolean),
   }));
@@ -200,6 +215,7 @@ function boolLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: Core
 
   declarations.set(boolSymbol.child('||'), new CheckedAccessRecord({
     access: 'public',
+    name: boolSymbol.child('||'),
     module: boolSymbol,
     type: unphasedFunction([coreTypes.boolean, coreTypes.boolean], coreTypes.boolean),
   }));
@@ -207,6 +223,7 @@ function boolLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: Core
 
   declarations.set(boolSymbol.child('!'), new CheckedAccessRecord({
     access: 'public',
+    name: boolSymbol.child('!'),
     module: boolSymbol,
     type: unphasedFunction([coreTypes.boolean], coreTypes.boolean),
   }));
@@ -214,6 +231,7 @@ function boolLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: Core
 
   declarations.set(boolSymbol.child('=='), new CheckedAccessRecord({
     access: 'public',
+    name: boolSymbol.child('=='),
     module: boolSymbol,
     type: new CheckedOverloadFunctionType({
       branches: List.of(
@@ -228,6 +246,7 @@ function boolLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: Core
 
   declarations.set(boolSymbol.child('!='), new CheckedAccessRecord({
     access: 'public',
+    name: boolSymbol.child('!='),
     module: boolSymbol,
     type: new CheckedOverloadFunctionType({
       branches: List.of(
@@ -249,6 +268,7 @@ function mathLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: Core
 
   declarations.set(mathSymbol.child('+'), new CheckedAccessRecord({
     access: 'public',
+    name: mathSymbol.child('+'),
     module: mathSymbol,
     type: new CheckedOverloadFunctionType({
       branches: List.of(
@@ -261,6 +281,7 @@ function mathLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: Core
 
   declarations.set(mathSymbol.child('-'), new CheckedAccessRecord({
     access: 'public',
+    name: mathSymbol.child('-'),
     module: mathSymbol,
     type: new CheckedOverloadFunctionType({
       branches: List.of(
@@ -278,6 +299,7 @@ function mathLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: Core
 
   declarations.set(mathSymbol.child('*'), new CheckedAccessRecord({
     access: 'public',
+    name: mathSymbol.child('*'),
     module: mathSymbol,
     type: new CheckedOverloadFunctionType({
       branches: List.of(
@@ -290,6 +312,7 @@ function mathLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: Core
 
   declarations.set(mathSymbol.child('/'), new CheckedAccessRecord({
     access: 'public',
+    name: mathSymbol.child('/'),
     module: mathSymbol,
     type: new CheckedOverloadFunctionType({
       branches: List.of(
@@ -304,6 +327,7 @@ function mathLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: Core
   ['>', '>=', '<', '<='].forEach(op => {
     declarations.set(mathSymbol.child(op), new CheckedAccessRecord({
       access: 'public',
+      name: mathSymbol.child(op),
       module: mathSymbol,
       type: new CheckedOverloadFunctionType({
         branches: List.of(
@@ -324,11 +348,13 @@ function mathLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: Core
 
   declarations.set(mathSymbol.child('integerDivision'), new CheckedAccessRecord({
     access: 'public',
+    name: mathSymbol.child('integerDivision'),
     module: mathSymbol,
     type: unphasedFunction([intType, intType], integerDivisionResultType),
   }));
   declarations.set(mathSymbol.child('remainder'), new CheckedAccessRecord({
     access: 'public',
+    name: mathSymbol.child('remainder'),
     module: mathSymbol,
     type: unphasedFunction([intType, intType], intType),
   }));
@@ -339,6 +365,7 @@ function stringLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: Co
 
   declarations.set(stringSymbol.child('toString'), new CheckedAccessRecord({
     access: 'public',
+    name: stringSymbol.child('toString'),
     module: stringSymbol,
     type: new CheckedOverloadFunctionType({
       branches: List.of(
@@ -353,6 +380,7 @@ function stringLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: Co
   const concatSymbol = stringSymbol.child("stringConcat");
   declarations.set(concatSymbol, new CheckedAccessRecord({
     access: 'public',
+    name: concatSymbol,
     module: stringSymbol,
     type: new CheckedFunctionType({
       phase: 'fun',
@@ -382,6 +410,7 @@ function listLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: Core
 
   declarations.set(listSymbol, new CheckedAccessRecord({
     access: 'public',
+    name: listSymbol,
     module: listSymbol,
     type: new CheckedModuleType({
       name: listSymbol,
@@ -390,6 +419,7 @@ function listLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: Core
 
   declarations.set(listSymbol.child('get'), new CheckedAccessRecord({
     access: 'public',
+    name: listSymbol.child('get'),
     module: listSymbol,
     type: new CheckedFunctionType({
       phase: 'fun',
@@ -415,6 +445,7 @@ function listLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: Core
 
   declarations.set(mapSymbol, new CheckedAccessRecord({
     access: 'public',
+    name: mapSymbol,
     module: listSymbol,
     type: new CheckedFunctionType({
       phase: 'fun',
@@ -445,6 +476,7 @@ function listLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: Core
   const flatMapSymbol = listSymbol.child('flatMap');
   declarations.set(flatMapSymbol, new CheckedAccessRecord({
     access: 'public',
+    name: flatMapSymbol,
     module: listSymbol,
     type: new CheckedFunctionType({
       phase: 'fun',
@@ -476,6 +508,7 @@ function listLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: Core
   const concatSymbol = listSymbol.child('concat');
   declarations.set(concatSymbol, new CheckedAccessRecord({
     access: 'public',
+    name: concatSymbol,
     module: listSymbol,
     type: new CheckedFunctionType({
       phase: 'fun',
@@ -500,6 +533,7 @@ function listLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: Core
   const foldSymbol = listSymbol.child('fold');
   declarations.set(foldSymbol, new CheckedAccessRecord({
     access: 'public',
+    name: foldSymbol,
     module: listSymbol,
     type: new CheckedFunctionType({
       phase: 'fun',
@@ -551,6 +585,7 @@ function mapLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: CoreT
   const setSymbol = mapSymbol.child('set');
   declarations.set(setSymbol, new CheckedAccessRecord({
     access: 'public',
+    name: setSymbol,
     module: mapSymbol,
     type: new CheckedFunctionType({
       phase: 'fun',
@@ -576,6 +611,7 @@ function mapLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: CoreT
   const updateSymbol = mapSymbol.child('update');
   declarations.set(updateSymbol, new CheckedAccessRecord({
     access: 'public',
+    name: updateSymbol,
     module: mapSymbol,
     type: new CheckedFunctionType({
       phase: 'fun',
@@ -618,6 +654,7 @@ function createStructType(parent: Symbol, declarations: Map<Symbol, CheckedAcces
 
   declarations.set(name, new CheckedAccessRecord({
     access: 'public',
+    name,
     module: parent,
     type: new CheckedStructType({
       pos,
@@ -642,6 +679,7 @@ function createEnumType(module: Symbol, name: Symbol, declarations: Map<Symbol, 
 
   declarations.set(name, new CheckedAccessRecord({
     access: 'public',
+    name,
     module,
     type: new CheckedEnumType({
       pos,

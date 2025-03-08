@@ -1,9 +1,40 @@
-import { List, Map, Record } from 'immutable';
-import { type Access, type ExpressionPhase, type FunctionPhase, PackageName, Position, Symbol } from '../ast.ts';
+import { Map, List, Set, Record,  } from 'immutable';
+import { Position, type ExpressionPhase, Symbol, type FunctionPhase, type Access, PackageName,  } from '../ast.ts';
 
-export type CheckedTypeExpression
+export type CheckedImportExpression
+  = CheckedNominalImportExpression
+  | CheckedNestedImportExpression
+  ;
+
+export type CheckedConcreteType
   = CheckedNominalType
   | CheckedParameterizedType
+  ;
+
+export type CheckedStatement
+  = CheckedExpressionStatement
+  | CheckedAssignmentStatement
+  | CheckedReassignmentStatement
+  | CheckedFunctionStatement
+  ;
+
+export type CheckedDeclaration
+  = CheckedImportDeclaration
+  | CheckedFuncDeclare
+  | CheckedDataDeclare
+  | CheckedEnumDeclare
+  | CheckedImplDeclare
+  | CheckedConstantDeclare
+  ;
+
+export type CheckedDataLayoutType
+  = CheckedStructType
+  | CheckedTupleType
+  | CheckedAtomType
+  ;
+
+export type CheckedTypeExpression
+  = CheckedConcreteType
   | CheckedFunctionTypeParameter
   | CheckedTypeParameterType
   | CheckedFunctionType
@@ -11,6 +42,12 @@ export type CheckedTypeExpression
   | CheckedModuleType
   | CheckedDataLayoutType
   | CheckedEnumType
+  ;
+
+export type CheckedDataLayout
+  = CheckedStruct
+  | CheckedTuple
+  | CheckedAtom
   ;
 
 export type CheckedExpression
@@ -28,6 +65,7 @@ export type CheckedExpression
   | CheckedAndEx
   | CheckedAccessEx
   | CheckedStaticAccessEx
+  | CheckedStaticReferenceEx
   | CheckedConstructEx
   | CheckedLambdaEx
   | CheckedBlockEx
@@ -36,37 +74,9 @@ export type CheckedExpression
   | CheckedReturnEx
   ;
 
-export type CheckedDataLayoutType
-  = CheckedStructType
-  | CheckedTupleType
-  | CheckedAtomType
-  ;
-
-export type CheckedStatement
-  = CheckedExpressionStatement
-  | CheckedAssignmentStatement
-  | CheckedReassignmentStatement
-  | CheckedFunctionStatement
-  ;
-
-export type CheckedDeclaration
-  = CheckedImportDeclaration
-  | CheckedFunctionDeclare
+export type CheckedFuncDeclare
+  = CheckedFunctionDeclare
   | CheckedFunctionExternDeclare
-  | CheckedDataDeclare
-  | CheckedEnumDeclare
-  | CheckedConstantDeclare
-  ;
-
-export type CheckedImportExpression
-  = CheckedNominalImportExpression
-  | CheckedNestedImportExpression
-  ;
-
-export type CheckedDataLayout
-  = CheckedStruct
-  | CheckedTuple
-  | CheckedAtom
   ;
 
 interface MutableCheckedBooleanLiteralEx {
@@ -491,6 +501,25 @@ export class CheckedStaticAccessEx extends Record<MutableCheckedStaticAccessEx>(
   }
 }
 
+interface MutableCheckedStaticReferenceEx {
+  pos: Position;
+  symbol: Symbol;
+  module: Symbol;
+  type: CheckedTypeExpression;
+  phase: ExpressionPhase;
+}
+export class CheckedStaticReferenceEx extends Record<MutableCheckedStaticReferenceEx>({
+  pos: undefined as unknown as Position,
+  symbol: undefined as unknown as Symbol,
+  module: undefined as unknown as Symbol,
+  type: undefined as unknown as CheckedTypeExpression,
+  phase: undefined as unknown as ExpressionPhase,
+}) {
+  constructor(props: MutableCheckedStaticReferenceEx) {
+    super(props);
+  }
+}
+
 interface MutableCheckedConstructEntry {
   pos: Position;
   name: string;
@@ -765,12 +794,14 @@ export class CheckedImportDeclaration extends Record<MutableCheckedImportDeclara
 interface MutableCheckedFunctionDeclare {
   pos: Position;
   access: Access;
+  name: string;
   symbol: Symbol;
   func: CheckedFunctionStatement;
 }
 export class CheckedFunctionDeclare extends Record<MutableCheckedFunctionDeclare>({
   pos: undefined as unknown as Position,
   access: undefined as unknown as Access,
+  name: undefined as unknown as string,
   symbol: undefined as unknown as Symbol,
   func: undefined as unknown as CheckedFunctionStatement,
 }) {
@@ -916,6 +947,25 @@ export class CheckedEnumDeclare extends Record<MutableCheckedEnumDeclare>({
   }
 }
 
+interface MutableCheckedImplDeclare {
+  pos: Position;
+  symbol: Symbol;
+  typeParams: List<CheckedTypeParameterType>;
+  base: CheckedConcreteType;
+  methods: Map<string, CheckedFuncDeclare>;
+}
+export class CheckedImplDeclare extends Record<MutableCheckedImplDeclare>({
+  pos: undefined as unknown as Position,
+  symbol: undefined as unknown as Symbol,
+  typeParams: undefined as unknown as List<CheckedTypeParameterType>,
+  base: undefined as unknown as CheckedConcreteType,
+  methods: undefined as unknown as Map<string, CheckedFuncDeclare>,
+}) {
+  constructor(props: MutableCheckedImplDeclare) {
+    super(props);
+  }
+}
+
 interface MutableCheckedConstantDeclare {
   pos: Position;
   access: Access;
@@ -954,11 +1004,13 @@ export class CheckedFile extends Record<MutableCheckedFile>({
 
 interface MutableCheckedAccessRecord {
   access: Access;
+  name: Symbol;
   module: Symbol;
   type: CheckedTypeExpression;
 }
 export class CheckedAccessRecord extends Record<MutableCheckedAccessRecord>({
   access: undefined as unknown as Access,
+  name: undefined as unknown as Symbol,
   module: undefined as unknown as Symbol,
   type: undefined as unknown as CheckedTypeExpression,
 }) {

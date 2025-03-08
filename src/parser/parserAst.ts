@@ -1,9 +1,8 @@
-import { List, Map, Record } from 'immutable';
-import { type Access, type ExpressionPhase, type FunctionPhase, PackageName, Position, Symbol } from '../ast.ts';
+import { Map, List, Set, Record,  } from 'immutable';
+import { Position, type ExpressionPhase, type FunctionPhase, type Access, Symbol,  } from '../ast.ts';
 
 export type ParserTypeExpression
-  = ParserNominalType
-  | ParserParameterizedType
+  = ParserConcreteType
   | ParserFunctionTypeParameter
   | ParserFunctionType
   | ParserTypeParameterType
@@ -32,6 +31,11 @@ export type ParserExpression
   | ParserReturnEx
   ;
 
+export type ParserConcreteType
+  = ParserNominalType
+  | ParserParameterizedType
+  ;
+
 export type ParserStatement
   = ParserExpressionStatement
   | ParserAssignmentStatement
@@ -41,16 +45,21 @@ export type ParserStatement
 
 export type ParserDeclaration
   = ParserImportDeclaration
-  | ParserFunctionDeclare
-  | ParserFunctionExternDeclare
+  | ParserFuncDeclare
   | ParserDataDeclare
   | ParserEnumDeclare
   | ParserConstantDeclare
+  | ParserImplDeclare
   ;
 
 export type ParserImportExpression
   = ParserNominalImportExpression
   | ParserNestedImportExpression
+  ;
+
+export type ParserFuncDeclare
+  = ParserFunctionDeclare
+  | ParserFunctionExternDeclare
   ;
 
 export type ParserDataLayout
@@ -579,12 +588,14 @@ export class ParserImportDeclaration extends Record<MutableParserImportDeclarati
 interface MutableParserFunctionDeclare {
   pos: Position;
   access: Access;
+  name: string;
   symbol: Symbol;
   func: ParserFunctionStatement;
 }
 export class ParserFunctionDeclare extends Record<MutableParserFunctionDeclare>({
   pos: undefined as unknown as Position,
   access: undefined as unknown as Access,
+  name: undefined as unknown as string,
   symbol: undefined as unknown as Symbol,
   func: undefined as unknown as ParserFunctionStatement,
 }) {
@@ -751,6 +762,25 @@ export class ParserConstantDeclare extends Record<MutableParserConstantDeclare>(
   }
 }
 
+interface MutableParserImplDeclare {
+  pos: Position;
+  symbol: Symbol;
+  typeParams: List<ParserTypeParameterType>;
+  base: ParserConcreteType;
+  methods: Map<string, ParserFuncDeclare>;
+}
+export class ParserImplDeclare extends Record<MutableParserImplDeclare>({
+  pos: undefined as unknown as Position,
+  symbol: undefined as unknown as Symbol,
+  typeParams: undefined as unknown as List<ParserTypeParameterType>,
+  base: undefined as unknown as ParserConcreteType,
+  methods: undefined as unknown as Map<string, ParserFuncDeclare>,
+}) {
+  constructor(props: MutableParserImplDeclare) {
+    super(props);
+  }
+}
+
 interface MutableParserFile {
   src: string;
   module: Symbol;
@@ -762,36 +792,6 @@ export class ParserFile extends Record<MutableParserFile>({
   declarations: undefined as unknown as List<ParserDeclaration>,
 }) {
   constructor(props: MutableParserFile) {
-    super(props);
-  }
-}
-
-interface MutableParserAccessRecord {
-  access: Access;
-  module: Symbol;
-  type: ParserTypeExpression;
-}
-export class ParserAccessRecord extends Record<MutableParserAccessRecord>({
-  access: undefined as unknown as Access,
-  module: undefined as unknown as Symbol,
-  type: undefined as unknown as ParserTypeExpression,
-}) {
-  constructor(props: MutableParserAccessRecord) {
-    super(props);
-  }
-}
-
-interface MutableParserPackage {
-  name: PackageName;
-  files: List<ParserFile>;
-  declarations: Map<Symbol, ParserAccessRecord>;
-}
-export class ParserPackage extends Record<MutableParserPackage>({
-  name: undefined as unknown as PackageName,
-  files: undefined as unknown as List<ParserFile>,
-  declarations: undefined as unknown as Map<Symbol, ParserAccessRecord>,
-}) {
-  constructor(props: MutableParserPackage) {
     super(props);
   }
 }

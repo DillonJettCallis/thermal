@@ -23,6 +23,11 @@ const keywords = Set.of(
   'data',
   'enum',
 
+  // protocols and methods
+  'protocol',
+  'implement',
+  'for', // for comprehensions and protocol impls use this
+
   // the literals
   'true',
   'false',

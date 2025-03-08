@@ -7,10 +7,11 @@ import {
   ParserNominalImportExpression,
 } from './parser/parserAst.ts';
 import {
+  CheckedAccessRecord,
   type CheckedImportDeclaration, type CheckedImportExpression,
   CheckedNestedImportExpression,
-  CheckedNominalImportExpression
-} from "./checker/checkerAst.ts";
+  CheckedNominalImportExpression, CheckedPackage
+} from './checker/checkerAst.ts';
 
 export class Position extends Record({src: '', line: 0, column: 0}){
   public static readonly native = new Position('[native]', 0, 0);
@@ -115,6 +116,11 @@ export class Symbol extends Record({
     return this.path.last()!;
   }
 
+  serializedName(): string {
+    return this.path.filter(it => it.match(/^\w+$/))
+      .join('_');
+  }
+
   override toString(): string {
     if (this.path.isEmpty()) {
       return this.package.toString();
@@ -201,6 +207,31 @@ export class DependencyDictionary {
    */
   getManager(packageName: PackageName): DependencyManager | undefined {
     return this.#managers.get(packageName);
+  }
+}
+
+export class TypeDictionary {
+  /**
+   * every single declared symbol in the entire system - every struct, enum top level function, all of it.
+   * this only excludes things like enum variants, generics, inner functions and other stuff not defined at the top level of a file
+   **/
+  #symbols = Map<Symbol, CheckedAccessRecord>().asMutable();
+  /**
+   * Every single method in the system, keyed by the symbol of the base type
+   */
+  #methods = Map<Symbol, Map<string, CheckedAccessRecord>>().asMutable();
+
+  loadPackage(symbols: Map<Symbol, CheckedAccessRecord>, methods: Map<Symbol, Map<string, CheckedAccessRecord>>): void {
+    this.#symbols.merge(symbols);
+    this.#methods.merge(methods);
+  }
+
+  lookupSymbol(symbol: Symbol): CheckedAccessRecord | undefined {
+    return this.#symbols.get(symbol);
+  }
+
+  lookupMethod(base: Symbol, name: string): CheckedAccessRecord | undefined {
+    return this.#methods.get(base)?.get(name);
   }
 }
 

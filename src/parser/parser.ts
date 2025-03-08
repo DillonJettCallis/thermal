@@ -34,7 +34,7 @@ import {
   ParserFunctionType,
   ParserFunctionTypeParameter,
   ParserIdentifierEx,
-  ParserIfEx,
+  ParserIfEx, ParserImplDeclare,
   ParserImportDeclaration,
   type ParserImportExpression,
   ParserIntLiteralEx,
@@ -199,11 +199,17 @@ export class Parser {
       case 'fun':
       case 'def':
       case 'sig':
-        return this.#parseFunctionDeclare(access, keyword.value, first.pos);
+        return this.#parseFunctionDeclare(this.#module, access, keyword.value, first.pos);
       case 'data':
         return this.#parseDataDeclare(access, first.pos);
       case 'enum':
         return this.#parseEnumDeclare(access, first.pos);
+      case 'implement':
+        if (access !== 'internal') {
+          first.pos.fail('implementations cannot specify any access level')
+        }
+
+        return this.#parseImplementation(first.pos);
       case 'import':
       default:
         return first.pos.fail(`Expected declaration but found ${first.kind} '${first.value}'`);
@@ -273,9 +279,9 @@ export class Parser {
     });
   }
 
-  #parseFunctionDeclare(access: Access, functionPhase: FunctionPhase, pos: Position): ParserDeclaration {
+  #parseFunctionDeclare(parent: Symbol, access: Access, functionPhase: FunctionPhase, pos: Position): ParserFunctionDeclare | ParserFunctionExternDeclare {
     const { name, typeParams, params, result } = this.#parseFunctionSignature();
-    const symbol = this.#module.child(name);
+    const symbol = parent.child(name);
 
     const final = this.#assertKind('symbol');
 
@@ -302,6 +308,7 @@ export class Parser {
     return new ParserFunctionDeclare({
       pos,
       access,
+      name,
       symbol,
       func: new ParserFunctionStatement({
         pos,
@@ -398,6 +405,59 @@ export class Parser {
         default: defaultEx,
       }),
     ];
+  }
+
+  #parseImplementation(pos: Position): ParserImplDeclare {
+    // parse type params, if there are any
+    const typeParams = this.#parseTypeParams();
+
+    const base = this.#parseParameterizedTypeExpression();
+    const implSymbol = this.#localSymbol(this.#module, base);
+
+    // TODO: in the future, this will need to handle protocol implementations too
+    this.#assertSymbol('{');
+
+    const methods = Map<string, ParserFunctionDeclare | ParserFunctionExternDeclare>().asMutable();
+
+    while(!this.#checkSymbol('}')) {
+      const first = this.#assertKind('keyword');
+
+      const [access, phase] = isAccess(first.value) ? [first.value, this.#assertKind('keyword')] as const : ['internal', first] as const;
+
+      if (!isFunctionPhase(phase.value)) {
+        return phase.pos.fail('Expected to find fun, def or sig');
+      }
+
+      const method = this.#parseFunctionDeclare(implSymbol, access, phase.value, first.pos);
+
+      if (method instanceof ParserFunctionDeclare) {
+        methods.set(method.func.name, method);
+      } else {
+        methods.set(method.name, method);
+      }
+    }
+
+    return new ParserImplDeclare({
+      pos,
+      symbol: implSymbol,
+      base,
+      typeParams,
+      methods: methods.asImmutable(),
+    });
+  }
+
+  #localSymbol(root: Symbol, type: ParserTypeExpression): Symbol {
+    if (type instanceof ParserNominalType) {
+      return type.name.reduce((sum, next) => sum.child(next.name), root);
+    } else if (type instanceof ParserParameterizedType) {
+      return type.args.reduce((sum, next) => this.#localSymbol(sum, next), this.#localSymbol(root, type.base).child('<')).child('>');
+    } else if (type instanceof ParserFunctionTypeParameter) {
+      return this.#localSymbol(root, type.type);
+    } else if (type instanceof ParserFunctionType) {
+      return this.#localSymbol(type.params.reduce((sum, next) => this.#localSymbol(sum, next), root.child('{')).child('=>'), type.result);
+    } else {
+      return root.child(type.name);
+    }
   }
 
   #parseFunctionSignature(): { name: string, typeParams: List<ParserTypeParameterType>, params: List<ParserParameter>, result: ParserTypeExpression } {
@@ -1017,7 +1077,7 @@ export class Parser {
     return this.#parseFunctionTypeExpression();
   }
 
-  #parseFunctionTypeExpression(): ParserTypeExpression {
+  #parseFunctionTypeExpression(): ParserFunctionType | ParserParameterizedType | ParserNominalType {
     const next = this.#peek();
 
     if (next.kind === 'keyword' && isFunctionPhase(next.value)) {
@@ -1047,7 +1107,7 @@ export class Parser {
     }
   }
 
-  #parseParameterizedTypeExpression(): ParserTypeExpression {
+  #parseParameterizedTypeExpression(): ParserParameterizedType | ParserNominalType {
     const base = this.#parseNominalTypeExpression();
 
     if (this.#checkSymbol('<')) {

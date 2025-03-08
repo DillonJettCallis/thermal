@@ -1,4 +1,4 @@
-import { List, Record, Set } from 'immutable';
+import { Map, List, Set, Record,  } from 'immutable';
 
 export type JsExpression
   = JsBooleanLiteralEx

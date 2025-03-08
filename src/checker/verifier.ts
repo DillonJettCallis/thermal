@@ -1,5 +1,5 @@
 import { List, Map } from 'immutable';
-import type { Access, DependencyManager, PackageName, Symbol } from '../ast.ts';
+import { type Access, type DependencyManager, type PackageName, type Symbol, TypeDictionary } from '../ast.ts';
 import type { CheckedAccessRecord } from './checkerAst.ts';
 import type { ParserFile } from '../parser/parserAst.ts';
 import { ParserImportDeclaration } from '../parser/parserAst.ts';
@@ -9,19 +9,17 @@ import { ParserImportDeclaration } from '../parser/parserAst.ts';
  *
  * Does not check anything about the uses of the imports, just that they point to real things that can be found.
  */
-export function verifyImports(files: List<ParserFile>, manager: DependencyManager, declarations: Map<PackageName, Map<Symbol, CheckedAccessRecord>>): void {
+export function verifyImports(files: List<ParserFile>, manager: DependencyManager, typeDictionary: TypeDictionary): void {
   files.forEach(file => {
     file.declarations.forEach(dec => {
       if (dec instanceof ParserImportDeclaration) {
         manager.breakdownImport(dec).forEach(it => {
-          const record = declarations.get(it.package)?.get(it);
+          const record = typeDictionary.lookupSymbol(it);
 
-          if (record == null) {
+          if (record === undefined) {
             dec.pos.fail(`import '${it}' was not found.`);
           } else {
-            const {access, module} = record;
-
-            if (!checkImport(access, file.module, module)) {
+            if (!checkImport(record.access, file.module, record.name)) {
               dec.pos.fail(`import '${it}' was not found.`);
             }
           }
@@ -32,7 +30,7 @@ export function verifyImports(files: List<ParserFile>, manager: DependencyManage
 }
 
 
-function checkImport(access: Access, from: Symbol, to: Symbol): boolean {
+export function checkImport(access: Access, from: Symbol, to: Symbol): boolean {
   switch (access) {
     case 'private':
       // the modules have to match exactly

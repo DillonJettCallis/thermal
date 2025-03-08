@@ -1,4 +1,11 @@
-import type { DependencyManager, ExpressionPhase, FunctionPhase, PackageName, Symbol } from '../ast.ts';
+import {
+  type DependencyManager,
+  type ExpressionPhase,
+  type FunctionPhase,
+  type PackageName,
+  type Symbol,
+  TypeDictionary
+} from '../ast.ts';
 import { Position } from '../ast.ts';
 import type { Set } from 'immutable';
 import { List, Map, Record, Seq } from 'immutable';
@@ -25,14 +32,14 @@ import {
   type CheckedExpression,
   CheckedExpressionStatement,
   CheckedFile,
-  CheckedFloatLiteralEx,
+  CheckedFloatLiteralEx, type CheckedFuncDeclare,
   CheckedFunctionDeclare,
   CheckedFunctionExternDeclare,
   CheckedFunctionStatement,
   CheckedFunctionType,
   CheckedFunctionTypeParameter,
   CheckedIdentifierEx,
-  CheckedIfEx,
+  CheckedIfEx, CheckedImplDeclare,
   CheckedImportDeclaration,
   type CheckedImportExpression,
   CheckedIntLiteralEx,
@@ -54,7 +61,7 @@ import {
   CheckedReturnEx,
   type CheckedSetLiteralEx,
   type CheckedStatement,
-  CheckedStaticAccessEx,
+  CheckedStaticAccessEx, CheckedStaticReferenceEx,
   CheckedStringLiteralEx,
   CheckedStruct,
   CheckedStructField,
@@ -75,16 +82,16 @@ import {
   ParserConstantDeclare,
   ParserConstructEx,
   ParserDataDeclare,
-  type ParserDataLayout,
+  type ParserDataLayout, ParserEnumDeclare,
   type ParserExpression,
   ParserExpressionStatement,
   type ParserFile,
-  ParserFloatLiteralEx,
+  ParserFloatLiteralEx, type ParserFuncDeclare,
   ParserFunctionDeclare,
   ParserFunctionExternDeclare,
   type ParserFunctionStatement,
   ParserIdentifierEx,
-  ParserIfEx,
+  ParserIfEx, ParserImplDeclare,
   ParserImportDeclaration,
   type ParserImportExpression,
   ParserIntLiteralEx,
@@ -107,16 +114,17 @@ import {
   type ParserTypeExpression,
   ParserTypeParameterType
 } from '../parser/parserAst.ts';
+import { checkImport } from './verifier.ts';
 
 export class Checker {
   readonly #manager: DependencyManager;
-  readonly #declarations: Map<PackageName, Map<Symbol, CheckedAccessRecord>>;
+  readonly #typeDict: TypeDictionary;
   readonly #coreTypes: CoreTypes;
   readonly #preamble: Map<string, Symbol>;
 
-  constructor(manager: DependencyManager, declarations: Map<PackageName, Map<Symbol, CheckedAccessRecord>>, coreTypes: CoreTypes, preamble: Map<string, Symbol>) {
+  constructor(manager: DependencyManager, typeDict: TypeDictionary, coreTypes: CoreTypes, preamble: Map<string, Symbol>) {
     this.#manager = manager;
-    this.#declarations = declarations;
+    this.#typeDict = typeDict;
     this.#coreTypes = coreTypes;
     this.#preamble = preamble;
   }
@@ -135,27 +143,9 @@ export class Checker {
           ex: this.#checkImportExpression(dec.ex),
         });
       } else if (dec instanceof ParserFunctionDeclare) {
-        const func = this.checkFunctionStatement(dec.func, fileScope, file.module);
-
-        return new CheckedFunctionDeclare({
-          pos: dec.pos,
-          access: dec.access,
-          symbol: dec.symbol,
-          func,
-        });
+        return this.#checkFuncDeclare(dec, fileScope, file.module);
       } else if (dec instanceof ParserFunctionExternDeclare) {
-        const { typeParams, params, result } = this.#checkFunctionSignature(dec, fileScope, file.module);
-
-        return new CheckedFunctionExternDeclare({
-          pos: dec.pos,
-          access: dec.access,
-          symbol: dec.symbol,
-          name: dec.name,
-          functionPhase: dec.functionPhase,
-          typeParams,
-          params,
-          result,
-        })
+        return this.#checkFuncDeclare(dec, fileScope, file.module);
       } else if (dec instanceof ParserConstantDeclare) {
         const type = fileScope.qualifier.checkTypeExpression(dec.type);
         const expression = this.#checkExpression(dec.expression, fileScope, type);
@@ -183,7 +173,7 @@ export class Checker {
           typeParams,
           layout: this.#checkDataLayout(dec.layout, typeParams, fileScope),
         });
-      } else {
+      } else if (dec instanceof ParserEnumDeclare) {
         const typeParams = dec.typeParams.map(it => fileScope.qualifier.checkTypeExpression(it) as CheckedTypeParameterType);
         const variants = dec.variants.map(variant => this.#checkDataLayout(variant, typeParams, fileScope));
 
@@ -195,6 +185,14 @@ export class Checker {
           typeParams,
           variants,
         });
+      } else {
+        return new CheckedImplDeclare({
+          pos: dec.pos,
+          symbol: dec.symbol,
+          base: fileScope.qualifier.checkConcreteTypeExpression(dec.base),
+          typeParams: dec.typeParams.map(it => fileScope.qualifier.checkTypeParamType(it)),
+          methods: dec.methods.map(it => this.#checkFuncDeclare(it, fileScope, file.module)),
+        })
       }
     });
 
@@ -252,6 +250,33 @@ export class Checker {
       typeParams,
       enum: ex.enum,
     });
+  }
+
+  #checkFuncDeclare(dec: ParserFuncDeclare, fileScope: Scope, module: Symbol): CheckedFuncDeclare {
+    if (dec instanceof ParserFunctionDeclare) {
+      const func = this.checkFunctionStatement(dec.func, fileScope, module);
+
+      return new CheckedFunctionDeclare({
+        pos: dec.pos,
+        access: dec.access,
+        name: dec.name,
+        symbol: dec.symbol,
+        func,
+      });
+    } else {
+      const { typeParams, params, result } = this.#checkFunctionSignature(dec, fileScope, module);
+
+      return new CheckedFunctionExternDeclare({
+        pos: dec.pos,
+        access: dec.access,
+        symbol: dec.symbol,
+        name: dec.name,
+        functionPhase: dec.functionPhase,
+        typeParams,
+        params,
+        result,
+      })
+    }
   }
 
   #checkImportExpression(ex: ParserImportExpression): CheckedImportExpression {
@@ -402,7 +427,7 @@ export class Checker {
       if (prev instanceof CheckedModuleType) {
         const childName = prev.name.child(next.name);
 
-        const child = this.#declarations.get(prev.name.package)?.get(childName) ?? next.pos.fail(`No such import found ${childName}`);
+        const child = this.#typeDict.lookupSymbol(childName) ?? next.pos.fail(`No such import found ${childName}`);
         path.push(new CheckedIdentifierEx({
           pos: next.pos,
           name: next.name,
@@ -423,7 +448,7 @@ export class Checker {
         // TODO: actual method syntax, not this work around
         const childName = prev.name.child(next.name);
 
-        const child = this.#declarations.get(prev.name.package)?.get(childName) ?? next.pos.fail(`No such import found ${childName}`);
+        const child = this.#typeDict.lookupSymbol(childName) ?? next.pos.fail(`No such import found ${childName}`);
         path.push(new CheckedIdentifierEx({
           pos: next.pos,
           name: next.name,
@@ -504,11 +529,80 @@ export class Checker {
     }
   }
 
-  #checkConstruct() {
+  /**
+   * If this is a method, return that checked call, otherwise return undefined to indicate that function checking needs to continue
+   */
+  #checkMethod(ex: ParserCallEx, scope: Scope): CheckedCallEx | undefined {
+    if (ex.func instanceof ParserAccessEx) {
+      const checkBase = this.#checkExpression(ex.func.base, scope, undefined);
+      const maybeMethod = this.#processMethod(checkBase.type, ex.func.field);
 
+      if (maybeMethod === undefined) {
+        return undefined;
+      }
+
+      // the method exists, but you don't have access. Pretend like the method does not exist
+      if (!checkImport(maybeMethod.access, scope.functionScope.module, maybeMethod.module)) {
+        return undefined;
+      }
+
+      const funcType = maybeMethod.type as CheckedFunctionType;
+      const func = new CheckedStaticReferenceEx({
+        pos: ex.func.pos,
+        symbol: maybeMethod.name,
+        module: maybeMethod.module,
+        type: maybeMethod.type,
+        phase: 'const',
+      });
+
+      // put the base as the first argument
+      const inputArgs = ex.args.unshift(ex.func.base);
+
+      // TODO: Merge this with function handling
+      // TODO: handle default arguments
+      // TODO: handle generics in the expected type, that matters
+      if (funcType.params.size === inputArgs.size) {
+        const rawArgs = funcType.params.zipWith((expected: CheckedFunctionTypeParameter, actual: ParserExpression) => ({expected: expected.type, actual}), inputArgs).toOrderedMap();
+
+        const { typeArgs, args } = this.#fullChecking(rawArgs, scope, ex.pos, funcType.typeParams);
+        const typeParams = funcType.typeParams.toOrderedMap()
+          .mapEntries(([index, value]) => {
+            return [value.name, typeArgs.get(index)!];
+          });
+
+        const phaseParams = args.map((arg, index) => {
+          const param = funcType.params.get(index) ?? ex.pos.fail("This should never happen, `fullChecking` didn't return an argument");
+
+          return {
+            expectedPhase: param.phase,
+            arg,
+          };
+        }).valueSeq().toList();
+
+        return new CheckedCallEx({
+          pos: ex.pos,
+          func,
+          args: inputArgs.map((_, index) => args.get(index) ?? ex.pos.fail("This should never happen, `fullChecking` didn't return an argument")),
+          typeArgs,
+          type: this.#fillGenericTypes(funcType.result, ex.pos, typeParams),
+          phase: this.#phaseCheckCall(phaseParams, funcType.phase),
+        });
+      } else {
+        return ex.pos.fail(`Function ${func.pos} expects ${funcType.params.size} arguments but found ${inputArgs.size} arguments instead`);
+      }
+    } else {
+      return undefined;
+    }
   }
 
   checkCall(ex: ParserCallEx, scope: Scope): CheckedCallEx {
+    const maybeMethod = this.#checkMethod(ex, scope);
+
+    if (maybeMethod !== undefined) {
+      // this is a method, all checking has already been done
+      return maybeMethod;
+    }
+
     const func = this.#checkExpression(ex.func, scope, undefined);
     const funcType = func.type;
 
@@ -1057,7 +1151,7 @@ export class Checker {
 
   #lookup(type: CheckedTypeExpression | undefined): CheckedTypeExpression | undefined {
     if (type instanceof CheckedNominalType) {
-      return this.#declarations.get(type.name.package)?.get(type.name)?.type;
+      return this.#typeDict.lookupSymbol(type.name)?.type;
     } else {
       return type;
     }
@@ -1346,13 +1440,7 @@ export class Checker {
   }
 
   #typeSymbolToPhaseType(symbol: Symbol, pos: Position): PhaseType {
-    const pack = this.#declarations.get(symbol.package);
-
-    if (pack === undefined) {
-      return pos.fail(`Failed to find '${symbol}'`);
-    }
-
-    const record = pack.get(symbol);
+    const record = this.#typeDict.lookupSymbol(symbol);
 
     if (record === undefined) {
       return pos.fail(`Failed to find '${symbol}'`);
@@ -1389,7 +1477,7 @@ export class Checker {
       // TODO: someday we'll have bounds, and when we do this will need to be changed to allow field access to valid bounds
       return id.pos.fail('Unknown type has no fields');
     } else if (type instanceof CheckedNominalType) {
-      const realType = this.#declarations.get(type.name.package)?.get(type.name)?.type;
+      const realType = this.#typeDict.lookupSymbol(type.name)?.type;
 
       if (realType === undefined) {
         // this should not happen, since the verifier should have detected this
@@ -1398,7 +1486,7 @@ export class Checker {
 
       return this.#processAccess(realType, id);
     } else {
-      const realType = this.#declarations.get(type.base.name.package)?.get(type.base.name)?.type;
+      const realType = this.#typeDict.lookupSymbol(type.base.name)?.type;
 
       if (realType === undefined) {
         // this should not happen, since the verifier should have detected this
@@ -1416,6 +1504,62 @@ export class Checker {
         const field = realType.fields.get(id.name) ?? id.pos.fail(`Not able to find field ${id.name} on type ${realType.name}`);
 
         return this.#fillGenericTypes(field, id.pos, generics);
+      } else {
+        return id.pos.fail('Parameterized type has no fields');
+      }
+    }
+  }
+
+  #processMethod(type: CheckedTypeExpression, id: ParserIdentifierEx): CheckedAccessRecord | undefined {
+    if (type instanceof CheckedStructType) {
+      return this.#typeDict.lookupMethod(type.name, id.name);
+    } else if (type instanceof CheckedTupleType) {
+      return this.#typeDict.lookupMethod(type.name, id.name);
+    } else if (type instanceof CheckedAtomType) {
+      return this.#typeDict.lookupMethod(type.name, id.name);
+    } else if (type instanceof CheckedModuleType) {
+      return undefined;
+    } else if (type instanceof CheckedFunctionType || type instanceof CheckedOverloadFunctionType) {
+      return undefined;
+    } else if (type instanceof CheckedFunctionTypeParameter) {
+      return id.pos.fail('Something is wrong, it should be impossible to access this');
+    } else if (type instanceof CheckedEnumType) {
+      return this.#typeDict.lookupMethod(type.name, id.name);
+    } else if (type instanceof CheckedTypeParameterType) {
+      // TODO: someday we'll have protocols and bounds, and when we do this will need to be changed to allow method access to valid bounds
+      return id.pos.fail('Unknown type has no methods');
+    } else if (type instanceof CheckedNominalType) {
+      const realType = this.#typeDict.lookupSymbol(type.name)?.type;
+
+      if (realType === undefined) {
+        // this should not happen, since the verifier should have detected this
+        return id.pos.fail('Unable to find type information');
+      }
+
+      return this.#processMethod(realType, id);
+    } else {
+      const realType = this.#typeDict.lookupSymbol(type.base.name);
+
+      if (realType === undefined) {
+        // this should not happen, since the verifier should have detected this
+        return id.pos.fail('Unable to find type information');
+      }
+
+      if (realType.type instanceof CheckedStructType) {
+        // only a struct both has type params and fields, at least right now
+
+        if (realType.type.typeParams.size !== type.args.size) {
+          return id.pos.fail(`Incorrect number of type params. Expected ${realType.type.typeParams.size} but found ${type.args.size}`);
+        }
+
+        const generics = Map(realType.type.typeParams.map(it => it.name).zip<CheckedTypeExpression>(type.args));
+        const field = this.#typeDict.lookupMethod(realType.type.name, id.name)?.type;
+
+        if (field === undefined) {
+          return undefined;
+        }
+
+        return realType.set('type', this.#fillGenericTypes(field, id.pos, generics));
       } else {
         return id.pos.fail('Parameterized type has no fields');
       }
@@ -1445,7 +1589,7 @@ export class Checker {
    * This method should then return just `Int`.
    */
   #fillGenericTypes(ex: CheckedTypeExpression, pos: Position, generics: Map<Symbol, CheckedTypeExpression>): CheckedTypeExpression {
-    const declarations = this.#declarations;
+    const typeDict = this.#typeDict;
 
     function fill(ex: CheckedTypeExpression): CheckedTypeExpression {
       if (ex instanceof CheckedStructType) {
@@ -1468,7 +1612,7 @@ export class Checker {
       } else if (ex instanceof CheckedParameterizedType) {
         return ex.set('args', ex.args.map(fill));
       } else if (ex instanceof CheckedNominalType) {
-        const realType = declarations.get(ex.name.package)?.get(ex.name)?.type;
+        const realType = typeDict.lookupSymbol(ex.name)?.type;
 
         if (realType === undefined) {
           // this should not happen, since the verifier should have detected this
@@ -1491,10 +1635,12 @@ class FunctionScope {
 
   readonly #closures = Map<string, PhaseType>().asMutable();
   readonly symbol: Symbol;
+  readonly module: Symbol;
   readonly phase: FunctionPhase;
   resultType: CheckedTypeExpression;
 
-  constructor(symbol: Symbol, resultType: CheckedTypeExpression, phase: FunctionPhase) {
+  constructor(module: Symbol, symbol: Symbol, resultType: CheckedTypeExpression, phase: FunctionPhase) {
+    this.module = module;
     this.symbol = symbol;
     this.resultType = resultType;
     this.phase = phase;
@@ -1533,8 +1679,8 @@ export class Scope {
     this.functionScope = functionScope;
   }
 
-  static init(declared: Map<string, PhaseType>, qualifier: Qualifier, symbol: Symbol, resultType: CheckedTypeExpression): Scope {
-    return new Scope(undefined, declared, qualifier, new FunctionScope(symbol, resultType, 'fun'));
+  static init(declared: Map<string, PhaseType>, qualifier: Qualifier, module: Symbol, resultType: CheckedTypeExpression): Scope {
+    return new Scope(undefined, declared, qualifier, new FunctionScope(module, module, resultType, 'fun'));
   }
 
   child(): Scope {
@@ -1542,7 +1688,7 @@ export class Scope {
   }
 
   childFunction(symbol: Symbol, resultType: CheckedTypeExpression, phase: FunctionPhase): Scope {
-    return new Scope(this, undefined, this.qualifier, new FunctionScope(symbol, resultType, phase));
+    return new Scope(this, undefined, this.qualifier, new FunctionScope(this.functionScope.module, symbol, resultType, phase));
   }
 
   get(name: string, pos: Position): PhaseType {
