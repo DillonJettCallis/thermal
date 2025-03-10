@@ -525,23 +525,7 @@ export class Parser {
   }
 
   #parseExpression(): ParserExpression {
-    const first = this.#peek();
-
-    if (first.kind === 'symbol' && first.value === '{') {
-      this.#skip();
-      return this.#parseBlockExpression(first.pos);
-    } else if (first.kind === 'keyword' && isFunctionPhase(first.value)) {
-      this.#skip();
-      return this.#parseLambda(first.value, first.pos);
-    } else if (first.kind === 'keyword' && first.value === 'if') {
-      this.#skip();
-      return this.#parseIfExpression(first.pos);
-    } else if (first.kind === 'keyword' && first.value === 'return') {
-      this.#skip();
-      return this.#parseReturnExpression(first.pos);
-    } else {
-      return this.#parseBinaryExpression();
-    }
+    return this.#parseBinaryExpression();
   }
 
   #parseLambda(functionPhase: FunctionPhase, pos: Position): ParserLambdaEx {
@@ -817,7 +801,7 @@ export class Parser {
 
       return new ParserNotEx({
         pos: next.pos,
-        base: this.#parseNegate(),
+        base: this.#parseExpression(),
       });
     } else {
       return this.#parseNegate();
@@ -849,7 +833,7 @@ export class Parser {
         }),
         typeArgs: List(),
         args: List.of(
-          this.#parseStaticAccessExpression(),
+          this.#parseExpression(),
         ),
       });
     } else {
@@ -915,6 +899,14 @@ export class Parser {
         pos: next.pos,
         name: next.value,
       });
+    } else if (next.kind === 'symbol' && next.value === '{') {
+      return this.#parseBlockExpression(next.pos);
+    } else if (next.kind === 'keyword' && isFunctionPhase(next.value)) {
+      return this.#parseLambda(next.value, next.pos);
+    } else if (next.kind === 'keyword' && next.value === 'if') {
+      return this.#parseIfExpression(next.pos);
+    } else if (next.kind === 'keyword' && next.value === 'return') {
+      return this.#parseReturnExpression(next.pos);
     } else {
       return next.pos.fail(`Expected term, found ${next.kind} '${next.value}'`);
     }

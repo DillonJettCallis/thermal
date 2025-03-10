@@ -221,6 +221,14 @@ export class TypeDictionary {
    */
   #methods = Map<Symbol, Map<string, CheckedAccessRecord>>().asMutable();
 
+  get symbols(): Map<Symbol, CheckedAccessRecord> {
+    return this.#symbols;
+  }
+
+  get methods(): Map<Symbol, Map<string, CheckedAccessRecord>> {
+    return this.#methods;
+  }
+
   loadPackage(symbols: Map<Symbol, CheckedAccessRecord>, methods: Map<Symbol, Map<string, CheckedAccessRecord>>): void {
     this.#symbols.merge(symbols);
     this.#methods.merge(methods);

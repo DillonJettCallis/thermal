@@ -1,4 +1,4 @@
-import { DependencyDictionary, PackageName, Position, Symbol, Version } from '../ast.ts';
+import { DependencyDictionary, PackageName, Position, Symbol, TypeDictionary, Version } from '../ast.ts';
 import { coreLib } from '../lib.ts';
 import { List, Map } from 'immutable';
 import { Checker, PhaseType, Scope } from '../checker/checker.ts';
@@ -36,7 +36,10 @@ const {package: corePackage, preamble, coreTypes} = coreLib();
 depDict.addManager(corePackage.name);
 rootManager.addDependency(corePackage.name);
 
-const checker = new Checker(rootManager, Map<PackageName, Map<Symbol, CheckedAccessRecord>>().set(corePackage.name, corePackage.declarations), coreTypes, preamble);
+const typeDict = new TypeDictionary();
+typeDict.loadPackage(corePackage.declarations, Map());
+
+const checker = new Checker(rootManager, typeDict, coreTypes, preamble);
 const qualifier = new Qualifier(preamble);
 const preambleScope = preamble.map(name => {
   const type = corePackage.declarations.get(name)?.type;
@@ -148,6 +151,9 @@ describe('Checker', () => {
             name: 'list',
           }), new ParserIdentifierEx({
             pos,
+            name: 'List',
+          }), new ParserIdentifierEx({
+            pos,
             name: 'get',
           }),
         ),
@@ -243,6 +249,9 @@ describe('Checker', () => {
             name: 'list',
           }), new ParserIdentifierEx({
             pos,
+            name: 'List',
+          }), new ParserIdentifierEx({
+            pos,
             name: 'map',
           }),
         ),
@@ -311,6 +320,9 @@ describe('Checker', () => {
           }), new ParserIdentifierEx({
             pos,
             name: 'list',
+          }), new ParserIdentifierEx({
+            pos,
+            name: 'List',
           }), new ParserIdentifierEx({
             pos,
             name: 'flatMap',

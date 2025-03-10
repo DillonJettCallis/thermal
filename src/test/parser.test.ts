@@ -17,10 +17,10 @@ import {
   ParserLambdaEx,
   ParserListLiteralEx,
   ParserMapLiteralEntry,
-  ParserMapLiteralEx,
+  ParserMapLiteralEx, ParserNotEx,
   ParserSetLiteralEx,
   ParserStaticAccessEx,
-  ParserStringLiteralEx,
+  ParserStringLiteralEx
 } from '../parser/parserAst.ts';
 import { List } from 'immutable';
 
@@ -332,5 +332,72 @@ Entry {
     }),
     ));
   });
+
+  it('should parse a negated method call', () => expressionParserTest({
+    code: '!thing.stuff()',
+    expected: new ParserNotEx({
+      pos: new Position(src, 1, 1),
+      base: new ParserCallEx({
+        pos: new Position(src, 1, 7),
+        func: new ParserAccessEx({
+          pos: new Position(src, 1, 7),
+          base: new ParserIdentifierEx({
+            pos: new Position(src, 1, 2),
+            name: 'thing',
+          }),
+          field: new ParserIdentifierEx({
+            pos: new Position(src, 1, 8),
+            name: 'stuff',
+          }),
+        }),
+        args: List(),
+        typeArgs: List(),
+      })
+    })
+  }));
+
+  it('should parse using braces for order of operations', () => expressionParserTest({
+    code: '3 * { 2 + 9 }',
+    expected: new ParserCallEx({
+      pos: new Position(src, 1, 3),
+      func: new ParserIdentifierEx({
+        pos: new Position(src, 1, 3),
+        name: '*',
+      }),
+      typeArgs: List(),
+      args: List.of<ParserExpression>(
+        new ParserIntLiteralEx({
+          pos: new Position(src, 1, 1),
+          value: 3
+        }),
+        new ParserBlockEx({
+          pos: new Position(src, 1, 5),
+          body: List.of(
+            new ParserExpressionStatement({
+              pos: new Position(src, 1, 5),
+              expression: new ParserCallEx({
+                pos: new Position(src, 1, 9),
+                func: new ParserIdentifierEx({
+                  pos: new Position(src, 1, 9),
+                  name: '+',
+                }),
+                typeArgs: List(),
+                args: List.of(
+                  new ParserIntLiteralEx({
+                    pos: new Position(src, 1, 7),
+                    value: 2
+                  }),
+                  new ParserIntLiteralEx({
+                    pos: new Position(src, 1, 11),
+                    value: 9
+                  }),
+                )
+              }),
+            }),
+          ),
+        })
+      ),
+    })
+  }));
 });
 

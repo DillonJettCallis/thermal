@@ -205,6 +205,15 @@ export interface CoreTypes {
 function boolLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: CoreTypes, preamble: Map<string, Symbol>): void {
   const boolSymbol = coreSymbol.child('bool');
 
+  declarations.set(boolSymbol, new CheckedAccessRecord({
+    access: 'public',
+    name: boolSymbol,
+    module: boolSymbol,
+    type: new CheckedModuleType({
+      name: boolSymbol,
+    }),
+  }));
+
   declarations.set(boolSymbol.child('&&'), new CheckedAccessRecord({
     access: 'public',
     name: boolSymbol.child('&&'),
@@ -402,11 +411,21 @@ function stringLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: Co
 }
 
 function listLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: CoreTypes): void {
-  const listSymbol =  coreSymbol.child('list').child('List');
+  const listModuleSymbol = coreSymbol.child('list');
+  const listSymbol =  listModuleSymbol.child('List');
   const itemSymbol = listSymbol.child('item');
   const itemTypeParam = new CheckedTypeParameterType({
     name: itemSymbol,
   });
+
+  declarations.set(listModuleSymbol, new CheckedAccessRecord({
+    access: 'public',
+    name: listModuleSymbol,
+    module: listModuleSymbol,
+    type: new CheckedModuleType({
+      name: listModuleSymbol,
+    }),
+  }));
 
   declarations.set(listSymbol, new CheckedAccessRecord({
     access: 'public',
