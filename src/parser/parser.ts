@@ -199,7 +199,7 @@ export class Parser {
       case 'fun':
       case 'def':
       case 'sig':
-        return this.#parseFunctionDeclare(this.#module, access, keyword.value, first.pos);
+        return this.#parseFunctionDeclare(this.#module, access, keyword.value, first.pos, undefined);
       case 'data':
         return this.#parseDataDeclare(access, first.pos);
       case 'enum':
@@ -279,8 +279,8 @@ export class Parser {
     });
   }
 
-  #parseFunctionDeclare(parent: Symbol, access: Access, functionPhase: FunctionPhase, pos: Position): ParserFunctionDeclare | ParserFunctionExternDeclare {
-    const { name, typeParams, params, result } = this.#parseFunctionSignature();
+  #parseFunctionDeclare(parent: Symbol, access: Access, functionPhase: FunctionPhase, pos: Position, self: ParserTypeExpression | undefined): ParserFunctionDeclare | ParserFunctionExternDeclare {
+    const { name, typeParams, params, result } = this.#parseFunctionSignature(self);
     const symbol = parent.child(name);
 
     const final = this.#assertKind('symbol');
@@ -428,7 +428,7 @@ export class Parser {
         return phase.pos.fail('Expected to find fun, def or sig');
       }
 
-      const method = this.#parseFunctionDeclare(implSymbol, access, phase.value, first.pos);
+      const method = this.#parseFunctionDeclare(implSymbol, access, phase.value, first.pos, base);
 
       if (method instanceof ParserFunctionDeclare) {
         methods.set(method.func.name, method);
@@ -460,47 +460,61 @@ export class Parser {
     }
   }
 
-  #parseFunctionSignature(): { name: string, typeParams: List<ParserTypeParameterType>, params: List<ParserParameter>, result: ParserTypeExpression } {
+  #parseFunctionSignature(self: ParserTypeExpression | undefined): { name: string, typeParams: List<ParserTypeParameterType>, params: List<ParserParameter>, result: ParserTypeExpression } {
     // the word 'fun' has already been parsed by this point
     const name = this.#assertKind('identifier').value;
     const typeParams = this.#parseTypeParams();
     this.#assertSymbol('(');
-    const params = this.#parseList(')', false, () => {
-      const first = this.#next();
-
-      if (first.kind === 'keyword' && isExpressionPhase(first.value)) {
-        const phase = first.value;
-        const name = this.#assertKind('identifier').value;
-        this.#assertSymbol(':');
-        const type = this.#parseTypeExpression();
-        return new ParserParameter({
-          pos: first.pos,
-          phase,
-          name,
-          type,
-        });
-      } else if (first.kind === 'identifier') {
-        const name = first.value;
-        this.#assertSymbol(':');
-        const type = this.#parseTypeExpression();
-        return new ParserParameter({
-          pos: first.pos,
-          phase: undefined,
-          name,
-          type,
-        });
-      } else {
-        return first.pos.fail(`Expected parameter, found ${first.kind} '${first.value}'`);
-      }
-    });
+    const params = this.#parseList(')', false, isFirstItem => this.#parseParameter(isFirstItem, self, undefined));
     this.#assertSymbol(':');
     const result = this.#parseTypeExpression();
 
     return { name, typeParams, params, result };
   }
 
+  #parseParameter(maybeSelf: boolean, self: ParserTypeExpression | undefined, phase: ExpressionPhase | undefined): ParserParameter {
+    const first = this.#next();
+
+    if (first.kind === 'keyword' && isExpressionPhase(first.value)) {
+      if (phase === undefined) {
+        return this.#parseParameter(maybeSelf, self, first.value)
+      } else {
+        return first.pos.fail(`Expected parameter name, found ${first.kind} '${first.value}'`);
+      }
+    } else if (first.kind === 'identifier') {
+      const name = first.value;
+
+      if (name === 'self') {
+        // self is allowed here
+        if (maybeSelf) {
+          return new ParserParameter({
+            pos: first.pos,
+            phase,
+            name,
+            type: self,
+          });
+        } else {
+          // self is not allowed here, it's either not the first parameter or we are not a method
+          return first.pos.fail(`Parameter named 'self' is not allowed here. 'self' can only be used as the first parameter of a method.`);
+        }
+      }
+
+      this.#assertSymbol(':');
+
+      const type = this.#parseTypeExpression();
+      return new ParserParameter({
+        pos: first.pos,
+        phase,
+        name,
+        type,
+      });
+    } else {
+      return first.pos.fail(`Expected parameter, found ${first.kind} '${first.value}'`);
+    }
+  }
+
   #parseFunctionStatement(functionPhase: FunctionPhase, phase: ExpressionPhase, pos: Position): ParserFunctionStatement {
-    const { name, typeParams, params, result } = this.#parseFunctionSignature();
+    const { name, typeParams, params, result } = this.#parseFunctionSignature(undefined);
 
     const final = this.#assertKind('symbol');
     const body = final.value === '='
@@ -1021,11 +1035,13 @@ export class Parser {
   /**
    * Parse a comma seperated list of anything
    */
-  #parseList<Item>(close: string, trailingComma: boolean, parseItem: () => Item): List<Item> {
+  #parseList<Item>(close: string, trailingComma: boolean, parseItem: (first: boolean) => Item): List<Item> {
     const items = List<Item>().asMutable();
+    let first = true;
 
     while (!this.#checkSymbol(close)) {
-      items.push(parseItem());
+      items.push(parseItem(first));
+      first = false;
       const next = this.#assertKind('symbol');
 
       switch (next.value) {

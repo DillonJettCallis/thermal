@@ -22,7 +22,7 @@ import {
   CheckedAccessRecord,
   CheckedAtomType, type CheckedConcreteType,
   type CheckedDataLayoutType,
-  CheckedEnumType,
+  CheckedEnumType, type CheckedFuncDeclare, CheckedFunctionDeclare, CheckedFunctionExternDeclare,
   CheckedFunctionType,
   CheckedFunctionTypeParameter,
   CheckedNominalType,
@@ -157,22 +157,25 @@ export function collectSymbols(files: List<ParserFile>, manager: DependencyManag
           dec.pos.fail('Cannot have duplicate declarations of impls for any base type!');
         }
 
-        const baseMethods = dec.methods.toKeyedSeq()
-          .mapKeys((_, it) => it.name)
-          .map(it => {
-            const name = dec.symbol.child(it.name);
+        const baseMethods = Map<string, CheckedAccessRecord>().asMutable();
 
-            const record = new CheckedAccessRecord({
-              access: it.access,
-              name,
-              module: file.module,
-              type: qualifier.checkFuncDeclare(it),
-            });
+        for (const [key, parserFunc] of dec.methods) {
+          const name = dec.symbol.child(parserFunc.name);
 
-            declarations.set(name, record);
+          const record = new CheckedAccessRecord({
+            access: parserFunc.access,
+            name,
+            module: file.module,
+            type: qualifier.checkFuncDeclare(parserFunc),
+          });
 
-            return record;
-          }).toMap();
+          declarations.set(name, record);
+
+          // only include instance methods. Static methods are still accessible from a pure static context
+          if (isInstanceMethod(parserFunc)) {
+            baseMethods.set(key, record);
+          }
+        }
 
         methods.set(base, baseMethods);
       }
@@ -366,5 +369,17 @@ export class Qualifier {
       }),
       result: this.checkTypeExpression(dec.result),
     });
+  }
+}
+
+export function isInstanceMethod(dec: CheckedFuncDeclare | ParserFuncDeclare): boolean {
+  if (dec instanceof CheckedFunctionDeclare) {
+    return dec.func.lambda.params.first()?.name === 'self';
+  } else if (dec instanceof CheckedFunctionExternDeclare) {
+    return dec.params.first()?.name === 'self';
+  } if (dec instanceof ParserFunctionDeclare) {
+    return dec.func.lambda.params.first()?.name === 'self';
+  } else {
+    return dec.params.first()?.name === 'self';
   }
 }

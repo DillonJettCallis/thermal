@@ -6,7 +6,7 @@ data Status {
 
 implement Status {
 
-  fun reset(self: Status): Boolean {
+  fun reset(self): Boolean {
     return self.state;
   }
 
@@ -17,7 +17,7 @@ data Counter {
 }
 
 implement Counter {
-  sig increment(var self: Counter): Unit {
+  sig increment(var self): Unit {
     self.count += 1;
   }
 }
