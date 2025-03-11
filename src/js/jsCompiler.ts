@@ -409,14 +409,7 @@ export class JsCompiler {
     } else if (ex instanceof CheckedStringLiteralEx) {
       return new JsStringLiteralEx({ value: ex.value });
     } else if (ex instanceof CheckedIdentifierEx) {
-      const base = new JsIdentifierEx({ name: ex.name });
-
-      // auto-unwrap all flows and vars inside a sig function
-      if (phase === 'sig' && (ex.phase === 'flow' || ex.phase === 'var')) {
-        return new JsFlowGet({ body: base });
-      }
-
-      return base;
+      return new JsIdentifierEx({ name: ex.name });
     } else if (ex instanceof CheckedListLiteralEx) {
       return this.#handleListSetLiteral(new JsAccess({ base: new JsIdentifierEx({ name: 'List' }), field: 'of' }), phase, ex.values);
     } else if (ex instanceof CheckedSetLiteralEx) {
@@ -444,10 +437,17 @@ export class JsCompiler {
       return this.#handleBinaryOp('&&', phase, ex.left, ex.right);
     } else if (ex instanceof CheckedAccessEx) {
       return this.#use(this.#compileExpression(ex.base, phase), base => {
-        return new JsAccess({
-          base,
-          field: ex.field.name,
-        });
+        if (ex.base.phase === 'var') {
+          return new JsProjection({
+            base,
+            property: ex.field.name,
+          })
+        } else {
+          return new JsAccess({
+            base,
+            field: ex.field.name,
+          });
+        }
       });
     } else if (ex instanceof CheckedStaticAccessEx) {
       return ex.path.reduce<JsExpression | undefined>((prev, next) => {
@@ -547,10 +547,12 @@ export class JsCompiler {
       });
 
       function blockify(src: JsBlock | JsExpression): List<JsStatement> {
+        const name = new JsIdentifierEx({ name: resultId });
+
         if (src instanceof JsBlock) {
-          return src.body.push(new JsReassign({ name: resultId, body: src.result }));
+          return src.body.push(new JsReassign({ name, body: src.result }));
         } else {
-          return List.of(new JsReassign({ name: resultId, body: src }));
+          return List.of(new JsReassign({ name, body: src }));
         }
       }
 
@@ -585,7 +587,7 @@ export class JsCompiler {
             body: List.of<JsStatement>(
               syntheticResult,
               new JsIf({
-                condition: new JsFlowGet({body: condition}),
+                condition: this.#flowGet(condition),
                 thenBlock,
                 elseBlock,
               }),
@@ -658,16 +660,19 @@ export class JsCompiler {
         });
       }
     } else if (state instanceof CheckedReassignmentStatement) {
+      const name = state.name.shift().reduce<JsExpression>((base, next) => {
+        return new JsProjection({ base, property: next.name })
+      }, new JsIdentifierEx({ name: state.name.first()!.name }));
       const value = this.#compileExpression(state.expression, phase);
 
       if (value instanceof JsBlock) {
         return new JsBlock({
-          body: value.body.push(new JsReassign({ name: state.name, body: value.result })),
+          body: value.body.push(new JsReassign({ name, body: value.result })),
           result: new JsUndefined({}),
         });
       } else {
         return new JsBlock({
-          body: List.of(new JsReassign({ name: state.name, body: value })),
+          body: List.of(new JsReassign({ name, body: value })),
           result: new JsUndefined({}),
         });
       }
@@ -868,6 +873,53 @@ export class JsCompiler {
           });
         }
       }
+    } else if (phase === 'sig') {
+      // here we can either call another sig or a fun
+      // either way if the parameter is a val while the argument is a var or a flow it must be unwrapped
+      // if the parameter is a flow and the argument is not a flow nor a var it must be made into a singleton
+      // if the parameter is var only var is allowed, but it might be a projection
+
+      const blocks = paramPhases.zip<CheckedExpression>(args).map(([paramPhase, arg]) => {
+        const compiled = this.#compileExpression(arg, phase);
+
+        switch (paramPhase) {
+          case 'flow':
+            // do wrapping if needed
+            if (arg.phase === 'const' || arg.phase === 'val') {
+              // need to wrap in a singleton
+              if (compiled instanceof JsBlock) {
+                return compiled.update('result', init => new JsSingleton({init}));
+              } else {
+                return new JsSingleton({init: compiled});
+              }
+            } else {
+              // no changes
+              return compiled;
+            }
+          case 'val':
+          case undefined:
+            if (arg.phase === 'flow' || arg.phase === 'var') {
+              // need to unwrap the flow to call this
+              return this.#use(compiled, body => this.#flowGet(body));
+            } else {
+              // no changes
+              return compiled;
+            }
+          case 'var':
+          default:
+            return compiled;
+        }
+      });
+
+      const {list, statements} = this.#mergeBlocks(blocks);
+
+      const call = resultHandler(list);
+
+      if (statements === undefined) {
+        return call
+      } else {
+        return new JsBlock({body: statements, result: call});
+      }
     } else {
       // this is a normal function call, nothing special about it's arguments
       const {list, statements} = this.#mergeBlocks(args.map(it => this.#compileExpression(it, phase)));
@@ -879,6 +931,18 @@ export class JsCompiler {
       } else {
         return new JsBlock({body: statements, result: call});
       }
+    }
+  }
+
+  /**
+   * Used inside a sig to 'get' from a flow, or push that 'get' down through projection chains
+   */
+  #flowGet(body: JsExpression): JsExpression {
+    // if we have a projection instead of doing `project(base, 'field').get()` we can instead do `base.get().field` which gets us the same thing with less overhead
+    if (body instanceof JsProjection) {
+      return new JsAccess({base: this.#flowGet(body.base), field: body.property});
+    } else {
+      return new JsFlowGet({body});
     }
   }
 

@@ -12,6 +12,16 @@ implement Status {
 
 }
 
+data Counter {
+  count: Int
+}
+
+implement Counter {
+  sig increment(var self: Counter): Unit {
+    self.count += 1;
+  }
+}
+
 def main(): Html {
   var reset = Status { state: false }
 
@@ -27,7 +37,7 @@ def main(): Html {
 
 
 def clickCounter(status: Status, var resetter: Boolean): Element {
-  var count = 0;
+  var counter = Counter{ count: 0 };
 
   tag('div', [
     style('
@@ -36,9 +46,9 @@ def clickCounter(status: Status, var resetter: Boolean): Element {
       gap: 10px;
     '),
     content([
-      label(toString(count)),
+      label(toString(counter.count)),
       tag('button', [
-        onClick(sig { => count = count + 1; true }),
+        onClick(sig { => counter.increment(); true }),
         content([text('Click here')]),
       ]),
       tag('button', [

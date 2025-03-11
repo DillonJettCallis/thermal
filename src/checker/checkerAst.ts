@@ -649,14 +649,14 @@ export class CheckedAssignmentStatement extends Record<MutableCheckedAssignmentS
 
 interface MutableCheckedReassignmentStatement {
   pos: Position;
-  name: string;
+  name: List<CheckedIdentifierEx>;
   type: CheckedTypeExpression;
   phase: ExpressionPhase;
   expression: CheckedExpression;
 }
 export class CheckedReassignmentStatement extends Record<MutableCheckedReassignmentStatement>({
   pos: undefined as unknown as Position,
-  name: undefined as unknown as string,
+  name: undefined as unknown as List<CheckedIdentifierEx>,
   type: undefined as unknown as CheckedTypeExpression,
   phase: undefined as unknown as ExpressionPhase,
   expression: undefined as unknown as CheckedExpression,

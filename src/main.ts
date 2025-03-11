@@ -6,7 +6,6 @@ import { List, Map } from 'immutable';
 import { verifyImports } from './checker/verifier.ts';
 import { Checker } from './checker/checker.ts';
 import { substringBeforeLast } from './utils.ts';
-import type { CheckedAccessRecord } from './checker/checkerAst.ts';
 import { JsCompiler } from './js/jsCompiler.ts';
 import { JsEmitter } from './js/jsEmitter.ts';
 

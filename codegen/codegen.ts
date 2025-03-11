@@ -348,7 +348,7 @@ function parser(): Generator {
 
   gen.add('ReassignmentStatement', {
     pos,
-    name: native('string'),
+    name: list(identifierEx),
     expression,
   }, statement);
 
@@ -727,7 +727,7 @@ function checker(): Generator {
 
   gen.add('ReassignmentStatement', {
     pos,
-    name: native('string'),
+    name: list(identifierEx),
     type: typeExpression,
     phase: expressionPhase,
     expression,
@@ -989,7 +989,7 @@ function jsIr(): Generator {
   }, statement);
 
   const reassignment = gen.add('Reassign', {
-    name: native('string'),
+    name: expression,
     body: expression,
   }, statement);
 

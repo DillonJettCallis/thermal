@@ -2,11 +2,10 @@ import {
   type DependencyManager,
   type ExpressionPhase,
   type FunctionPhase,
-  type PackageName,
+  Position,
   type Symbol,
   TypeDictionary
 } from '../ast.ts';
-import { Position } from '../ast.ts';
 import type { Set } from 'immutable';
 import { List, Map, Record, Seq } from 'immutable';
 import { collectDeclarations, Qualifier } from './collector.ts';
@@ -32,14 +31,16 @@ import {
   type CheckedExpression,
   CheckedExpressionStatement,
   CheckedFile,
-  CheckedFloatLiteralEx, type CheckedFuncDeclare,
+  CheckedFloatLiteralEx,
+  type CheckedFuncDeclare,
   CheckedFunctionDeclare,
   CheckedFunctionExternDeclare,
   CheckedFunctionStatement,
   CheckedFunctionType,
   CheckedFunctionTypeParameter,
   CheckedIdentifierEx,
-  CheckedIfEx, CheckedImplDeclare,
+  CheckedIfEx,
+  CheckedImplDeclare,
   CheckedImportDeclaration,
   type CheckedImportExpression,
   CheckedIntLiteralEx,
@@ -61,7 +62,8 @@ import {
   CheckedReturnEx,
   type CheckedSetLiteralEx,
   type CheckedStatement,
-  CheckedStaticAccessEx, CheckedStaticReferenceEx,
+  CheckedStaticAccessEx,
+  CheckedStaticReferenceEx,
   CheckedStringLiteralEx,
   CheckedStruct,
   CheckedStructField,
@@ -82,16 +84,18 @@ import {
   ParserConstantDeclare,
   ParserConstructEx,
   ParserDataDeclare,
-  type ParserDataLayout, ParserEnumDeclare,
+  type ParserDataLayout,
+  ParserEnumDeclare,
   type ParserExpression,
   ParserExpressionStatement,
   type ParserFile,
-  ParserFloatLiteralEx, type ParserFuncDeclare,
+  ParserFloatLiteralEx,
+  type ParserFuncDeclare,
   ParserFunctionDeclare,
   ParserFunctionExternDeclare,
   type ParserFunctionStatement,
   ParserIdentifierEx,
-  ParserIfEx, ParserImplDeclare,
+  ParserIfEx,
   ParserImportDeclaration,
   type ParserImportExpression,
   ParserIntLiteralEx,
@@ -115,6 +119,7 @@ import {
   ParserTypeParameterType
 } from '../parser/parserAst.ts';
 import { checkImport } from './verifier.ts';
+import { scan } from '../utils.ts';
 
 export class Checker {
   readonly #manager: DependencyManager;
@@ -945,21 +950,28 @@ export class Checker {
       return state.pos.fail(`Attempt to update a 'var' inside a '${scope.functionScope.phase}' function. Only a 'sig' function is permitted to update a 'var'`);
     }
 
-    const id = scope.get(state.name, state.pos);
+    const first = state.name.first()!;
+    const id = scope.get(first.name, state.pos);
 
     if (id.phase !== 'var') {
       return state.pos.fail(`Attempt to update a '${id.phase}'. Only a 'var' can be updated`);
     }
 
-    const expression = this.#checkExpression(state.expression, scope, id.type);
+    const [finalType, names] = scan(state.name.shift(), id.type, (base, next) => {
+      const type = this.#processAccess(base, next);
 
-    if (!this.#checkAssignable(expression.type, id.type)) {
-      state.pos.fail(`Expected assignment of type '${id.type}' but found value of type '${expression.type}'`);
+      return [type, new CheckedIdentifierEx({ pos: next.pos, phase: 'var', name: next.name, type })] as const
+    });
+
+    const expression = this.#checkExpression(state.expression, scope, finalType);
+
+    if (!this.#checkAssignable(expression.type, finalType)) {
+      state.pos.fail(`Expected assignment of type '${finalType}' but found value of type '${expression.type}'`);
     }
 
     return new CheckedReassignmentStatement({
       pos: state.pos,
-      name: state.name,
+      name: names.unshift(new CheckedIdentifierEx({ pos: first.pos, name: first.name, phase: 'var', type: id.type })),
       expression,
       type: this.#coreTypes.unit,
       phase: 'val',

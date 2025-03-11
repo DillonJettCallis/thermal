@@ -461,12 +461,12 @@ export class ParserAssignmentStatement extends Record<MutableParserAssignmentSta
 
 interface MutableParserReassignmentStatement {
   pos: Position;
-  name: string;
+  name: List<ParserIdentifierEx>;
   expression: ParserExpression;
 }
 export class ParserReassignmentStatement extends Record<MutableParserReassignmentStatement>({
   pos: undefined as unknown as Position,
-  name: undefined as unknown as string,
+  name: undefined as unknown as List<ParserIdentifierEx>,
   expression: undefined as unknown as ParserExpression,
 }) {
   constructor(props: MutableParserReassignmentStatement) {

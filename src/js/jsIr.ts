@@ -285,11 +285,11 @@ export class JsAssign extends Record<MutableJsAssign>({
 }
 
 interface MutableJsReassign {
-  name: string;
+  name: JsExpression;
   body: JsExpression;
 }
 export class JsReassign extends Record<MutableJsReassign>({
-  name: undefined as unknown as string,
+  name: undefined as unknown as JsExpression,
   body: undefined as unknown as JsExpression,
 }) {
   constructor(props: MutableJsReassign) {

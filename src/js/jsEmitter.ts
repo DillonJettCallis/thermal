@@ -329,7 +329,7 @@ class Output {
       this.#write(';\n');
     } else if (state instanceof JsReassign) {
       this.#writeIndent();
-      this.#write(state.name);
+      this.#writeExpression(state.name);
       this.#write('.set(');
       this.#writeExpression(state.body);
       this.#write(');\n');

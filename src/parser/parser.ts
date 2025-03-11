@@ -938,21 +938,22 @@ export class Parser {
         const expression = this.#parseExpression();
         const possibleAssignment = this.#peek();
 
-        if (expression instanceof ParserIdentifierEx && possibleAssignment.kind === 'symbol' && Parser.#reassignmentOps.has(possibleAssignment.value)) {
+        if (possibleAssignment.kind === 'symbol' && Parser.#reassignmentOps.has(possibleAssignment.value)) {
           this.#skip();
+          const name = this.#deconstructAssignmentName(expression);
           const content = this.#parseExpression();
 
           if (possibleAssignment.value === '=') {
             body.push(new ParserReassignmentStatement({
               pos,
-              name: expression.name,
+              name,
               expression: content,
             }));
           } else {
             // desugar +=, -=, *= and /= into normal assignments calling their operator functions
             body.push(new ParserReassignmentStatement({
               pos,
-              name: expression.name,
+              name,
               expression: new ParserCallEx({
                 pos: possibleAssignment.pos,
                 func: new ParserIdentifierEx({
@@ -980,6 +981,22 @@ export class Parser {
       pos,
       body: body.asImmutable(),
     });
+  }
+
+  /**
+   * This unknown expression must composed entirely of identifiers, access expressions, or this function must throw an error.
+   */
+  #deconstructAssignmentName(ex: ParserExpression): List<ParserIdentifierEx> {
+    if (ex instanceof ParserIdentifierEx) {
+      // this is already a simple identifier, just return it
+      return List.of(ex);
+    } else if (ex instanceof ParserAccessEx) {
+      // this is an access, we must check the base and concat it with the field
+      return this.#deconstructAssignmentName(ex.base).push(ex.field);
+    } else {
+      // fail, this is not allowed
+      return ex.pos.fail('Expected only identifiers or accessors in reassignment position.');
+    }
   }
 
   #parseAssignment(phase: ExpressionPhase, pos: Position): ParserAssignmentStatement {
