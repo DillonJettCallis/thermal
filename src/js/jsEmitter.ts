@@ -108,7 +108,7 @@ class Output {
         this.#write('const ');
         this.#write(dec.layout.name);
         this.#write(' = ');
-        this.#writeDataLayout(dec.layout);
+        this.#writeDataLayout(dec.layout, undefined);
         this.#write(';\n');
       } else if (dec instanceof JsEnumDeclare) {
         if (dec.export) {
@@ -117,14 +117,37 @@ class Output {
         this.#write('const ');
         this.#write(dec.name);
         this.#write(' = {\n');
+        this.#write('  [_thermalClassMarker]: true,\n');
+        this.#write('  fullName: "');
+        this.#write(dec.symbol.serializedName());
+        this.#write('",\n');
+        this.#write('  name: "');
+        this.#write(dec.name);
+        this.#write('",\n');
+        this.#write('  generics: [],\n'); // TODO pass generics down to this point
+        this.#write('  type: "enum",\n');
+        this.#write('  enum: undefined,\n');
+        this.#write('  variants: {\n');
         dec.variants.forEach(v => {
           this.#write('  ');
           this.#write(v.name);
           this.#write(': ');
-          this.#writeDataLayout(v);
+          this.#write(v.symbol.serializedName());
           this.#write(',\n');
+        })
+        this.#write('},\n};\n');
+
+        dec.variants.forEach(v => {
+          if (dec.export) {
+            this.#write('export ');
+          }
+
+          this.#write('const ');
+          this.#write(v.symbol.serializedName());
+          this.#write(' = ');
+          this.#writeDataLayout(v, dec.name);
+          this.#write(';\n');
         });
-        this.#write('};\n');
       } else if (dec instanceof JsConst) {
         this.#write('const ');
         this.#write(dec.name);
@@ -145,28 +168,28 @@ class Output {
     }
   }
 
-  #writeDataLayout(layout: JsDataLayout): void {
+  #writeDataLayout(layout: JsDataLayout, enumName: string | undefined): void {
     if (layout instanceof JsStructLayout) {
-      this.#writeStruct(layout);
+      this.#writeStruct(layout, enumName);
     } else if (layout instanceof JsTupleLayout) {
-      this.#writeTuple(layout);
+      this.#writeTuple(layout, enumName);
     } else {
-      this.#writeAtom(layout);
+      this.#writeAtom(layout, enumName);
     }
   }
 
-  #writeStruct(dec: JsStructLayout): void {
+  #writeStruct(dec: JsStructLayout, enumName: string | undefined): void {
     this.#write('{\n');
     this.#write('  [_thermalClassMarker]: true,\n');
     this.#write('  fullName: "');
-    this.#write(dec.name); // TODO: include full name with package and version and everything
+    this.#write(dec.symbol.serializedName());
     this.#write('",\n');
     this.#write('  name: "');
     this.#write(dec.name);
     this.#write('",\n');
     this.#write('  generics: [],\n'); // TODO pass generics down to this point
     this.#write('  type: "struct",\n');
-    this.#write('  enum: undefined,\n'); // TODO: pass enum value to this point
+    this.#write(`  enum: ${enumName ?? 'undefined'},\n`);
     this.#write('  fields: {\n');
     dec.fields.forEach(field => {
       this.#write('    ');
@@ -176,18 +199,18 @@ class Output {
     this.#write('  },\n}');
   }
 
-  #writeTuple(dec: JsTupleLayout): void {
+  #writeTuple(dec: JsTupleLayout, enumName: string | undefined): void {
     this.#write('{\n');
     this.#write('  [_thermalClassMarker]: true,\n');
     this.#write('  fullName: "');
-    this.#write(dec.name); // TODO: include full name with package and version and everything
+    this.#write(dec.symbol.serializedName());
     this.#write('",\n');
     this.#write('  name: "');
     this.#write(dec.name);
     this.#write('",\n');
     this.#write('  generics: [],\n'); // TODO pass generics down to this point
     this.#write('  type: "tuple",\n');
-    this.#write('  enum: undefined,\n'); // TODO: pass enum value to this point
+    this.#write(`  enum: ${enumName ?? 'undefined'},\n`);
     this.#write('  fields: {\n');
     dec.fields.forEach(field => {
       this.#write('    ');
@@ -197,18 +220,18 @@ class Output {
     this.#write('  },\n}');
   }
 
-  #writeAtom(dec: JsAtomLayout): void {
+  #writeAtom(dec: JsAtomLayout, enumName: string | undefined): void {
     this.#write('{\n');
     this.#write('  [_thermalClassMarker]: true,\n');
     this.#write('  fullName: "');
-    this.#write(dec.name); // TODO: include full name with package and version and everything
+    this.#write(dec.symbol.serializedName());
     this.#write('",\n');
     this.#write('  name: "');
     this.#write(dec.name);
     this.#write('",\n');
     this.#write('  generics: [],\n'); // TODO pass generics down to this point
     this.#write('  type: "atom",\n');
-    this.#write('  enum: undefined,\n'); // TODO: pass enum value to this point
+    this.#write(`  enum: ${enumName ?? 'undefined'},\n`);
     this.#write('  fields: {\n  },\n}');
   }
 

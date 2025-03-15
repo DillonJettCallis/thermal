@@ -30,7 +30,7 @@ public fun tag(tag: String, mods: List<fun { Element::Tag -> Element::Tag }>): E
     children: [],
   }
 
-  return List::fold(mods, init, fun { sum, next => next(sum) });
+  return mods.fold(init, fun { sum, next => next(sum) });
 }
 
 public fun content(children: List<Element>): fun { Element::Tag -> Element::Tag } {
@@ -39,7 +39,7 @@ public fun content(children: List<Element>): fun { Element::Tag -> Element::Tag 
       tag: tag.tag,
       attributes: tag.attributes,
       onClick: tag.onClick,
-      children: List::concat(tag.children, children),
+      children: tag.children.concat(children),
     }
   }
 }
@@ -59,7 +59,7 @@ public fun attr(key: String, value: String): fun { Element::Tag -> Element::Tag 
   return fun { tag =>
     Element::Tag {
       tag: tag.tag,
-      attributes: Map::set(tag.attributes, key, value),
+      attributes: tag.attributes.set(key, value),
       onClick: tag.onClick,
       children: tag.children,
     }
@@ -70,7 +70,7 @@ public fun style(style: String): fun { Element::Tag -> Element::Tag } {
   return fun { tag =>
     Element::Tag {
       tag: tag.tag,
-      attributes: Map::update(tag.attributes, "style", fun { prev => stringConcat(stringConcat(prev, ";"), style) }),
+      attributes: tag.attributes.update("style", fun { prev => stringConcat(stringConcat(prev, ";"), style) }),
       onClick: tag.onClick,
       children: tag.children,
     }

@@ -1023,11 +1023,13 @@ interface MutableCheckedPackage {
   name: PackageName;
   files: List<CheckedFile>;
   declarations: Map<Symbol, CheckedAccessRecord>;
+  methods: Map<Symbol, Map<string, CheckedAccessRecord>>;
 }
 export class CheckedPackage extends Record<MutableCheckedPackage>({
   name: undefined as unknown as PackageName,
   files: undefined as unknown as List<CheckedFile>,
   declarations: undefined as unknown as Map<Symbol, CheckedAccessRecord>,
+  methods: undefined as unknown as Map<Symbol, Map<string, CheckedAccessRecord>>,
 }) {
   constructor(props: MutableCheckedPackage) {
     super(props);

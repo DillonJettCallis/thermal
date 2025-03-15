@@ -41,7 +41,6 @@ export function collectSymbols(files: List<ParserFile>, manager: DependencyManag
   const methods = Map<Symbol, Map<string, CheckedAccessRecord>>().asMutable();
 
   files.forEach(file => {
-    const module = file.module;
     const qualifier = new Qualifier(collectDeclarations(file, manager, preamble));
 
     // now qualify all types with these other found types, so that we can export that information outside
@@ -171,6 +170,21 @@ export function collectSymbols(files: List<ParserFile>, manager: DependencyManag
 
           declarations.set(name, record);
 
+          const typeParams = parserFunc instanceof ParserFunctionDeclare ? parserFunc.func.typeParams : parserFunc.typeParams;
+
+          typeParams.forEach(param => {
+            const paramName = name.child(param.name);
+
+            declarations.set(paramName, new CheckedAccessRecord({
+              access: 'public',
+              name: paramName,
+              module: file.module,
+              type: new CheckedTypeParameterType({
+                name: paramName,
+              }),
+            }));
+          });
+
           // only include instance methods. Static methods are still accessible from a pure static context
           if (isInstanceMethod(parserFunc)) {
             baseMethods.set(key, record);
@@ -209,9 +223,19 @@ export function collectDeclarations(file: ParserFile, manager: DependencyManager
 export class Qualifier {
 
   readonly #dict: Map<string, Symbol>;
+  readonly #typeParams: Map<string, Symbol>;
 
-  constructor(dict: Map<string, Symbol>) {
+  constructor(dict: Map<string, Symbol>, typeParams: Map<string, Symbol> = Map()) {
     this.#dict = dict;
+    this.#typeParams = typeParams;
+  }
+
+  includeTypeParams(parent: Symbol, typeParams: List<ParserTypeParameterType>): Qualifier {
+    if (typeParams.isEmpty()) {
+      return this;
+    }
+
+    return new Qualifier(this.#dict, typeParams.reduce((dict, next) => dict.set(next.name, parent.child(next.name)), Map()));
   }
 
   qualifyData(module: Symbol, dec: ParserDataDeclare): CheckedDataLayoutType {
@@ -230,7 +254,7 @@ export class Qualifier {
     return new CheckedEnumType({
       pos: dec.pos,
       name,
-      typeParams: dec.typeParams.map(it => this.checkTypeParamType(it)),
+      typeParams: dec.typeParams.map(it => this.checkTypeParamType(name, it)),
       variants: dec.variants.map((variant, key) => {
         return this.#qualifyDataLayout(variant, name.child(key));
       }),
@@ -251,7 +275,7 @@ export class Qualifier {
     return new CheckedStructType({
       pos: ex.pos,
       name,
-      typeParams: ex.typeParams.map(it => this.checkTypeParamType(it)),
+      typeParams: ex.typeParams.map(it => this.checkTypeParamType(name, it)),
       fields: this.#qualifyStructFields(ex.fields),
       enum: ex.enum,
     });
@@ -261,7 +285,7 @@ export class Qualifier {
     return new CheckedTupleType({
       pos: ex.pos,
       name,
-      typeParams: ex.typeParams.map(it => this.checkTypeParamType(it)),
+      typeParams: ex.typeParams.map(it => this.checkTypeParamType(name, it)),
       fields: ex.fields.map(it => this.checkTypeExpression(it)),
       enum: ex.enum,
     });
@@ -271,7 +295,7 @@ export class Qualifier {
     return new CheckedAtomType({
       pos: ex.pos,
       name,
-      typeParams: ex.typeParams.map(it => this.checkTypeParamType(it)),
+      typeParams: ex.typeParams.map(it => this.checkTypeParamType(name, it)),
       enum: ex.enum,
     })
   }
@@ -279,8 +303,6 @@ export class Qualifier {
   checkTypeExpression(ex: ParserTypeExpression): CheckedTypeExpression {
     if (ex instanceof ParserNominalType) {
       return this.checkNominalType(ex);
-    } else if (ex instanceof ParserTypeParameterType) {
-      return this.checkTypeParamType(ex);
     } else if (ex instanceof ParserParameterizedType) {
       return new CheckedParameterizedType({
         base: this.checkNominalType(ex.base),
@@ -305,16 +327,27 @@ export class Qualifier {
   }
 
   checkNominalType(ex: ParserNominalType): CheckedNominalType {
-    const base = this.#dict.get(ex.name.first()!.name) ?? ex.pos.fail(`Could not find type with name ${ex.name.first()!.name} in scope`);
+    const name = ex.name.first()!.name;
+
+    // TODO: when we have generic bounds, we'll need to be able to staticly pull methods off of them
+    if (ex.name.size === 1) {
+      const typeParamBase = this.#typeParams.get(name);
+
+      if (typeParamBase !== undefined) {
+        return new CheckedTypeParameterType({
+          name: typeParamBase,
+        })
+      }
+    }
+
+    const base = this.#dict.get(name) ?? ex.pos.fail(`Could not find type with name ${ex.name.first()!.name} in scope`);
 
     return new CheckedNominalType({
       name: ex.name.toSeq().skip(1).reduce((prev, next) => prev.child(next.name), base),
     });
   }
 
-  checkTypeParamType(ex: ParserTypeParameterType): CheckedTypeParameterType {
-    const base = this.#dict.get(ex.name) ?? ex.pos.fail(`Could not find type with name ${ex.name} in scope`);
-
+  checkTypeParamType(base: Symbol, ex: ParserTypeParameterType): CheckedTypeParameterType {
     return new CheckedTypeParameterType({
       name: base.child(ex.name),
     });
@@ -344,30 +377,34 @@ export class Qualifier {
   }
 
   checkFunctionDeclare(dec: ParserFunctionDeclare): CheckedFunctionType {
+    const childChecker = this.includeTypeParams(dec.symbol, dec.func.typeParams);
+
     return new CheckedFunctionType({
       phase: dec.func.lambda.functionPhase,
-      typeParams: dec.func.typeParams.map(it => this.checkTypeParamType(it)),
+      typeParams: dec.func.typeParams.map(it => childChecker.checkTypeParamType(dec.symbol, it)),
       params: dec.func.lambda.params.map(it => {
         return new CheckedFunctionTypeParameter({
           phase: it.phase,
-          type: this.checkTypeExpression(it.type!),
+          type: childChecker.checkTypeExpression(it.type!),
         });
       }),
-      result: this.checkTypeExpression(dec.func.result),
+      result: childChecker.checkTypeExpression(dec.func.result),
     });
   }
 
   checkFunctionExternDeclare(dec: ParserFunctionExternDeclare): CheckedFunctionType {
+    const childChecker = this.includeTypeParams(dec.symbol, dec.typeParams);
+
     return new CheckedFunctionType({
       phase: dec.functionPhase,
-      typeParams: dec.typeParams.map(it => this.checkTypeParamType(it)),
+      typeParams: dec.typeParams.map(it => childChecker.checkTypeParamType(dec.symbol, it)),
       params: dec.params.map(it => {
         return new CheckedFunctionTypeParameter({
           phase: it.phase,
-          type: this.checkTypeExpression(it.type!),
+          type: childChecker.checkTypeExpression(it.type!),
         });
       }),
-      result: this.checkTypeExpression(dec.result),
+      result: childChecker.checkTypeExpression(dec.result),
     });
   }
 }

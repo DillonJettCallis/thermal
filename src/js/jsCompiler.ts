@@ -1,7 +1,8 @@
 import {
   CheckedAccessEx,
   CheckedAndEx,
-  CheckedAssignmentStatement, CheckedBlockEx,
+  CheckedAssignmentStatement,
+  CheckedBlockEx,
   CheckedBooleanLiteralEx,
   CheckedCallEx,
   CheckedConstantDeclare,
@@ -17,7 +18,8 @@ import {
   CheckedFunctionStatement,
   CheckedFunctionType,
   CheckedIdentifierEx,
-  CheckedIfEx, CheckedImplDeclare,
+  CheckedIfEx,
+  CheckedImplDeclare,
   CheckedImportDeclaration,
   type CheckedImportExpression,
   CheckedIntLiteralEx,
@@ -34,7 +36,8 @@ import {
   CheckedReturnEx,
   CheckedSetLiteralEx,
   type CheckedStatement,
-  CheckedStaticAccessEx, CheckedStaticReferenceEx,
+  CheckedStaticAccessEx,
+  CheckedStaticReferenceEx,
   CheckedStringLiteralEx,
   CheckedStruct,
   CheckedTuple,
@@ -82,7 +85,7 @@ import {
 } from './jsIr.ts';
 import { List, Map, Seq } from 'immutable';
 import type { ExpressionPhase, FunctionPhase, Symbol } from '../ast.ts';
-import { Extern } from '../lib.ts';
+import { Extern } from '../ast.ts';
 import { substringAfterLast } from '../utils.ts';
 
 export class JsCompiler {
@@ -96,20 +99,30 @@ export class JsCompiler {
     });
   }).concat(List.of(
     new JsImport({
-      from: '../runtime/reflect.ts',
-      take: 'List',
-      as: undefined,
+      from: '../lib/core/vector.ts',
+      take: 'from',
+      as: '_Vec_from',
     }),
     new JsImport({
-      from: '../runtime/reflect.ts',
-      take: 'HashMap',
-      as: 'Map',
+      from: '../lib/core/map.ts',
+      take: 'from',
+      as: '_Map_from',
     }),
-    new JsImport({
-      from: '../runtime/reflect.ts',
-      take: 'HashSet',
-      as: 'Set',
-    }),
+    // new JsImport({
+    //   from: '../runtime/reflect.ts',
+    //   take: 'List',
+    //   as: undefined,
+    // }),
+    // new JsImport({
+    //   from: '../runtime/reflect.ts',
+    //   take: 'HashMap',
+    //   as: 'Map',
+    // }),
+    // new JsImport({
+    //   from: '../runtime/reflect.ts',
+    //   take: 'HashSet',
+    //   as: 'Set',
+    // }),
     new JsImport({
       from: '../runtime/reflect.ts',
       take: 'stringConcat',
@@ -164,14 +177,12 @@ export class JsCompiler {
       .remove(src.module) // don't import from yourself!
       .entrySeq()
       .flatMap(([module, list]) => {
-        const modulePathSize = module.serializedName().length;
-
-        return list.toSeq().map(it => it.symbol.serializedName().substring(modulePathSize)).toSet()
+        return list.toSeq().map(it => it.symbol.serializedName()).toSet()
           .map(path => {
             return new JsImport({
               from: `./${module.name}.js`,
               take: path,
-              as: undefined,
+              as: path,
             })
           })
       }).toList();
@@ -243,10 +254,10 @@ export class JsCompiler {
                 func: this.#compileFunctionStatement(funcDec.func.update('name', base => `${prefix}_${base}`)),
               }));
             } else {
-              const ex = externals.get(dec.symbol);
+              const ex = externals.get(funcDec.symbol);
 
               if (ex === undefined) {
-                return dec.pos.fail(`No externally defined implementation was found for ${dec.symbol}`);
+                return dec.pos.fail(`No externally defined implementation was found for ${funcDec.symbol}`);
               }
 
               const importDec = new JsImport({
@@ -261,7 +272,7 @@ export class JsCompiler {
                 return Seq.Indexed.of<JsDeclaration>(
                   importDec,
                   new JsExport({
-                    name: funcDec.name,
+                    name: `${prefix}_${funcDec.name}`,
                   }),
                 )
               }
@@ -271,6 +282,7 @@ export class JsCompiler {
         return Seq.Indexed.of(new JsEnumDeclare({
           export: dec.access !== 'private',
           name: dec.name,
+          symbol: dec.symbol,
           variants: dec.variants.entrySeq().map(([name, variant]) => {
             return this.#compileDataLayout(name, variant);
           }).toList(),
@@ -362,16 +374,19 @@ export class JsCompiler {
     if (variant instanceof CheckedStruct) {
       return new JsStructLayout({
         name,
+        symbol: variant.symbol,
         fields: variant.fields.keySeq().toSet(),
       });
     } else if (variant instanceof CheckedTuple) {
       return new JsTupleLayout({
         name,
+        symbol: variant.symbol,
         fields: variant.fields.map((_, index) => `$${index}`).toList(),
       });
     } else {
       return new JsAtomLayout({
         name,
+        symbol: variant.symbol,
       })
     }
   }
@@ -411,11 +426,11 @@ export class JsCompiler {
     } else if (ex instanceof CheckedIdentifierEx) {
       return new JsIdentifierEx({ name: ex.name });
     } else if (ex instanceof CheckedListLiteralEx) {
-      return this.#handleListSetLiteral(new JsAccess({ base: new JsIdentifierEx({ name: 'List' }), field: 'of' }), phase, ex.values);
+      return this.#handleListSetLiteral(new JsIdentifierEx({ name: '_Vec_from' }), phase, ex.values);
     } else if (ex instanceof CheckedSetLiteralEx) {
       return this.#handleListSetLiteral(new JsAccess({ base: new JsIdentifierEx({ name: 'Set' }), field: 'of' }), phase, ex.values);
     } else if (ex instanceof CheckedMapLiteralEx) {
-      return this.#handleMapLiteral(new JsAccess({ base: new JsIdentifierEx({ name: 'Map' }), field: 'of' }), phase, ex.values);
+      return this.#handleMapLiteral(new JsIdentifierEx({ name: '_Map_from' }), phase, ex.values);
     } else if (ex instanceof CheckedIsEx) {
       if (ex.type instanceof CheckedNominalType) {
         const typeEx = new CheckedIdentifierEx({ pos: ex.pos, name: ex.type.name.name, type: ex.type, phase: 'const' });

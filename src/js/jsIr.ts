@@ -1,4 +1,5 @@
 import { Map, List, Set, Record,  } from 'immutable';
+import { Symbol,  } from '../ast.ts';
 
 export type JsExpression
   = JsBooleanLiteralEx
@@ -431,10 +432,12 @@ export class JsFunctionDeclare extends Record<MutableJsFunctionDeclare>({
 
 interface MutableJsStructLayout {
   name: string;
+  symbol: Symbol;
   fields: Set<string>;
 }
 export class JsStructLayout extends Record<MutableJsStructLayout>({
   name: undefined as unknown as string,
+  symbol: undefined as unknown as Symbol,
   fields: undefined as unknown as Set<string>,
 }) {
   constructor(props: MutableJsStructLayout) {
@@ -444,10 +447,12 @@ export class JsStructLayout extends Record<MutableJsStructLayout>({
 
 interface MutableJsTupleLayout {
   name: string;
+  symbol: Symbol;
   fields: List<string>;
 }
 export class JsTupleLayout extends Record<MutableJsTupleLayout>({
   name: undefined as unknown as string,
+  symbol: undefined as unknown as Symbol,
   fields: undefined as unknown as List<string>,
 }) {
   constructor(props: MutableJsTupleLayout) {
@@ -457,9 +462,11 @@ export class JsTupleLayout extends Record<MutableJsTupleLayout>({
 
 interface MutableJsAtomLayout {
   name: string;
+  symbol: Symbol;
 }
 export class JsAtomLayout extends Record<MutableJsAtomLayout>({
   name: undefined as unknown as string,
+  symbol: undefined as unknown as Symbol,
 }) {
   constructor(props: MutableJsAtomLayout) {
     super(props);
@@ -482,11 +489,13 @@ export class JsDataDeclare extends Record<MutableJsDataDeclare>({
 interface MutableJsEnumDeclare {
   export: boolean;
   name: string;
+  symbol: Symbol;
   variants: List<JsDataLayout>;
 }
 export class JsEnumDeclare extends Record<MutableJsEnumDeclare>({
   export: undefined as unknown as boolean,
   name: undefined as unknown as string,
+  symbol: undefined as unknown as Symbol,
   variants: undefined as unknown as List<JsDataLayout>,
 }) {
   constructor(props: MutableJsEnumDeclare) {

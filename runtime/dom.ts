@@ -1,4 +1,12 @@
-import { equals, HashMap, List, type ThermalClass, thermalClass, type ThermalObject } from './reflect.js';
+import { equals, type ThermalClass, thermalClass, type ThermalObject } from './reflect.js';
+import { forEach as Vec_forEach, get as Vec_get, Vec } from '../lib/core/vector.ts';
+import {
+  entriesOf as Map_entriesOf,
+  forEach as Map_forEach,
+  has as Map_has,
+  HashMap,
+  keys as Map_keys
+} from '../lib/core/map.ts';
 
 interface IText {
   [thermalClass]: ThermalClass;
@@ -10,7 +18,7 @@ export interface ITag {
   tag: string;
   attributes: HashMap<string, string>;
   onClick: (() => void) | undefined;
-  children: List<ITag | IText>;
+  children: Vec<ITag | IText>;
 }
 
 interface IHead {
@@ -83,13 +91,13 @@ function updateTag(elem: HTMLElement, prev: ITag, next: ITag): void {
     parent.replaceChild(newChild, elem);
   } else {
     // set attributes
-    for (const [key, value] of next.attributes) {
+    for (const {key, value} of Map_entriesOf(next.attributes.buckets)) {
       elem.setAttribute(key, value);
     }
 
     // remove any attributes that have been removed
-    for (const key of prev.attributes.keys()) {
-      if (!next.attributes.has(key)) {
+    for (const key of Map_keys(prev.attributes)) {
+      if (!Map_has(next.attributes, key)) {
         elem.removeAttribute(key);
       }
     }
@@ -132,7 +140,7 @@ function create(parent: HTMLElement, node: ITag | IText): void {
 }
 
 function createTag(elem: HTMLElement, node: ITag): void {
-  node.attributes.forEach((value, key) => {
+  Map_forEach(node.attributes, (value, key) => {
     elem.setAttribute(key, value);
   });
 
@@ -140,20 +148,20 @@ function createTag(elem: HTMLElement, node: ITag): void {
     elem.onclick = node.onClick;
   }
 
-  node.children.forEach(child => {
+  Vec_forEach(node.children, child => {
     create(elem, child);
   });
 }
 
-function* multiZip(elem: HTMLElement, prev: List<IText | ITag>, next: List<IText | ITag>): IterableIterator<{ elemChild: Node | undefined, prevChild: IText | ITag | undefined, nextChild: IText | ITag | undefined }> {
+function* multiZip(elem: HTMLElement, prev: Vec<IText | ITag>, next: Vec<IText | ITag>): IterableIterator<{ elemChild: Node | undefined, prevChild: IText | ITag | undefined, nextChild: IText | ITag | undefined }> {
   const elemChildren = safeChildNodes(elem);
   const max = Math.max(elemChildren.length, prev.size, next.size);
 
   for (let index = 0; index < max; index++) {
     yield {
       elemChild: elemChildren[index],
-      prevChild: prev.get(index),
-      nextChild: next.get(index),
+      prevChild: Vec_get(prev, index),
+      nextChild: Vec_get(next, index),
     }
   }
 }

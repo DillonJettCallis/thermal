@@ -241,7 +241,27 @@ export class TypeDictionary {
   lookupMethod(base: Symbol, name: string): CheckedAccessRecord | undefined {
     return this.#methods.get(base)?.get(name);
   }
+
+  /**
+   * Return the module that this symbol belongs to by looking up it's parent chain to find a module
+   *
+   * Can return itself if the given item is a module.
+   *
+   * Returns undefined if none was found (likely this is a bug)
+   */
+  lookupModule(name: Symbol): Symbol | undefined {
+    return this.#symbols.get(name)?.module;
+  }
 }
+
+export class Extern extends Record({
+  symbol: undefined as unknown as Symbol,
+  // TODO: replace this with target-specifics
+  srcFile: '',
+  import: '',
+}) {
+}
+
 
 export type ExpressionPhase
   = 'const'

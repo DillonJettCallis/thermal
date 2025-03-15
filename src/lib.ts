@@ -1,5 +1,6 @@
 import {
   DependencyManager,
+  Extern,
   type FunctionPhase,
   PackageName,
   Position,
@@ -7,14 +8,15 @@ import {
   TypeDictionary,
   Version
 } from './ast.ts';
-import { List, Map, Record as ImmutableRecord } from 'immutable';
+import { List, Map } from 'immutable';
 import {
   CheckedAccessRecord,
   CheckedAtomType,
-  type CheckedDataLayoutType,
-  CheckedEnumType,
+  type CheckedDataLayoutType, type CheckedDeclaration,
+  CheckedEnumType, CheckedFile,
+  CheckedFunctionExternDeclare,
   CheckedFunctionType,
-  CheckedFunctionTypeParameter,
+  CheckedFunctionTypeParameter, CheckedImplDeclare,
   CheckedModuleType,
   CheckedNominalType,
   CheckedOverloadFunctionType,
@@ -36,23 +38,16 @@ const coreSymbol = new Symbol(corePackageName);
 
 const pos = new Position('<native>', 0, 0);
 
-export class Extern extends ImmutableRecord({
-  symbol: undefined as unknown as Symbol,
-  // TODO: replace this with target-specifics
-  srcFile: '',
-  import: '',
-}) {
-}
-
 export function domLib(workingDir: string, corePackage: CheckedPackage, coreTypes: CoreTypes, rootManager: DependencyManager, preamble: Map<string, Symbol>): CheckedPackage {
+  // TODO: dom lib needs to be prebuild, not checked per use case
   const version = new Version(0, 1, 0);
   const packageName = new PackageName('core', 'dom', version);
   const root = new Symbol(packageName);
 
-  const allFiles = List.of(Parser.parseFile(`${workingDir}/core/dom.thermal`, root.child('dom')));
+  const allFiles = List.of(Parser.parseFile(`${workingDir}/lib/dom/dom.thermal`, root.child('dom')));
   // const allFiles = [Parser.parseFile(`${dir}/simple.thermal`, root.child('simple'))];
   const typeDict = new TypeDictionary();
-  typeDict.loadPackage(corePackage.declarations, Map());
+  typeDict.loadPackage(corePackage.declarations, corePackage.methods);
 
   const { symbols, methods } = collectSymbols(allFiles, rootManager, preamble);
   typeDict.loadPackage(symbols, methods);
@@ -72,14 +67,14 @@ export function domLib(workingDir: string, corePackage: CheckedPackage, coreType
     name: packageName,
     files: checkedFiles,
     declarations: symbols,
+    methods,
   });
 }
 
-export function coreLib(): { package: CheckedPackage, coreTypes: CoreTypes, preamble: Map<string, Symbol> } {
+export function coreLib(workingDir: string, rootManager: DependencyManager): { package: CheckedPackage, coreTypes: CoreTypes, preamble: Map<string, Symbol>, externs: Map<Symbol, Extern> } {
   const declarations = Map<Symbol, CheckedAccessRecord>().asMutable();
 
   const coreTypes: CoreTypes = {
-    any: createStructType(coreSymbol, declarations, 'Any', [], {}),
     nothing: createStructType(coreSymbol, declarations, 'Nothing', [], {}),
     boolean: createStructType(coreSymbol.child('bool'), declarations, 'Boolean', [], {}),
     int: createStructType(coreSymbol.child('math'), declarations, 'Int', [], {}),
@@ -122,23 +117,51 @@ export function coreLib(): { package: CheckedPackage, coreTypes: CoreTypes, prea
     },
   };
 
-  const preamble = Map<string, Symbol>().asMutable();
+  const atomPreamble = Map<string, Symbol>().withMutations(preamble => {
+    boolLib(declarations, coreTypes, preamble);
+    mathLib(declarations, coreTypes, preamble);
+    stringLib(declarations, coreTypes, preamble);
 
-  boolLib(declarations, coreTypes, preamble);
-  mathLib(declarations, coreTypes, preamble);
-  stringLib(declarations, coreTypes, preamble);
-  listLib(declarations, coreTypes);
-  mapLib(declarations, coreTypes);
+    preamble.set('Boolean', coreTypes.boolean.name);
+    preamble.set('String', coreTypes.string.name);
+    preamble.set('Int', coreTypes.int.name);
+    preamble.set('Float', coreTypes.float.name);
+    preamble.set('Option', coreTypes.option.name);
+    preamble.set('Unit', coreTypes.unit.name);
+  });
 
-  preamble.set('Any', coreTypes.any.name);
-  preamble.set('Boolean', coreTypes.boolean.name);
-  preamble.set('String', coreTypes.string.name);
-  preamble.set('Int', coreTypes.int.name);
-  preamble.set('Float', coreTypes.float.name);
-  preamble.set('Option', coreTypes.option.name);
-  preamble.set('Unit', coreTypes.unit.name);
-  preamble.set('List', coreTypes.list.name);
-  preamble.set('Map', coreTypes.map.name);
+  const externs = Map<Symbol, Extern>().asMutable();
+
+  // TODO: this is a huge mess. Make core libs use explicit imports and not rely on the preamble, that will help solve the preamble bootstrap problem
+  // TODO: core library needs to be pre-checked so we don't have to recheck when we're just trying to use it.
+  const typeDict = new TypeDictionary();
+  typeDict.loadPackage(declarations, Map());
+
+  const parsedArrayFile = Parser.parseFile(`${workingDir}/lib/core/array.thermal`, coreSymbol.child('array'));
+
+  const { symbols: arraySymbols, methods: arrayMethods } = collectSymbols(List.of(parsedArrayFile), rootManager, atomPreamble);
+  typeDict.loadPackage(arraySymbols, arrayMethods);
+  declarations.merge(arraySymbols);
+
+  const arrayChecker = new Checker(rootManager, typeDict, coreTypes, atomPreamble);
+  const arrayFile = arrayChecker.checkFile(parsedArrayFile);
+  handleNativeImpls(arrayFile.declarations, `../lib/core/array.ts`, externs);
+
+  const arrayPreamble = atomPreamble.set('Array', coreSymbol.child('array').child('Array'));
+  const parsedVectorFile = Parser.parseFile(`${workingDir}/lib/core/vector.thermal`, coreSymbol.child('vector'));
+  const parsedMapFile = Parser.parseFile(`${workingDir}/lib/core/map.thermal`, coreSymbol.child('map'));
+  const { symbols, methods } = collectSymbols(List.of(parsedVectorFile, parsedMapFile), rootManager, arrayPreamble);
+  typeDict.loadPackage(symbols, methods);
+  declarations.merge(symbols);
+
+  const checker = new Checker(rootManager, typeDict, coreTypes, arrayPreamble);
+
+  const vectorFile = checker.checkFile(parsedVectorFile);
+  handleNativeImpls(vectorFile.declarations, `../lib/core/vector.ts`, externs);
+  const mapFile = checker.checkFile(parsedMapFile);
+  handleNativeImpls(mapFile.declarations, `../lib/core/map.ts`, externs);
+
+  const preamble = arrayPreamble.asMutable();
 
   declarations.set(coreSymbol, new CheckedAccessRecord({
     access: 'public',
@@ -150,15 +173,44 @@ export function coreLib(): { package: CheckedPackage, coreTypes: CoreTypes, prea
   }));
   preamble.set('core', coreSymbol);
 
+  preamble.set('List', coreSymbol.child('vector').child('Vec'));
+  preamble.set('Map', coreSymbol.child('map').child('Map'));
+
   return {
     package: new CheckedPackage({
       name: corePackageName,
-      files: List(),
-      declarations,
+      files: List.of(arrayFile, vectorFile, mapFile),
+      declarations: declarations.asImmutable(),
+      methods: arrayMethods.concat(methods),
     }),
     coreTypes,
     preamble: preamble.asImmutable(),
+    externs: externs.asImmutable(),
   };
+}
+
+function handleNativeImpls(content: List<CheckedDeclaration>, srcFile: string, externs: Map<Symbol, Extern>): void {
+  content.forEach(dec => {
+    if (dec instanceof CheckedImplDeclare) {
+      dec.methods.forEach(method => {
+        if (method instanceof CheckedFunctionExternDeclare) {
+          externs.set(method.symbol, new Extern({
+            symbol: method.symbol,
+            srcFile,
+            import: method.name === 'new' ? '_new' : method.name,
+          }));
+        }
+      });
+    }
+
+    if (dec instanceof CheckedFunctionExternDeclare) {
+      externs.set(dec.symbol, new Extern({
+        symbol: dec.symbol,
+        srcFile,
+        import: dec.name === 'new' ? '_new' : dec.name,
+      }));
+    }
+  })
 }
 
 function initOption(declarations: Map<Symbol, CheckedAccessRecord>): CheckedNominalType {
@@ -183,7 +235,6 @@ function initOption(declarations: Map<Symbol, CheckedAccessRecord>): CheckedNomi
 }
 
 export interface CoreTypes {
-  any: CheckedNominalType;
   nothing: CheckedNominalType;
   boolean: CheckedNominalType;
   string: CheckedNominalType;
@@ -408,260 +459,6 @@ function stringLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: Co
     }),
   }));
   preamble.set('stringConcat', concatSymbol);
-}
-
-function listLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: CoreTypes): void {
-  const listModuleSymbol = coreSymbol.child('list');
-  const listSymbol =  listModuleSymbol.child('List');
-  const itemSymbol = listSymbol.child('item');
-  const itemTypeParam = new CheckedTypeParameterType({
-    name: itemSymbol,
-  });
-
-  declarations.set(listModuleSymbol, new CheckedAccessRecord({
-    access: 'public',
-    name: listModuleSymbol,
-    module: listModuleSymbol,
-    type: new CheckedModuleType({
-      name: listModuleSymbol,
-    }),
-  }));
-
-  declarations.set(listSymbol, new CheckedAccessRecord({
-    access: 'public',
-    name: listSymbol,
-    module: listSymbol,
-    type: new CheckedModuleType({
-      name: listSymbol,
-    }),
-  }));
-
-  declarations.set(listSymbol.child('get'), new CheckedAccessRecord({
-    access: 'public',
-    name: listSymbol.child('get'),
-    module: listSymbol,
-    type: new CheckedFunctionType({
-      phase: 'fun',
-      typeParams: List.of(itemTypeParam),
-      params: List.of(
-        new CheckedFunctionTypeParameter({
-          phase: undefined,
-          type: coreTypes.listOf(itemTypeParam),
-        }), new CheckedFunctionTypeParameter({
-          phase: undefined,
-          type: coreTypes.int,
-        }),
-      ),
-      result: itemTypeParam,
-    }),
-  }));
-
-  const mapSymbol = listSymbol.child('map');
-  const mapOutSymbol = mapSymbol.child('Out');
-  const mapOutTypeParam = new CheckedTypeParameterType({
-    name: mapOutSymbol,
-  });
-
-  declarations.set(mapSymbol, new CheckedAccessRecord({
-    access: 'public',
-    name: mapSymbol,
-    module: listSymbol,
-    type: new CheckedFunctionType({
-      phase: 'fun',
-      typeParams: List.of(itemTypeParam, mapOutTypeParam),
-      params: List.of(
-        new CheckedFunctionTypeParameter({
-          phase: undefined,
-          type: coreTypes.listOf(itemTypeParam),
-        }), new CheckedFunctionTypeParameter({
-          phase: undefined,
-          type: new CheckedFunctionType({
-            phase: 'fun',
-            typeParams: List(),
-            params: List.of(
-              new CheckedFunctionTypeParameter({
-                phase: 'val',
-                type: itemTypeParam,
-              }),
-            ),
-            result: mapOutTypeParam,
-          }),
-        }),
-      ),
-      result: coreTypes.listOf(mapOutTypeParam),
-    }),
-  }));
-
-  const flatMapSymbol = listSymbol.child('flatMap');
-  declarations.set(flatMapSymbol, new CheckedAccessRecord({
-    access: 'public',
-    name: flatMapSymbol,
-    module: listSymbol,
-    type: new CheckedFunctionType({
-      phase: 'fun',
-      typeParams: List.of(itemTypeParam, mapOutTypeParam),
-      params: List.of(
-        new CheckedFunctionTypeParameter({
-          phase: undefined,
-          type: coreTypes.listOf(itemTypeParam),
-        }),
-        new CheckedFunctionTypeParameter({
-          phase: undefined,
-          type: new CheckedFunctionType({
-            phase: 'fun',
-            typeParams: List(),
-            params: List.of(
-              new CheckedFunctionTypeParameter({
-                phase: 'val',
-                type: itemTypeParam,
-              }),
-            ),
-            result: coreTypes.listOf(mapOutTypeParam),
-          }),
-        }),
-      ),
-      result: coreTypes.listOf(mapOutTypeParam),
-    }),
-  }));
-
-  const concatSymbol = listSymbol.child('concat');
-  declarations.set(concatSymbol, new CheckedAccessRecord({
-    access: 'public',
-    name: concatSymbol,
-    module: listSymbol,
-    type: new CheckedFunctionType({
-      phase: 'fun',
-      typeParams: List.of(itemTypeParam),
-      params: List.of(
-        new CheckedFunctionTypeParameter({
-          phase: undefined,
-          type: coreTypes.listOf(itemTypeParam)
-        }),
-        new CheckedFunctionTypeParameter({
-          phase: undefined,
-          type: coreTypes.listOf(itemTypeParam)
-        })
-      ),
-      result: new CheckedFunctionTypeParameter({
-        phase: undefined,
-        type: coreTypes.listOf(itemTypeParam)
-      })
-    })
-  }));
-
-  const foldSymbol = listSymbol.child('fold');
-  declarations.set(foldSymbol, new CheckedAccessRecord({
-    access: 'public',
-    name: foldSymbol,
-    module: listSymbol,
-    type: new CheckedFunctionType({
-      phase: 'fun',
-      typeParams: List.of(itemTypeParam, mapOutTypeParam),
-      params: List.of(
-        new CheckedFunctionTypeParameter({
-          phase: undefined,
-          type: coreTypes.listOf(itemTypeParam),
-        }),
-        new CheckedFunctionTypeParameter({
-          phase: undefined,
-          type: mapOutTypeParam,
-        }),
-        new CheckedFunctionTypeParameter({
-          phase: undefined,
-          type: new CheckedFunctionType({
-            phase: 'fun',
-            typeParams: List(),
-            params: List.of(
-              new CheckedFunctionTypeParameter({
-                phase: undefined,
-                type: mapOutTypeParam,
-              }),
-              new CheckedFunctionTypeParameter({
-                phase: undefined,
-                type: itemTypeParam,
-              }),
-            ),
-            result: mapOutTypeParam,
-          })
-        })
-      ),
-      result: mapOutTypeParam,
-    }),
-  }))
-}
-
-function mapLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: CoreTypes): void {
-  const mapSymbol =  coreSymbol.child('map').child('Map');
-  const keySymbol = mapSymbol.child('Key');
-  const valueSymbol = mapSymbol.child('Value');
-  const keyTypeParam = new CheckedTypeParameterType({
-    name: keySymbol,
-  });
-  const valueTypeParam = new CheckedTypeParameterType({
-    name: valueSymbol,
-  });
-
-  const setSymbol = mapSymbol.child('set');
-  declarations.set(setSymbol, new CheckedAccessRecord({
-    access: 'public',
-    name: setSymbol,
-    module: mapSymbol,
-    type: new CheckedFunctionType({
-      phase: 'fun',
-      typeParams: List.of(keyTypeParam, valueTypeParam),
-      params: List.of(
-        new CheckedFunctionTypeParameter({
-          phase: undefined,
-          type: coreTypes.mapOf(keyTypeParam, valueTypeParam),
-        }),
-        new CheckedFunctionTypeParameter({
-          phase: undefined,
-          type: keyTypeParam,
-        }),
-        new CheckedFunctionTypeParameter({
-          phase: undefined,
-          type: valueTypeParam,
-        }),
-      ),
-      result: coreTypes.mapOf(keyTypeParam, valueTypeParam),
-    }),
-  }));
-
-  const updateSymbol = mapSymbol.child('update');
-  declarations.set(updateSymbol, new CheckedAccessRecord({
-    access: 'public',
-    name: updateSymbol,
-    module: mapSymbol,
-    type: new CheckedFunctionType({
-      phase: 'fun',
-      typeParams: List.of(keyTypeParam, valueTypeParam),
-      params: List.of(
-        new CheckedFunctionTypeParameter({
-          phase: undefined,
-          type: coreTypes.mapOf(keyTypeParam, valueTypeParam),
-        }),
-        new CheckedFunctionTypeParameter({
-          phase: undefined,
-          type: keyTypeParam,
-        }),
-        new CheckedFunctionTypeParameter({
-          phase: undefined,
-          type: new CheckedFunctionType({
-            phase: 'fun',
-            typeParams: List(),
-            params: List.of(
-              new CheckedFunctionTypeParameter({
-                phase: undefined,
-                type: valueTypeParam,
-              }),
-            ),
-            result: valueTypeParam,
-          }),
-        }),
-      ),
-      result: coreTypes.mapOf(keyTypeParam, valueTypeParam),
-    }),
-  }));
 }
 
 function createStructType(parent: Symbol, declarations: Map<Symbol, CheckedAccessRecord>, baseName: string, typeParams: Array<string>, fields: Record<string, CheckedTypeExpression>): CheckedNominalType {

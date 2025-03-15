@@ -46,8 +46,8 @@ export function is(obj: any, type: any): boolean {
 
     // either object is of type, or type is an enum and obj is a variant of type
     return clazz === type || (type.type === 'enum' && clazz.enum === type);
-  } else if (type === List) {
-    return obj instanceof List;
+  } else if (type === Vec) {
+    return obj instanceof Vec;
   } else if (type === HashMap) { // TODO: these checks all need to be improved
     return obj instanceof HashMap;
   } else if (type === HashSet) {
@@ -215,23 +215,23 @@ export function hashCode(obj: any): number {
   return view.reduce((sum, next) => Math.imul(sum, 31) + next | 0, 7);
 }
 
-export class List<Item> implements Iterable<Item> {
+export class Vec<Item> implements Iterable<Item> {
   static readonly #factor = 32; // this many items per layer of array
-  readonly #size: number;
-  readonly #scale: number;
-  readonly #content: Array<any>;
+  readonly size: number;
+  readonly scale: number;
+  readonly content: Array<any>;
 
   constructor(content: Array<any>, size: number, scale: number) {
-    this.#content = content;
-    this.#size = size;
-    this.#scale = scale;
+    this.content = content;
+    this.size = size;
+    this.scale = scale;
   }
 
-  static readonly EMPTY = new List<never>([], 0, 0);
+  static readonly EMPTY = new Vec<never>([], 0, 0);
 
-  static of<Item>(src: Iterable<Item>): List<Item> {
+  static of<Item>(src: Iterable<Item>): Vec<Item> {
     if (src instanceof Array && src.length <= this.#factor) {
-      return new List(src, src.length, 0);
+      return new Vec(src, src.length, 0);
     }
 
     let content = new Array<any>();
@@ -254,7 +254,7 @@ export class List<Item> implements Iterable<Item> {
       }
     }
 
-    return new List(content, size, scale);
+    return new Vec(content, size, scale);
   }
 
   static #pushMutable<Item>(content: Array<any>, scale: number, index: number, item: Item): void {
@@ -262,7 +262,7 @@ export class List<Item> implements Iterable<Item> {
       // we are at the root
       content.push(item);
     } else {
-      const pageSize = Math.pow(List.#factor, scale);
+      const pageSize = Math.pow(Vec.#factor, scale);
       const pageIndex = Math.floor(index / pageSize);
       if (content.length === pageIndex) {
         // we need to create a new page
@@ -277,16 +277,12 @@ export class List<Item> implements Iterable<Item> {
     }
   }
 
-  get size(): number {
-    return this.#size;
-  }
-
   #invalidIndex(index: number): boolean {
-    return index >= this.#size || index < 0 || !Number.isSafeInteger(index);
+    return index >= this.size || index < 0 || !Number.isSafeInteger(index);
   }
 
   first(): Item | undefined {
-    if (this.#size === 0) {
+    if (this.size === 0) {
       return undefined;
     } else {
       return this.get(0);
@@ -294,10 +290,10 @@ export class List<Item> implements Iterable<Item> {
   }
 
   last(): Item | undefined {
-    if (this.#size === 0) {
+    if (this.size === 0) {
       return undefined;
     } else {
-      return this.get(this.#size - 1);
+      return this.get(this.size - 1);
     }
   }
 
@@ -306,11 +302,11 @@ export class List<Item> implements Iterable<Item> {
       return undefined;
     }
 
-    let content = this.#content;
-    let scale = this.#scale;
+    let content = this.content;
+    let scale = this.scale;
 
     while (scale > 0) {
-      const pageSize = Math.pow(List.#factor, scale);
+      const pageSize = Math.pow(Vec.#factor, scale);
       const pageIndex = Math.floor(index / pageSize);
       content = content[pageIndex];
       scale--;
@@ -321,19 +317,19 @@ export class List<Item> implements Iterable<Item> {
     return content[index] as Item;
   }
 
-  push(item: Item): List<Item> {
-    const pageSize = Math.pow(List.#factor, this.#scale + 1);
+  push(item: Item): Vec<Item> {
+    const pageSize = Math.pow(Vec.#factor, this.scale + 1);
 
     // if we are at capacity, we need to grow
-    if (pageSize === this.#size) {
-      const newRoot = [this.#content];
-      List.#pushInternal(newRoot, this.#scale + 1, this.#size, item);
-      return new List(newRoot, this.#size + 1, this.#scale + 1);
+    if (pageSize === this.size) {
+      const newRoot = [this.content];
+      Vec.#pushInternal(newRoot, this.scale + 1, this.size, item);
+      return new Vec(newRoot, this.size + 1, this.scale + 1);
     } else {
       // we can fit into the current scale
-      const contentCopy = this.#content.slice();
-      List.#pushInternal(contentCopy, this.#scale, this.#size, item);
-      return new List(contentCopy, this.#size + 1, this.#scale);
+      const contentCopy = this.content.slice();
+      Vec.#pushInternal(contentCopy, this.scale, this.size, item);
+      return new Vec(contentCopy, this.size + 1, this.scale);
     }
   }
 
@@ -342,7 +338,7 @@ export class List<Item> implements Iterable<Item> {
       // we are at the root
       content.push(item);
     } else {
-      const pageSize = Math.pow(List.#factor, scale);
+      const pageSize = Math.pow(Vec.#factor, scale);
       const pageIndex = Math.floor(index / pageSize);
       if (content.length === pageIndex) {
         // we need to create a new page
@@ -358,23 +354,23 @@ export class List<Item> implements Iterable<Item> {
     }
   }
 
-  pop(): List<Item> {
-    if (this.#size === 0) {
+  pop(): Vec<Item> {
+    if (this.size === 0) {
       throw new Error(`Index out of bounds. Cannot pop an empty list`);
     }
 
-    const pageSize = Math.pow(List.#factor, this.#scale);
+    const pageSize = Math.pow(Vec.#factor, this.scale);
 
     // if we are just one level above capacity, we can drop the last item and continue
-    if (pageSize === this.#size + 1) {
-      const newRoot = this.#content.slice();
+    if (pageSize === this.size + 1) {
+      const newRoot = this.content.slice();
       newRoot.pop();
-      return new List(newRoot, this.#size - 1, this.#scale - 1);
+      return new Vec(newRoot, this.size - 1, this.scale - 1);
     } else {
       // after removing the last item we'll have the same scale as we do now
-      const contentCopy = this.#content.slice();
-      List.#popInternal(contentCopy, this.#scale, this.#size);
-      return new List(contentCopy, this.#size - 1, this.#scale);
+      const contentCopy = this.content.slice();
+      Vec.#popInternal(contentCopy, this.scale, this.size);
+      return new Vec(contentCopy, this.size - 1, this.scale);
     }
   }
 
@@ -383,7 +379,7 @@ export class List<Item> implements Iterable<Item> {
       // we are at the root
       content.pop();
     } else {
-      const pageSize = Math.pow(List.#factor, scale);
+      const pageSize = Math.pow(Vec.#factor, scale);
       if (pageSize === size + 1) {
         // we have one item too many and can drop off the last item
         content.pop();
@@ -397,19 +393,19 @@ export class List<Item> implements Iterable<Item> {
     }
   }
 
-  set(index: number, item: Item): List<Item> {
+  set(index: number, item: Item): Vec<Item> {
     if (this.#invalidIndex(index)) {
-      if (index === this.#size) {
+      if (index === this.size) {
         // allow setting to the end of the list, but that's it
         return this.push(item);
       }
 
-      throw new Error(`Index out of bounds. Cannot set index ${index} in a list with only ${this.#size} elements`);
+      throw new Error(`Index out of bounds. Cannot set index ${index} in a list with only ${this.size} elements`);
     }
 
-    const contentCopy = this.#content.slice();
-    List.#setInternal(contentCopy, this.#scale, this.#size, item);
-    return new List(contentCopy, this.#size, this.#scale);
+    const contentCopy = this.content.slice();
+    Vec.#setInternal(contentCopy, this.scale, this.size, item);
+    return new Vec(contentCopy, this.size, this.scale);
   }
 
   static #setInternal<Item>(content: Array<any>, scale: number, index: number, item: Item): void {
@@ -417,7 +413,7 @@ export class List<Item> implements Iterable<Item> {
       // we are at the root
       content[index] = item;
     } else {
-      const pageSize = Math.pow(List.#factor, scale);
+      const pageSize = Math.pow(Vec.#factor, scale);
       const pageIndex = Math.floor(index / pageSize);
       const pageCopy = (content[pageIndex] as Array<any>).slice();
       content[pageIndex] = pageCopy;
@@ -425,20 +421,20 @@ export class List<Item> implements Iterable<Item> {
     }
   }
 
-  static concat<Item>(left: List<Item>, right: List<Item>): List<Item> {
+  static concat<Item>(left: Vec<Item>, right: Vec<Item>): Vec<Item> {
     return left.concat(right);
   }
 
-  concat(other: Iterable<Item>): List<Item> {
-    if (this.#size === 0) {
-      if (other instanceof List) {
+  concat(other: Iterable<Item>): Vec<Item> {
+    if (this.size === 0) {
+      if (other instanceof Vec) {
         return other;
       } else {
-        return List.of(other);
+        return Vec.of(other);
       }
     }
 
-    let sum: List<Item> = this;
+    let sum: Vec<Item> = this;
 
     for (const next of other) {
       sum = sum.push(next);
@@ -448,7 +444,7 @@ export class List<Item> implements Iterable<Item> {
   }
 
   [Symbol.iterator](): IterableIterator<Item> {
-    return this.#internalIterator(this.#content, this.#scale);
+    return this.#internalIterator(this.content, this.scale);
   }
 
   *#internalIterator(content: Array<any>, scale: number): IterableIterator<Item> {
@@ -461,8 +457,8 @@ export class List<Item> implements Iterable<Item> {
     }
   }
 
-  map<Out>(mapper: (item: Item) => Out): List<Out> {
-    return List.of(this.#mapInternal(mapper));
+  map<Out>(mapper: (item: Item) => Out): Vec<Out> {
+    return Vec.of(this.#mapInternal(mapper));
   }
 
   *#mapInternal<Out>(mapper: (item: Item) => Out): IterableIterator<Out> {
@@ -471,8 +467,8 @@ export class List<Item> implements Iterable<Item> {
     }
   }
 
-  flatMap<Out>(mapper: (item: Item) => Iterable<Out>): List<Out> {
-    return List.of(this.#flatMapInternal(mapper));
+  flatMap<Out>(mapper: (item: Item) => Iterable<Out>): Vec<Out> {
+    return Vec.of(this.#flatMapInternal(mapper));
   }
 
   *#flatMapInternal<Out>(mapper: (item: Item) => Iterable<Out>): IterableIterator<Out> {
@@ -481,8 +477,8 @@ export class List<Item> implements Iterable<Item> {
     }
   }
 
-  filter(test: (item: Item) => boolean): List<Item> {
-    return List.of(this.#filterInternal(test));
+  filter(test: (item: Item) => boolean): Vec<Item> {
+    return Vec.of(this.#filterInternal(test));
   }
 
   *#filterInternal(test: (item: Item) => boolean): IterableIterator<Item> {
@@ -499,7 +495,7 @@ export class List<Item> implements Iterable<Item> {
     }
   }
 
-  static fold<Item, Out>(list: List<Item>, init: Out, mapper: (sum: Out, next: Item) => Out): Out {
+  static fold<Item, Out>(list: Vec<Item>, init: Out, mapper: (sum: Out, next: Item) => Out): Out {
     return list.fold(init, mapper);
   }
 
@@ -517,12 +513,12 @@ type Bucket<Key, Value> = undefined | Entry<Key, Value> | Array<Entry<Key, Value
 
 // TODO: replace this with an in-language implementation that uses protocol based equals and hashcode
 export class HashMap<Key, Value> implements Iterable<readonly [Key, Value]> {
-  readonly #buckets: Array<Bucket<Key, Value>>;
-  readonly #size: number;
+  readonly buckets: Array<Bucket<Key, Value>>;
+  readonly size: number;
 
   constructor(buckets: Array<Bucket<Key, Value>>, size: number) {
-    this.#buckets = buckets;
-    this.#size = size;
+    this.buckets = buckets;
+    this.size = size;
   }
 
   static readonly EMPTY = new HashMap<never, never>(new Array(3), 0);
@@ -613,14 +609,10 @@ export class HashMap<Key, Value> implements Iterable<readonly [Key, Value]> {
     return new HashMap(bucketsCopy, size);
   }
 
-  get size(): number {
-    return this.#size;
-  }
-
   has(key: Key): boolean {
     const hash = hashCode(key);
 
-    const bucket = this.#buckets[hash % this.#buckets.length];
+    const bucket = this.buckets[hash % this.buckets.length];
 
     if (bucket === undefined) {
       return false;
@@ -636,7 +628,7 @@ export class HashMap<Key, Value> implements Iterable<readonly [Key, Value]> {
   get(key: Key): Value | undefined {
     const hash = hashCode(key);
 
-    const bucket = this.#buckets[hash % this.#buckets.length];
+    const bucket = this.buckets[hash % this.buckets.length];
 
     if (bucket === undefined) {
       return undefined;
@@ -664,26 +656,26 @@ export class HashMap<Key, Value> implements Iterable<readonly [Key, Value]> {
   set(key: Key, value: Value): HashMap<Key, Value> {
     const hash = hashCode(key);
     const newEntry: Entry<Key, Value> = { hash, key, value };
-    const bucketIndex = hash % this.#buckets.length;
+    const bucketIndex = hash % this.buckets.length;
 
-    const bucket = this.#buckets[bucketIndex];
+    const bucket = this.buckets[bucketIndex];
 
     if (bucket === undefined) {
       // item not found, replace no bucket with bucket of one
-      const bucketsCopy = this.#buckets.slice();
+      const bucketsCopy = this.buckets.slice();
       bucketsCopy[bucketIndex] = newEntry;
 
-      return new HashMap(bucketsCopy, this.#size + 1);
+      return new HashMap(bucketsCopy, this.size + 1);
     } else if (bucket instanceof Array) {
       const entryIndex = bucket.findIndex(entry => entry.hash === hash && equals(entry.key, key));
 
       if (entryIndex === -1) {
         // item not found, add new entry to this bucket
-        if (this.#size + 1 > this.#buckets.length / 4) {
+        if (this.size + 1 > this.buckets.length / 4) {
           // if there are an average of more than 4 items per bucket, increase the number of buckets
-          const newBuckets = new Array(this.#buckets.length * 2);
+          const newBuckets = new Array(this.buckets.length * 2);
 
-          for (const bucket of this.#buckets) {
+          for (const bucket of this.buckets) {
             if (bucket === undefined) {
               // do nothing
             } else if (bucket instanceof Array) {
@@ -725,39 +717,39 @@ export class HashMap<Key, Value> implements Iterable<readonly [Key, Value]> {
             newBuckets[index] = [existing, newEntry];
           }
 
-          return new HashMap(newBuckets, this.#size + 1);
+          return new HashMap(newBuckets, this.size + 1);
         } else {
           // fit within the same number of buckets
-          const bucketsCopy = this.#buckets.slice();
+          const bucketsCopy = this.buckets.slice();
           const bucketCopy = bucket.slice();
           bucketCopy.push(newEntry);
           bucketsCopy[bucketIndex] = bucketCopy;
 
-          return new HashMap(bucketsCopy, this.#size + 1);
+          return new HashMap(bucketsCopy, this.size + 1);
         }
       } else {
         // item found, replace it in this bucket
-        const bucketsCopy = this.#buckets.slice();
+        const bucketsCopy = this.buckets.slice();
         const bucketCopy = bucket.slice();
         bucketCopy[entryIndex] = newEntry;
         bucketsCopy[bucketIndex] = bucketCopy;
 
-        return new HashMap(bucketsCopy, this.#size);
+        return new HashMap(bucketsCopy, this.size);
       }
     } else {
       if (bucket.hash === hash && equals(bucket.key, key)) {
         // item found, replace it in place
 
-        const bucketsCopy = this.#buckets.slice();
+        const bucketsCopy = this.buckets.slice();
         bucketsCopy[bucketIndex] = newEntry;
 
-        return new HashMap(bucketsCopy, this.#size);
+        return new HashMap(bucketsCopy, this.size);
       } else {
         // item not found, turn this single item into an array of two items
-        const bucketsCopy = this.#buckets.slice();
+        const bucketsCopy = this.buckets.slice();
         bucketsCopy[bucketIndex] = [bucket, newEntry];
 
-        return new HashMap(bucketsCopy, this.#size + 1);
+        return new HashMap(bucketsCopy, this.size + 1);
       }
     }
   }
@@ -768,13 +760,13 @@ export class HashMap<Key, Value> implements Iterable<readonly [Key, Value]> {
 
   update(key: Key, updater: (old: Value | undefined) => Value | undefined): HashMap<Key, Value> {
     const hash = hashCode(key);
-    const bucketIndex = hash % this.#buckets.length;
+    const bucketIndex = hash % this.buckets.length;
 
-    const bucket = this.#buckets[bucketIndex];
+    const bucket = this.buckets[bucketIndex];
 
     if (bucket === undefined) {
       // item not found, replace no bucket with bucket of one
-      const bucketsCopy = this.#buckets.slice();
+      const bucketsCopy = this.buckets.slice();
       const value = updater(undefined);
 
       if (value === undefined) {
@@ -785,7 +777,7 @@ export class HashMap<Key, Value> implements Iterable<readonly [Key, Value]> {
       // set this item into the bucket and leave
       bucketsCopy[bucketIndex] = { hash, key, value };
 
-      return new HashMap(bucketsCopy, this.#size + 1);
+      return new HashMap(bucketsCopy, this.size + 1);
     } else if (bucket instanceof Array) {
       const entryIndex = bucket.findIndex(entry => entry.hash === hash && equals(entry.key, key));
 
@@ -800,11 +792,11 @@ export class HashMap<Key, Value> implements Iterable<readonly [Key, Value]> {
 
         const newEntry = { hash, key, value };
 
-        if (this.#size + 1 > this.#buckets.length / 4) {
+        if (this.size + 1 > this.buckets.length / 4) {
           // if there are an average of more than 4 items per bucket, increase the number of buckets
-          const newBuckets = new Array(this.#buckets.length * 2);
+          const newBuckets = new Array(this.buckets.length * 2);
 
-          for (const bucket of this.#buckets) {
+          for (const bucket of this.buckets) {
             if (bucket === undefined) {
               // do nothing
             } else if (bucket instanceof Array) {
@@ -846,21 +838,21 @@ export class HashMap<Key, Value> implements Iterable<readonly [Key, Value]> {
             newBuckets[index] = [existing, newEntry];
           }
 
-          return new HashMap(newBuckets, this.#size + 1);
+          return new HashMap(newBuckets, this.size + 1);
         } else {
           // fit within the same number of buckets
-          const bucketsCopy = this.#buckets.slice();
+          const bucketsCopy = this.buckets.slice();
           const bucketCopy = bucket.slice();
           bucketCopy.push(newEntry);
           bucketsCopy[bucketIndex] = bucketCopy;
 
-          return new HashMap(bucketsCopy, this.#size + 1);
+          return new HashMap(bucketsCopy, this.size + 1);
         }
       } else {
         // item found, check it
 
         // start by preparing the new buckets
-        const bucketsCopy = this.#buckets.slice();
+        const bucketsCopy = this.buckets.slice();
         const bucketCopy = bucket.slice();
         bucketsCopy[bucketIndex] = bucketCopy;
 
@@ -878,12 +870,12 @@ export class HashMap<Key, Value> implements Iterable<readonly [Key, Value]> {
           bucketCopy[entryIndex] = { hash, key, value };
         }
 
-        return new HashMap(bucketsCopy, this.#size);
+        return new HashMap(bucketsCopy, this.size);
       }
     } else {
       if (bucket.hash === hash && equals(bucket.key, key)) {
         // item found, replace it in place
-        const bucketsCopy = this.#buckets.slice();
+        const bucketsCopy = this.buckets.slice();
         const value = updater(bucket.value);
 
         if (value === undefined) {
@@ -893,7 +885,7 @@ export class HashMap<Key, Value> implements Iterable<readonly [Key, Value]> {
           bucketsCopy[bucketIndex] = { hash, key, value };
         }
 
-        return new HashMap(bucketsCopy, this.#size);
+        return new HashMap(bucketsCopy, this.size);
       } else {
         // item not found, turn this single item into an array of two items
         const value = updater(undefined);
@@ -903,19 +895,19 @@ export class HashMap<Key, Value> implements Iterable<readonly [Key, Value]> {
           return this;
         }
 
-        const bucketsCopy = this.#buckets.slice();
+        const bucketsCopy = this.buckets.slice();
         bucketsCopy[bucketIndex] = [bucket, { hash, key, value }];
 
-        return new HashMap(bucketsCopy, this.#size + 1);
+        return new HashMap(bucketsCopy, this.size + 1);
       }
     }
   }
 
   remove(key: Key): HashMap<Key, Value> {
     const hash = hashCode(key);
-    const bucketIndex = hash % this.#buckets.length;
+    const bucketIndex = hash % this.buckets.length;
 
-    const bucket = this.#buckets[bucketIndex];
+    const bucket = this.buckets[bucketIndex];
 
     if (bucket === undefined) {
       // not found, change nothing
@@ -929,7 +921,7 @@ export class HashMap<Key, Value> implements Iterable<readonly [Key, Value]> {
         return this;
       } else {
         // found at index, remove from array
-        const newBuckets = this.#buckets.slice();
+        const newBuckets = this.buckets.slice();
 
         if (bucket.length === 2) {
           // turn array into a single item
@@ -940,19 +932,19 @@ export class HashMap<Key, Value> implements Iterable<readonly [Key, Value]> {
           newBuckets[bucketIndex] = newBucket;
         }
 
-        return new HashMap<Key, Value>(newBuckets, this.#size - 1);
+        return new HashMap<Key, Value>(newBuckets, this.size - 1);
       }
     } else {
       if (bucket.hash === hash && equals(bucket.key, key)) {
         // found at bucket, replace with empty
 
-        if (this.#size === 1) {
+        if (this.size === 1) {
           // we are removing the only item, just return the EMPTY starter map
           return HashMap.EMPTY;
         } else {
-          const newBuckets = this.#buckets.slice();
+          const newBuckets = this.buckets.slice();
           newBuckets[bucketIndex] = undefined;
-          return new HashMap<Key, Value>(newBuckets, this.#size - 1);
+          return new HashMap<Key, Value>(newBuckets, this.size - 1);
         }
       } else {
         // not found, do nothing
@@ -962,7 +954,7 @@ export class HashMap<Key, Value> implements Iterable<readonly [Key, Value]> {
   }
 
   *keys(): IterableIterator<Key> {
-    for (const bucket of this.#buckets) {
+    for (const bucket of this.buckets) {
       if (bucket instanceof Array) {
         for (const {key} of bucket) {
           yield key;
@@ -974,7 +966,7 @@ export class HashMap<Key, Value> implements Iterable<readonly [Key, Value]> {
   }
 
   *[Symbol.iterator](): IterableIterator<readonly [Key, Value]> {
-    for (const bucket of this.#buckets) {
+    for (const bucket of this.buckets) {
       if (bucket instanceof Array) {
         for (const {key, value} of bucket) {
           yield [key, value];
@@ -1004,14 +996,14 @@ export class HashMap<Key, Value> implements Iterable<readonly [Key, Value]> {
   merge(other: HashMap<Key, Value>): HashMap<Key, Value> {
     if (other.size === 0) {
       return this;
-    } else if (this.#size === 0) {
+    } else if (this.size === 0) {
       return other;
     } else {
       // copy the outer array only once (unless we need to resize), copy children as needed
-      let bucketsCopy = this.#buckets.slice();
-      let size = this.#size;
+      let bucketsCopy = this.buckets.slice();
+      let size = this.size;
 
-      for (const newEntry of HashMap.#entriesOf(other.#buckets)) {
+      for (const newEntry of HashMap.#entriesOf(other.buckets)) {
         const { hash, key } = newEntry;
         const bucketIndex = hash % bucketsCopy.length;
 

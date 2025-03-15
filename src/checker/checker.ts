@@ -168,7 +168,7 @@ export class Checker {
           type,
         });
       } else if (dec instanceof ParserDataDeclare) {
-        const typeParams = dec.typeParams.map(it => fileScope.qualifier.checkTypeExpression(it) as CheckedTypeParameterType);
+        const typeParams = dec.typeParams.map(it => fileScope.qualifier.checkTypeParamType(dec.symbol, it) as CheckedTypeParameterType);
 
         return new CheckedDataDeclare({
           pos: dec.pos,
@@ -179,7 +179,7 @@ export class Checker {
           layout: this.#checkDataLayout(dec.layout, typeParams, fileScope),
         });
       } else if (dec instanceof ParserEnumDeclare) {
-        const typeParams = dec.typeParams.map(it => fileScope.qualifier.checkTypeExpression(it) as CheckedTypeParameterType);
+        const typeParams = dec.typeParams.map(it => fileScope.qualifier.checkTypeParamType(dec.symbol, it));
         const variants = dec.variants.map(variant => this.#checkDataLayout(variant, typeParams, fileScope));
 
         return new CheckedEnumDeclare({
@@ -194,8 +194,8 @@ export class Checker {
         return new CheckedImplDeclare({
           pos: dec.pos,
           symbol: dec.symbol,
-          base: fileScope.qualifier.checkConcreteTypeExpression(dec.base),
-          typeParams: dec.typeParams.map(it => fileScope.qualifier.checkTypeParamType(it)),
+          base: fileScope.qualifier.includeTypeParams(dec.symbol, dec.typeParams).checkConcreteTypeExpression(dec.base),
+          typeParams: dec.typeParams.map(it => fileScope.qualifier.checkTypeParamType(dec.symbol, it)),
           methods: dec.methods.map(it => this.#checkFuncDeclare(it, fileScope, file.module)),
         })
       }
@@ -421,12 +421,14 @@ export class Checker {
     });
   }
 
-  checkStaticAccess(ex: ParserStaticAccessEx, scope: Scope): CheckedStaticAccessEx {
-    const [first, ...rest] = ex.path.toArray();
+  checkStaticAccess(ex: ParserStaticAccessEx, scope: Scope): CheckedStaticReferenceEx {
+    const first = ex.path.first()!;
+    const rest = ex.path.shift();
 
     const init = this.checkIdentifier(first!, scope);
     const path = List.of(init).asMutable();
     let prev = init.type;
+    let prevName: Symbol | undefined;
 
     for (const next of rest) {
       if (prev instanceof CheckedModuleType) {
@@ -440,6 +442,7 @@ export class Checker {
           phase: 'const',
         }));
         prev = child.type;
+        prevName = childName;
       } else if (prev instanceof CheckedEnumType) {
         const variant = prev.variants.get(next.name) ?? next.pos.fail(`No such enum variant found ${prev.name}`);
         path.push(new CheckedIdentifierEx({
@@ -449,6 +452,7 @@ export class Checker {
           phase: 'const',
         }));
         prev = variant;
+        prevName = variant.name;
       } else if (prev instanceof CheckedStructType) {
         // TODO: actual method syntax, not this work around
         const childName = prev.name.child(next.name);
@@ -461,16 +465,28 @@ export class Checker {
           phase: 'const',
         }));
         prev = child.type;
+        prevName = childName;
       } else {
         return next.pos.fail('No static members found');
       }
     }
 
-    return new CheckedStaticAccessEx({
+    if (prevName === undefined) {
+      return ex.pos.fail('How is there a static access with only one name?');
+    }
+
+    const module = this.#typeDict.lookupModule(prevName);
+
+    if (module === undefined) {
+      return ex.pos.fail(`Could not find module of ${prevName}`);
+    }
+
+    return new CheckedStaticReferenceEx({
       pos: ex.pos,
-      path: path.asImmutable(),
       type: prev,
       phase: 'const',
+      symbol: prevName,
+      module,
     });
   }
 
@@ -990,6 +1006,8 @@ export class Checker {
   }
 
   #checkFunctionSignature(state: { typeParams: List<ParserTypeParameterType>, params: List<ParserParameter>, functionPhase: FunctionPhase, result: ParserTypeExpression }, scope: Scope, symbol: Symbol): { typeParams: List<CheckedTypeParameterType>, params: List<CheckedParameter>, result: CheckedTypeExpression } {
+    const qualifier = scope.qualifier.includeTypeParams(symbol, state.typeParams);
+
     // TODO: use the lambda expression checker internally to cut down on duplicated logic
     const typeParams = state.typeParams.map(typeParam => {
       return new CheckedTypeParameterType({
@@ -1002,7 +1020,7 @@ export class Checker {
         return it.pos.fail('Unable to determine type from context!');
       }
 
-      const type = scope.qualifier.checkTypeExpression(it.type);
+      const type = qualifier.checkTypeExpression(it.type);
 
       return new CheckedParameter({
         pos: it.pos,
@@ -1031,7 +1049,7 @@ export class Checker {
         break;
     }
 
-    const result = scope.qualifier.checkTypeExpression(state.result);
+    const result = qualifier.checkTypeExpression(state.result);
 
     return { typeParams, params, result };
   }
@@ -1564,14 +1582,7 @@ export class Checker {
           return id.pos.fail(`Incorrect number of type params. Expected ${realType.type.typeParams.size} but found ${type.args.size}`);
         }
 
-        const generics = Map(realType.type.typeParams.map(it => it.name).zip<CheckedTypeExpression>(type.args));
-        const field = this.#typeDict.lookupMethod(realType.type.name, id.name)?.type;
-
-        if (field === undefined) {
-          return undefined;
-        }
-
-        return realType.set('type', this.#fillGenericTypes(field, id.pos, generics));
+        return this.#typeDict.lookupMethod(realType.type.name, id.name);
       } else {
         return id.pos.fail('Parameterized type has no fields');
       }

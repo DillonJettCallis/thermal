@@ -431,9 +431,9 @@ export class Parser {
       const method = this.#parseFunctionDeclare(implSymbol, access, phase.value, first.pos, base);
 
       if (method instanceof ParserFunctionDeclare) {
-        methods.set(method.func.name, method);
+        methods.set(method.func.name, method.update('func', func => func.update('typeParams', params => typeParams.concat(params))));
       } else {
-        methods.set(method.name, method);
+        methods.set(method.name, method.update('typeParams', params => typeParams.concat(params)));
       }
     }
 
@@ -453,10 +453,8 @@ export class Parser {
       return type.args.reduce((sum, next) => this.#localSymbol(sum, next), this.#localSymbol(root, type.base).child('<')).child('>');
     } else if (type instanceof ParserFunctionTypeParameter) {
       return this.#localSymbol(root, type.type);
-    } else if (type instanceof ParserFunctionType) {
-      return this.#localSymbol(type.params.reduce((sum, next) => this.#localSymbol(sum, next), root.child('{')).child('=>'), type.result);
     } else {
-      return root.child(type.name);
+      return this.#localSymbol(type.params.reduce((sum, next) => this.#localSymbol(sum, next), root.child('{')).child('=>'), type.result);
     }
   }
 

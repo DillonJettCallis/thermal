@@ -19,7 +19,10 @@ async function main(): Promise<void> {
 
   const depDict = new DependencyDictionary();
   const rootManager = depDict.addManager(packageName);
-  const {package: corePackage, preamble, coreTypes} = coreLib();
+
+  const typeDict = new TypeDictionary();
+
+  const {package: corePackage, preamble, coreTypes, externs: coreExterns} = coreLib(workingDir, rootManager);
   depDict.addManager(corePackage.name);
   rootManager.addDependency(corePackage.name);
 
@@ -32,9 +35,8 @@ async function main(): Promise<void> {
 
   const allFiles = sources.map(file => Parser.parseFile(`${workingDir}/${dir}/${file}`, root.child(substringBeforeLast(file, '.thermal'))));
   // const allFiles = [Parser.parseFile(`${dir}/simple.thermal`, root.child('simple'))];
-  const typeDict = new TypeDictionary();
-  typeDict.loadPackage(corePackage.declarations, Map());
-  typeDict.loadPackage(domPackage.declarations, Map());
+  typeDict.loadPackage(corePackage.declarations, corePackage.methods);
+  typeDict.loadPackage(domPackage.declarations, domPackage.methods);
 
   const { symbols, methods } = collectSymbols(allFiles, rootManager, preamble);
   typeDict.loadPackage(symbols, methods);
@@ -44,10 +46,11 @@ async function main(): Promise<void> {
 
   const checker = new Checker(rootManager, typeDict, coreTypes, preamble);
 
-  const checkedFiles = allFiles.map(file => checker.checkFile(file)).concat(domPackage.files);
+  // TODO: libraries need to be handled better than this
+  const checkedFiles = allFiles.map(file => checker.checkFile(file)).concat(domPackage.files).concat(corePackage.files);
 
   const jsCompiler = new JsCompiler();
-  const jsCompilePrep = checkedFiles.map(file => jsCompiler.compileFile(file, Map()));
+  const jsCompilePrep = checkedFiles.map(file => jsCompiler.compileFile(file, coreExterns));
 
   const jsEmitter = new JsEmitter(`${workingDir}/dist`);
   for (const file of jsCompilePrep) {

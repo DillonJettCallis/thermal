@@ -893,6 +893,7 @@ function checker(): Generator {
     name: packageName,
     files: list(file),
     declarations: map(symbol, accessRecord),
+    methods: map(symbol, map(native('string'), accessRecord)),
   });
 
   return gen;
@@ -1048,16 +1049,19 @@ function jsIr(): Generator {
 
   const structDeclare = gen.add('StructLayout', {
     name: native('string'),
+    symbol,
     fields: set(native('string')),
   }, dataLayout);
 
   const tupleDeclare = gen.add('TupleLayout', {
     name: native('string'),
+    symbol,
     fields: list(native('string')),
   }, dataLayout);
 
   const atomDeclare = gen.add('AtomLayout', {
     name: native('string'),
+    symbol,
   }, dataLayout);
 
   const dataDeclare = gen.add('DataDeclare', {
@@ -1068,6 +1072,7 @@ function jsIr(): Generator {
   const enumDeclare = gen.add('EnumDeclare', {
     export: native('boolean'),
     name: native('string'),
+    symbol,
     variants: list(dataLayout),
   }, declare);
 

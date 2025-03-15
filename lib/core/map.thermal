@@ -1,0 +1,18 @@
+
+public data Map<Key, Value> {
+  size: Int,
+}
+
+implement <Key, Value> Map<Key, Value> {
+  public fun empty(): Map<Key, Value> = extern;
+
+  public fun has(self, key: Key): Boolean = extern;
+  public fun get(self, key: Key): Value = extern;
+  public fun set(self, key: Key, value: Value): Map<Key, Value> = extern;
+  public fun update(self, key: Key, updater: { Value -> Value }): Map<Key, Value> = extern;
+  public fun remove(self, key: Key): Map<Key, Value> = extern;
+  public fun merge(self, other: Map<Key, Value>): Map<Key, Value> = extern;
+
+  public fun keys(self): Array<Key> = extern;
+  public fun values(self): Array<Value> = extern;
+}

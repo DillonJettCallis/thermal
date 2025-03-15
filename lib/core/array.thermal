@@ -1,0 +1,11 @@
+
+public data Array<Item>{
+  size: Int,
+};
+
+implement <Item> Array<Item> {
+  public fun size(self): Int = extern;
+  public fun get(self, index: Int): Item = extern;
+  public fun set(self, index: Int, item: Item): Array<Item> = extern;
+  public fun add(self, item: Item): Array<Item> = extern;
+}

@@ -1,6 +1,7 @@
 
 * Better parsing of more complex expressions
-* Core library support - mix together native and non-native code
+* Core library support - make proper modules for core stuff, extern as much as possible
+* Serialization format for libraries, implement core lib like this
 * Methods - static references
 * Const evaluation
 * Test and evaluate effect system
