@@ -1,3 +1,7 @@
+import core/array::Array;
+import core/bool::Boolean;
+import core/math::Int;
+import core/base::Unit;
 
 public data Vec<Item> {
   size: Int,
@@ -6,6 +10,7 @@ public data Vec<Item> {
 implement <Item> Vec<Item> {
   public fun empty(): Vec<Item> = extern;
   public fun from(arr: Array<Item>): Vec<Item> = extern;
+  public fun toArray(): Array<Item> = extern;
   public fun first(self): Item = extern;
   public fun last(self): Item = extern;
   public fun get(self, index: Int): Item = extern;

@@ -1,3 +1,6 @@
+import core/array::Array;
+import core/bool::Boolean;
+import core/math::Int;
 
 public data Map<Key, Value> {
   size: Int,

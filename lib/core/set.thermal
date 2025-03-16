@@ -1,0 +1,16 @@
+import core/array::Array;
+import core/bool::Boolean;
+import core/math::Int;
+
+public data Set<Item> {
+  size: Int,
+}
+
+implement <Item> Set<Item> {
+  public fun empty(): Set<Item> = extern;
+  public fun from(src: Array<Item>): Set<Item> = extern;
+  public fun add(self, item: Item): Set<Item> = extern;
+  public fun remove(self, item: Item): Set<Item> = extern;
+  public fun has(self, item: Item): Boolean = extern;
+  public fun merge(self, other: Set<Item>): Set<Item> = extern;
+}

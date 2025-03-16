@@ -64,6 +64,10 @@ function pushMutable<Item>(content: Array<any>, scale: number, index: number, it
   }
 }
 
+export function toArray<Item>(self: Vec<Item>): Array<Item> {
+  return Array.from(iterator(self));
+}
+
 function invalidIndex<Item>(self: Vec<Item>, index: number): boolean {
   return index >= self.size || index < 0 || !Number.isSafeInteger(index);
 }

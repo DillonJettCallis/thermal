@@ -12,11 +12,10 @@ import { List, Map } from 'immutable';
 import {
   CheckedAccessRecord,
   CheckedAtomType,
-  type CheckedDataLayoutType, type CheckedDeclaration,
-  CheckedEnumType, CheckedFile,
-  CheckedFunctionExternDeclare,
+  type CheckedDataLayoutType,
+  CheckedEnumType,
   CheckedFunctionType,
-  CheckedFunctionTypeParameter, CheckedImplDeclare,
+  CheckedFunctionTypeParameter,
   CheckedModuleType,
   CheckedNominalType,
   CheckedOverloadFunctionType,
@@ -31,6 +30,7 @@ import { Parser } from './parser/parser.ts';
 import { collectSymbols } from './checker/collector.ts';
 import { verifyImports } from './checker/verifier.ts';
 import { Checker } from './checker/checker.ts';
+import { type ParserDeclaration, ParserFunctionExternDeclare, ParserImplDeclare } from './parser/parserAst.ts';
 
 const coreVersion = new Version(0, 1, 0);
 const corePackageName = new PackageName('core', 'core', coreVersion);
@@ -72,6 +72,7 @@ export function domLib(workingDir: string, corePackage: CheckedPackage, coreType
 }
 
 export function coreLib(workingDir: string, rootManager: DependencyManager): { package: CheckedPackage, coreTypes: CoreTypes, preamble: Map<string, Symbol>, externs: Map<Symbol, Extern> } {
+  rootManager.addDependency(corePackageName);
   const declarations = Map<Symbol, CheckedAccessRecord>().asMutable();
 
   const coreTypes: CoreTypes = {
@@ -81,7 +82,7 @@ export function coreLib(workingDir: string, rootManager: DependencyManager): { p
     float: createStructType(coreSymbol.child('math'), declarations, 'Float', [], {}),
     string: createStructType(coreSymbol.child('string'), declarations, 'String', [], {}),
     option: initOption(declarations),
-    unit: createStructType(coreSymbol, declarations, 'Unit', [], {}),
+    unit: createStructType(coreSymbol.child('base'), declarations, 'Unit', [], {}),
     optionOf(content: CheckedTypeExpression): CheckedTypeExpression {
       return new CheckedParameterizedType({
         base: this.option,
@@ -117,18 +118,16 @@ export function coreLib(workingDir: string, rootManager: DependencyManager): { p
     },
   };
 
-  const atomPreamble = Map<string, Symbol>().withMutations(preamble => {
-    boolLib(declarations, coreTypes, preamble);
-    mathLib(declarations, coreTypes, preamble);
-    stringLib(declarations, coreTypes, preamble);
-
-    preamble.set('Boolean', coreTypes.boolean.name);
-    preamble.set('String', coreTypes.string.name);
-    preamble.set('Int', coreTypes.int.name);
-    preamble.set('Float', coreTypes.float.name);
-    preamble.set('Option', coreTypes.option.name);
-    preamble.set('Unit', coreTypes.unit.name);
-  });
+  const preamble = Map<string, Symbol>().asMutable();
+  boolLib(declarations, coreTypes, preamble);
+  mathLib(declarations, coreTypes, preamble);
+  stringLib(declarations, coreTypes, preamble);
+  preamble.set('Boolean', coreTypes.boolean.name);
+  preamble.set('String', coreTypes.string.name);
+  preamble.set('Int', coreTypes.int.name);
+  preamble.set('Float', coreTypes.float.name);
+  preamble.set('Option', coreTypes.option.name);
+  preamble.set('Unit', coreTypes.unit.name);
 
   const externs = Map<Symbol, Extern>().asMutable();
 
@@ -137,31 +136,21 @@ export function coreLib(workingDir: string, rootManager: DependencyManager): { p
   const typeDict = new TypeDictionary();
   typeDict.loadPackage(declarations, Map());
 
-  const parsedArrayFile = Parser.parseFile(`${workingDir}/lib/core/array.thermal`, coreSymbol.child('array'));
+  const files = List.of('array', 'map', 'set', 'vector', 'bool', 'base', 'math')
+    .map(key => {
+      const parsed = Parser.parseFile(`${workingDir}/lib/core/${key}.thermal`, coreSymbol.child(key));
 
-  const { symbols: arraySymbols, methods: arrayMethods } = collectSymbols(List.of(parsedArrayFile), rootManager, atomPreamble);
-  typeDict.loadPackage(arraySymbols, arrayMethods);
-  declarations.merge(arraySymbols);
+      handleNativeImpls(parsed.declarations, `../lib/core/${key}.ts`, externs);
 
-  const arrayChecker = new Checker(rootManager, typeDict, coreTypes, atomPreamble);
-  const arrayFile = arrayChecker.checkFile(parsedArrayFile);
-  handleNativeImpls(arrayFile.declarations, `../lib/core/array.ts`, externs);
+      return parsed;
+    });
 
-  const arrayPreamble = atomPreamble.set('Array', coreSymbol.child('array').child('Array'));
-  const parsedVectorFile = Parser.parseFile(`${workingDir}/lib/core/vector.thermal`, coreSymbol.child('vector'));
-  const parsedMapFile = Parser.parseFile(`${workingDir}/lib/core/map.thermal`, coreSymbol.child('map'));
-  const { symbols, methods } = collectSymbols(List.of(parsedVectorFile, parsedMapFile), rootManager, arrayPreamble);
+  const { symbols, methods } = collectSymbols(files, rootManager, Map());
   typeDict.loadPackage(symbols, methods);
   declarations.merge(symbols);
 
-  const checker = new Checker(rootManager, typeDict, coreTypes, arrayPreamble);
-
-  const vectorFile = checker.checkFile(parsedVectorFile);
-  handleNativeImpls(vectorFile.declarations, `../lib/core/vector.ts`, externs);
-  const mapFile = checker.checkFile(parsedMapFile);
-  handleNativeImpls(mapFile.declarations, `../lib/core/map.ts`, externs);
-
-  const preamble = arrayPreamble.asMutable();
+  const checker = new Checker(rootManager, typeDict, coreTypes, Map());
+  const checkedFiles = files.map(it => checker.checkFile(it));
 
   declarations.set(coreSymbol, new CheckedAccessRecord({
     access: 'public',
@@ -171,17 +160,19 @@ export function coreLib(workingDir: string, rootManager: DependencyManager): { p
       name: coreSymbol,
     }),
   }));
+
   preamble.set('core', coreSymbol);
 
+  preamble.set('Array', coreSymbol.child('array').child('Array'));
   preamble.set('List', coreSymbol.child('vector').child('Vec'));
   preamble.set('Map', coreSymbol.child('map').child('Map'));
 
   return {
     package: new CheckedPackage({
       name: corePackageName,
-      files: List.of(arrayFile, vectorFile, mapFile),
+      files: checkedFiles,
       declarations: declarations.asImmutable(),
-      methods: arrayMethods.concat(methods),
+      methods,
     }),
     coreTypes,
     preamble: preamble.asImmutable(),
@@ -189,11 +180,11 @@ export function coreLib(workingDir: string, rootManager: DependencyManager): { p
   };
 }
 
-function handleNativeImpls(content: List<CheckedDeclaration>, srcFile: string, externs: Map<Symbol, Extern>): void {
+function handleNativeImpls(content: List<ParserDeclaration>, srcFile: string, externs: Map<Symbol, Extern>): void {
   content.forEach(dec => {
-    if (dec instanceof CheckedImplDeclare) {
+    if (dec instanceof ParserImplDeclare) {
       dec.methods.forEach(method => {
-        if (method instanceof CheckedFunctionExternDeclare) {
+        if (method instanceof ParserFunctionExternDeclare) {
           externs.set(method.symbol, new Extern({
             symbol: method.symbol,
             srcFile,
@@ -203,7 +194,7 @@ function handleNativeImpls(content: List<CheckedDeclaration>, srcFile: string, e
       });
     }
 
-    if (dec instanceof CheckedFunctionExternDeclare) {
+    if (dec instanceof ParserFunctionExternDeclare) {
       externs.set(dec.symbol, new Extern({
         symbol: dec.symbol,
         srcFile,

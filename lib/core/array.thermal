@@ -1,3 +1,4 @@
+import core/math::Int;
 
 public data Array<Item>{
   size: Int,
