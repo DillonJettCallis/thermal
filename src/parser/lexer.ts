@@ -53,7 +53,7 @@ const keywords = Set.of(
   // the default value, 'internal' isn't marked with a keyword, and is only assessable by having no keywords
 
   // for mapping in javascript
-  'extern',
+  'external',
 );
 const operators = Set.of(
   // parens

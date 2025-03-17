@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync } from 'node:fs';
-import { join, basename, extname } from 'node:path';
+import { basename, extname, join } from 'node:path';
 import { List } from 'immutable';
 
 export class File {

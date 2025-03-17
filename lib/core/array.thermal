@@ -5,8 +5,8 @@ public data Array<Item>{
 };
 
 implement <Item> Array<Item> {
-  public fun size(self): Int = extern;
-  public fun get(self, index: Int): Item = extern;
-  public fun set(self, index: Int, item: Item): Array<Item> = extern;
-  public fun add(self, item: Item): Array<Item> = extern;
+  external public fun size(self): Int;
+  external public fun get(self, index: Int): Item;
+  external public fun set(self, index: Int, item: Item): Array<Item>;
+  external public fun add(self, item: Item): Array<Item>;
 }

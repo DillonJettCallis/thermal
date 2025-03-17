@@ -29,12 +29,12 @@ import {
   ParserFile,
   ParserFloatLiteralEx,
   ParserFunctionDeclare,
-  ParserFunctionExternDeclare,
   ParserFunctionStatement,
   ParserFunctionType,
   ParserFunctionTypeParameter,
   ParserIdentifierEx,
-  ParserIfEx, ParserImplDeclare,
+  ParserIfEx,
+  ParserImplDeclare,
   ParserImportDeclaration,
   type ParserImportExpression,
   ParserIntLiteralEx,
@@ -46,6 +46,7 @@ import {
   ParserNestedImportExpression,
   ParserNominalImportExpression,
   ParserNominalType,
+  ParserNoOpEx,
   ParserNotEx,
   ParserOrEx,
   ParserParameter,
@@ -183,36 +184,70 @@ export class Parser {
   }
 
   #parseDeclaration(): ParserDeclaration {
-    const first = this.#assertKind('keyword');
+    const { pos, mods, next }  = this.#parseDeclarationModifiers();
 
-    if (first.value === 'import') {
-      return this.#parseImportDeclare(first.pos);
-    }
+    switch (next.value) {
+      case 'import':
+        if (mods.access !== 'internal' || mods.external) {
+          return pos.fail('No modifiers are allowed before an import.')
+        }
 
-    const [access, keyword] = isAccess(first.value)
-      ? [first.value, this.#assertKind('keyword')]
-      : ['internal' as const, first];
-
-    switch (keyword.value) {
+        return this.#parseImportDeclare(pos);
       case 'const':
-        return this.#parseConstDeclare(access, first.pos);
+        // TODO: handle extern const
+        return this.#parseConstDeclare(mods.access, pos);
       case 'fun':
       case 'def':
       case 'sig':
-        return this.#parseFunctionDeclare(this.#module, access, keyword.value, first.pos, undefined);
+        return this.#parseFunctionDeclare(this.#module, mods.access, mods.external, next.value, pos, undefined);
       case 'data':
-        return this.#parseDataDeclare(access, first.pos);
+        // TODO: handle extern data
+        return this.#parseDataDeclare(mods.access, pos);
       case 'enum':
-        return this.#parseEnumDeclare(access, first.pos);
+        // TODO: handle extern enum
+        return this.#parseEnumDeclare(mods.access, pos);
       case 'implement':
-        if (access !== 'internal') {
-          first.pos.fail('implementations cannot specify any access level')
+        if (mods.access !== 'internal') {
+          pos.fail('implementations cannot specify any access level')
         }
 
-        return this.#parseImplementation(first.pos);
-      case 'import':
+        if (mods.external) {
+          pos.fail('implementations cannot be external, each method must be marked external')
+        }
+
+        return this.#parseImplementation(pos);
       default:
-        return first.pos.fail(`Expected declaration but found ${first.kind} '${first.value}'`);
+        return pos.fail(`Expected declaration but found ${next.kind} '${next.value}'`);
+    }
+  }
+
+  #parseDeclarationModifiers(): { pos: Position, mods: DeclareModifiers, next: Token & { kind: 'keyword' } } {
+    const mods: DeclareModifiers = {
+      access: 'internal',
+      external: false,
+    };
+
+    let pos: Position | undefined = undefined;
+
+    while (true) {
+      const next = this.#assertKind('keyword');
+      pos ??= next.pos;
+
+      if (isAccess(next.value)) {
+        if (mods.access !== 'internal') {
+          return next.pos.fail('More than one access modifier found!');
+        } else {
+          mods.access = next.value;
+        }
+      } else if (next.value === 'external') {
+        if (mods.external) {
+          return next.pos.fail('Duplicate `extern` modifier.');
+        } else {
+          mods.external = true;
+        }
+      } else {
+        return { pos, mods, next };
+      }
     }
   }
 
@@ -279,25 +314,29 @@ export class Parser {
     });
   }
 
-  #parseFunctionDeclare(parent: Symbol, access: Access, functionPhase: FunctionPhase, pos: Position, self: ParserTypeExpression | undefined): ParserFunctionDeclare | ParserFunctionExternDeclare {
+  #parseFunctionDeclare(parent: Symbol, access: Access, extern: boolean, functionPhase: FunctionPhase, pos: Position, self: ParserTypeExpression | undefined): ParserFunctionDeclare {
     const { name, typeParams, params, result } = this.#parseFunctionSignature(self);
     const symbol = parent.child(name);
 
-    const final = this.#assertKind('symbol');
-
-    if (final.value === '=' && this.#checkKeyword('extern')) {
-      this.#skip();
-      return new ParserFunctionExternDeclare({
+    if (extern) {
+      this.#checkSymbol(';');
+      return new ParserFunctionDeclare({
         pos,
         access,
         functionPhase,
+        extern,
         name,
         symbol,
         typeParams,
         params,
         result,
-      })
+        body: new ParserNoOpEx({
+          pos,
+        }),
+      });
     }
+
+    const final = this.#assertKind('symbol');
 
     const body = final.value === '='
       ? this.#parseExpression()
@@ -308,21 +347,14 @@ export class Parser {
     return new ParserFunctionDeclare({
       pos,
       access,
+      extern,
       name,
       symbol,
-      func: new ParserFunctionStatement({
-        pos,
-        phase: 'const',
-        name,
-        typeParams,
-        result,
-        lambda: new ParserLambdaEx({
-          pos,
-          functionPhase,
-          params,
-          body,
-        }),
-      })
+      typeParams,
+      result,
+      functionPhase,
+      params,
+      body,
     });
   }
 
@@ -417,24 +449,18 @@ export class Parser {
     // TODO: in the future, this will need to handle protocol implementations too
     this.#assertSymbol('{');
 
-    const methods = Map<string, ParserFunctionDeclare | ParserFunctionExternDeclare>().asMutable();
+    const methods = Map<string, ParserFunctionDeclare>().asMutable();
 
     while(!this.#checkSymbol('}')) {
-      const first = this.#assertKind('keyword');
-
-      const [access, phase] = isAccess(first.value) ? [first.value, this.#assertKind('keyword')] as const : ['internal', first] as const;
+      const { pos, mods, next: phase } = this.#parseDeclarationModifiers();
 
       if (!isFunctionPhase(phase.value)) {
         return phase.pos.fail('Expected to find fun, def or sig');
       }
 
-      const method = this.#parseFunctionDeclare(implSymbol, access, phase.value, first.pos, base);
+      const method = this.#parseFunctionDeclare(implSymbol, mods.access, mods.external, phase.value, pos, base);
 
-      if (method instanceof ParserFunctionDeclare) {
-        methods.set(method.func.name, method.update('func', func => func.update('typeParams', params => typeParams.concat(params))));
-      } else {
-        methods.set(method.name, method.update('typeParams', params => typeParams.concat(params)));
-      }
+      methods.set(method.name, method.update('typeParams', params => typeParams.concat(params)));
     }
 
     return new ParserImplDeclare({
@@ -529,12 +555,9 @@ export class Parser {
       name,
       typeParams,
       result,
-      lambda: new ParserLambdaEx({
-        pos,
-        functionPhase,
-        params,
-        body,
-      }),
+      functionPhase,
+      params,
+      body,
     });
   }
 
@@ -1167,3 +1190,10 @@ export class Parser {
     });
   }
 }
+
+interface DeclareModifiers {
+  access: Access;
+  external: boolean; // default to false
+}
+
+

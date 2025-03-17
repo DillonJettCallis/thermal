@@ -116,7 +116,9 @@ class Output {
         }
         this.#write('const ');
         this.#write(dec.name);
-        this.#write(' = {\n');
+        this.#write(' = ');
+        this.#write('/* @__PURE__ */ (() => (')
+        this.#write('{\n');
         this.#write('  [_thermalClassMarker]: true,\n');
         this.#write('  fullName: "');
         this.#write(dec.symbol.serializedName());
@@ -135,7 +137,8 @@ class Output {
           this.#write(v.symbol.serializedName());
           this.#write(',\n');
         })
-        this.#write('},\n};\n');
+        this.#write('},\n}');
+        this.#write('))();\n');
 
         dec.variants.forEach(v => {
           if (dec.export) {
@@ -169,6 +172,7 @@ class Output {
   }
 
   #writeDataLayout(layout: JsDataLayout, enumName: string | undefined): void {
+    this.#write('/* @__PURE__ */ (() => (')
     if (layout instanceof JsStructLayout) {
       this.#writeStruct(layout, enumName);
     } else if (layout instanceof JsTupleLayout) {
@@ -176,6 +180,7 @@ class Output {
     } else {
       this.#writeAtom(layout, enumName);
     }
+    this.#write('))()');
   }
 
   #writeStruct(dec: JsStructLayout, enumName: string | undefined): void {

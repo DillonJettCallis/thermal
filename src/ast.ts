@@ -1,16 +1,12 @@
 import { List, Map, Record, Set } from 'immutable';
-import type {
-  ParserImportDeclaration,
-  ParserNestedImportExpression} from './parser/parserAst.ts';
-import {
-  type ParserImportExpression,
-  ParserNominalImportExpression,
-} from './parser/parserAst.ts';
+import type { ParserImportDeclaration, ParserNestedImportExpression } from './parser/parserAst.ts';
+import { type ParserImportExpression, ParserNominalImportExpression } from './parser/parserAst.ts';
 import {
   CheckedAccessRecord,
-  type CheckedImportDeclaration, type CheckedImportExpression,
+  type CheckedImportDeclaration,
+  type CheckedImportExpression,
   CheckedNestedImportExpression,
-  CheckedNominalImportExpression, CheckedPackage
+  CheckedNominalImportExpression
 } from './checker/checkerAst.ts';
 
 export class Position extends Record({src: '', line: 0, column: 0}){

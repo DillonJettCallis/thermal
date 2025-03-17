@@ -8,20 +8,20 @@ public data Vec<Item> {
 }
 
 implement <Item> Vec<Item> {
-  public fun empty(): Vec<Item> = extern;
-  public fun from(arr: Array<Item>): Vec<Item> = extern;
-  public fun toArray(): Array<Item> = extern;
-  public fun first(self): Item = extern;
-  public fun last(self): Item = extern;
-  public fun get(self, index: Int): Item = extern;
-  public fun push(self, item: Item): Vec<Item> = extern;
-  public fun pop(self): Vec<Item> = extern;
-  public fun set(self, index: Int, item: Item): Vec<Item> = extern;
-  public fun concat(self, other: Vec<Item>): Vec<Item> = extern;
-  public fun map<Out>(self, mapper: fun { Item -> Out }): Vec<Out> = extern;
-  public fun flatMap<Out>(self, mapper: fun { Item -> Vec<Out> }): Vec<Out> = extern;
-  public fun filter(self, mapper: fun { Item -> Boolean }): Vec<Item> = extern;
-  public sig forEach(self, action: sig { Item -> Unit }): Unit = extern;
-  public fun fold<Out>(self, init: Out, mapper: fun { Out, Item -> Out }): Out = extern;
+  external public fun empty(): Vec<Item>;
+  external public fun from(arr: Array<Item>): Vec<Item>;
+  external public fun toArray(): Array<Item>;
+  external public fun first(self): Item;
+  external public fun last(self): Item;
+  external public fun get(self, index: Int): Item;
+  external public fun push(self, item: Item): Vec<Item>;
+  external public fun pop(self): Vec<Item>;
+  external public fun set(self, index: Int, item: Item): Vec<Item>;
+  external public fun concat(self, other: Vec<Item>): Vec<Item>;
+  external public fun map<Out>(self, mapper: fun { Item -> Out }): Vec<Out>;
+  external public fun flatMap<Out>(self, mapper: fun { Item -> Vec<Out> }): Vec<Out>;
+  external public fun filter(self, mapper: fun { Item -> Boolean }): Vec<Item>;
+  external public sig forEach(self, action: sig { Item -> Unit }): Unit;
+  external public fun fold<Out>(self, init: Out, mapper: fun { Out, Item -> Out }): Out;
 }
 

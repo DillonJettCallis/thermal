@@ -1,6 +1,5 @@
-import { List, Map } from 'immutable';
-import { type Access, type DependencyManager, type PackageName, type Symbol, TypeDictionary } from '../ast.ts';
-import type { CheckedAccessRecord } from './checkerAst.ts';
+import { List } from 'immutable';
+import { type Access, type DependencyManager, type Symbol, TypeDictionary } from '../ast.ts';
 import type { ParserFile } from '../parser/parserAst.ts';
 import { ParserImportDeclaration } from '../parser/parserAst.ts';
 

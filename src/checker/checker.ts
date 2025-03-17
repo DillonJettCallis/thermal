@@ -32,9 +32,7 @@ import {
   CheckedExpressionStatement,
   CheckedFile,
   CheckedFloatLiteralEx,
-  type CheckedFuncDeclare,
   CheckedFunctionDeclare,
-  CheckedFunctionExternDeclare,
   CheckedFunctionStatement,
   CheckedFunctionType,
   CheckedFunctionTypeParameter,
@@ -53,6 +51,7 @@ import {
   CheckedNestedImportExpression,
   CheckedNominalImportExpression,
   CheckedNominalType,
+  CheckedNoOpEx,
   CheckedNotEx,
   CheckedOrEx,
   CheckedOverloadFunctionType,
@@ -62,7 +61,6 @@ import {
   CheckedReturnEx,
   type CheckedSetLiteralEx,
   type CheckedStatement,
-  CheckedStaticAccessEx,
   CheckedStaticReferenceEx,
   CheckedStringLiteralEx,
   CheckedStruct,
@@ -90,9 +88,8 @@ import {
   ParserExpressionStatement,
   type ParserFile,
   ParserFloatLiteralEx,
-  type ParserFuncDeclare,
+  type ParserFunction,
   ParserFunctionDeclare,
-  ParserFunctionExternDeclare,
   type ParserFunctionStatement,
   ParserIdentifierEx,
   ParserIfEx,
@@ -104,6 +101,7 @@ import {
   ParserListLiteralEx,
   type ParserMapLiteralEx,
   ParserNominalImportExpression,
+  ParserNoOpEx,
   ParserNotEx,
   ParserOrEx,
   type ParserParameter,
@@ -148,8 +146,6 @@ export class Checker {
           ex: this.#checkImportExpression(dec.ex),
         });
       } else if (dec instanceof ParserFunctionDeclare) {
-        return this.#checkFuncDeclare(dec, fileScope, file.module);
-      } else if (dec instanceof ParserFunctionExternDeclare) {
         return this.#checkFuncDeclare(dec, fileScope, file.module);
       } else if (dec instanceof ParserConstantDeclare) {
         const type = fileScope.qualifier.checkTypeExpression(dec.type);
@@ -257,31 +253,18 @@ export class Checker {
     });
   }
 
-  #checkFuncDeclare(dec: ParserFuncDeclare, fileScope: Scope, module: Symbol): CheckedFuncDeclare {
-    if (dec instanceof ParserFunctionDeclare) {
-      const func = this.checkFunctionStatement(dec.func, fileScope, module);
+  #checkFuncDeclare(dec: ParserFunctionDeclare, fileScope: Scope, module: Symbol): CheckedFunctionDeclare {
+    const state = this.checkFunction(dec, fileScope, module);
 
-      return new CheckedFunctionDeclare({
-        pos: dec.pos,
-        access: dec.access,
-        name: dec.name,
-        symbol: dec.symbol,
-        func,
-      });
-    } else {
-      const { typeParams, params, result } = this.#checkFunctionSignature(dec, fileScope, module);
-
-      return new CheckedFunctionExternDeclare({
-        pos: dec.pos,
-        access: dec.access,
-        symbol: dec.symbol,
-        name: dec.name,
-        functionPhase: dec.functionPhase,
-        typeParams,
-        params,
-        result,
-      })
-    }
+    return new CheckedFunctionDeclare({
+      pos: dec.pos,
+      name: dec.name,
+      functionPhase: dec.functionPhase,
+      access: dec.access,
+      extern: dec.extern,
+      symbol: dec.symbol,
+      ...state,
+    });
   }
 
   #checkImportExpression(ex: ParserImportExpression): CheckedImportExpression {
@@ -300,7 +283,13 @@ export class Checker {
   }
 
   #checkExpression(ex: ParserExpression, scope: Scope, expected: CheckedTypeExpression | undefined): CheckedExpression {
-    if (ex instanceof ParserBooleanLiteralEx) {
+    if (ex instanceof ParserNoOpEx) {
+      return new CheckedNoOpEx({
+        pos: ex.pos,
+        type: this.#coreTypes.nothing,
+        phase: 'const',
+      });
+    } else if (ex instanceof ParserBooleanLiteralEx) {
       return this.checkBooleanLiteral(ex);
     } else if (ex instanceof ParserIntLiteralEx) {
       return this.checkIntLiteral(ex);
@@ -805,7 +794,7 @@ export class Checker {
     });
   }
 
-  #checkLambdaBody(ex: ParserLambdaEx, scope: Scope, params: List<CheckedParameter>, expectedResult: CheckedTypeExpression | undefined): CheckedLambdaEx {
+  #checkLambdaBody(ex: ParserLambdaEx, scope: Scope, params: List<CheckedParameter>, expectedResult: CheckedTypeExpression | undefined): { phase: ExpressionPhase, body: CheckedExpression, result: CheckedTypeExpression } {
     // TODO: I'm not sure if 'Nothing' is actually going to work here, make sure to test that
     // TODO: create a system to give annon lambdas names
     const childScope = scope.childFunction(scope.functionScope.symbol.child('<lambda>'), expectedResult ?? this.#coreTypes.nothing, ex.functionPhase);
@@ -817,37 +806,23 @@ export class Checker {
     const body = this.#checkExpression(ex.body, childScope, expectedResult);
     const closures = childScope.functionScope.closures;
     const phase = this.#phaseCheckImpl(closures.valueSeq().map(it => ({pos: it.pos, phase: it.phase, expectedPhase: undefined})).toList(), ex.functionPhase);
+    const result = this.#mergeTypes(body.type, childScope.functionScope.resultType, ex.pos);
 
-    return new CheckedLambdaEx({
-      pos: ex.pos,
+    return {
       phase,
-      functionPhase: ex.functionPhase,
-      params,
       body,
-      type: new CheckedFunctionType({
-        phase: ex.functionPhase,
-        typeParams: List(),
-        params: params.map(it => {
-          return new CheckedFunctionTypeParameter({
-            phase: it.phase,
-            type: it.type,
-          });
-        }),
-        result: this.#mergeTypes(body.type, childScope.functionScope.resultType, ex.pos),
-      }),
-    });
+      result,
+    };
   }
 
-  checkLambda(ex: ParserLambdaEx, scope: Scope, expected: CheckedTypeExpression | undefined): CheckedLambdaEx {
+  #handleLambdaExpectedType(pos: Position, scope: Scope, actualParams: List<ParserParameter>, expected: CheckedTypeExpression | undefined): { params: List<CheckedParameter>, expectedResult: CheckedTypeExpression | undefined } {
     if (expected instanceof CheckedFunctionType) {
-      if (ex.params.size !== expected.params.size) {
-        ex.pos.fail(`Wrong number of arguments, expected function with arguments '${expected.params}' but found ${ex.params.size} arguments`);
+      if (actualParams.size !== expected.params.size) {
+        return pos.fail(`Wrong number of arguments, expected function with arguments '${expected.params}' but found ${actualParams.size} arguments`);
       }
 
-      // we can spot check the expected types whenever we don't have them (and only when we need to check)
-
       const expectedResult = expected.result;
-      const params = ex.params.map((it, index) => {
+      const params = actualParams.map((it, index) => {
         const type = it.type === undefined
           ? expected.params.get(index)!.type // no type specified, look it up from expected
           : scope.qualifier.checkTypeExpression(it.type);
@@ -860,10 +835,9 @@ export class Checker {
         });
       });
 
-      return this.#checkLambdaBody(ex, scope, params, expectedResult);
+      return { params, expectedResult };
     } else {
-      // our lambda had better explicitly declare all of its args or we throw up
-      const params = ex.params.map(it => {
+      const params = actualParams.map(it => {
         if (it.type === undefined) {
           return it.pos.fail('Unable to determine type from context!');
         }
@@ -878,8 +852,32 @@ export class Checker {
         });
       });
 
-      return this.#checkLambdaBody(ex, scope, params, undefined);
+      return { params, expectedResult: undefined };
     }
+  }
+
+  checkLambda(ex: ParserLambdaEx, scope: Scope, expected: CheckedTypeExpression | undefined): CheckedLambdaEx {
+    const { params, expectedResult } = this.#handleLambdaExpectedType(ex.pos, scope, ex.params, expected);
+    const { phase, body, result } = this.#checkLambdaBody(ex, scope, params, expectedResult);
+
+    return new CheckedLambdaEx({
+      pos: ex.pos,
+      params,
+      phase,
+      functionPhase: ex.functionPhase,
+      body,
+      type: new CheckedFunctionType({
+        phase: ex.functionPhase,
+        typeParams: List(),
+        params: params.map(it => {
+          return new CheckedFunctionTypeParameter({
+            phase: it.phase,
+            type: it.type,
+          });
+        }),
+        result,
+      }),
+    })
   }
 
   checkBlock(ex: ParserBlockEx, parentScope: Scope, expected: CheckedTypeExpression | undefined): CheckedBlockEx {
@@ -1054,17 +1052,24 @@ export class Checker {
     return { typeParams, params, result };
   }
 
-  checkFunctionStatement(state: ParserFunctionStatement, scope: Scope, parent: Symbol): CheckedFunctionStatement {
+  checkFunction(state: ParserFunction, scope: Scope, parent: Symbol): {
+    params: List<CheckedParameter>,
+    body: CheckedExpression,
+    typeParams: List<CheckedTypeParameterType>,
+    type: CheckedFunctionType,
+    result: CheckedTypeExpression,
+  } {
     const symbol = parent.child(state.name);
 
+    const statePhase = state instanceof ParserFunctionDeclare ? 'const' : state.phase;
     const { typeParams, params, result } = this.#checkFunctionSignature({
       typeParams: state.typeParams,
-      params: state.lambda.params,
+      params: state.params,
       result: state.result,
-      functionPhase: state.lambda.functionPhase,
+      functionPhase: state.functionPhase,
     }, scope, symbol);
 
-    const childScope = scope.childFunction(symbol, result, state.lambda.functionPhase);
+    const childScope = scope.childFunction(symbol, result, state.functionPhase);
 
     for (const typeParam of typeParams) {
       childScope.set(typeParam.name.name, new PhaseType(typeParam, 'val', state.pos));
@@ -1074,16 +1079,16 @@ export class Checker {
       childScope.set(param.name, new PhaseType(param.type, param.phase ?? 'val', param.pos));
     }
 
-    const body = this.#checkExpression(state.lambda.body, childScope, result);
+    const body = this.#checkExpression(state.body, childScope, result);
     const closures = childScope.functionScope.closures;
     const phase = this.#phaseCheckImpl(closures.valueSeq().map(it => ({pos: it.pos, phase: it.phase, expectedPhase: undefined})).toList(), 'fun');
 
-    if (state.phase !== phase) {
-      state.pos.fail(`Attempt to declare '${state.phase}' function, but body is actually '${phase}'. This function must close over values outside of the allowed phase.`);
+    if (statePhase !== phase) {
+      state.pos.fail(`Attempt to declare '${statePhase}' function, but body is actually '${phase}'. This function must close over values outside of the allowed phase.`);
     }
 
     const type = new CheckedFunctionType({
-      phase: state.lambda.functionPhase,
+      phase: state.functionPhase,
       typeParams,
       params: params.map(it => {
         return new CheckedFunctionTypeParameter({
@@ -1094,23 +1099,26 @@ export class Checker {
       result,
     });
 
-    scope.set(state.name, new PhaseType(type, state.phase, state.pos));
+    scope.set(state.name, new PhaseType(type, statePhase, state.pos));
+
+    return {
+      params,
+      body,
+      typeParams,
+      type,
+      result,
+    };
+  }
+
+  checkFunctionStatement(state: ParserFunctionStatement, scope: Scope, parent: Symbol): CheckedFunctionStatement {
+    const base = this.checkFunction(state, scope, parent);
 
     return new CheckedFunctionStatement({
       pos: state.pos,
       phase: state.phase,
-      lambda: new CheckedLambdaEx({
-        pos: state.pos,
-        functionPhase: state.lambda.functionPhase,
-        params,
-        body,
-        type,
-        phase: state.phase,
-      }),
+      functionPhase: state.functionPhase,
       name: state.name,
-      typeParams,
-      result,
-      type,
+      ...base,
     });
   }
 

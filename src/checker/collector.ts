@@ -1,14 +1,16 @@
 import { List, Map } from 'immutable';
 import type { DependencyManager, Symbol } from '../ast.ts';
 import {
-  ParserAtom, type ParserConcreteType,
+  ParserAtom,
+  type ParserConcreteType,
   ParserConstantDeclare,
   ParserDataDeclare,
   type ParserDataLayout,
   ParserEnumDeclare,
-  type ParserFile, type ParserFuncDeclare,
-  ParserFunctionDeclare, ParserFunctionExternDeclare,
-  ParserFunctionType, ParserImplDeclare,
+  type ParserFile,
+  ParserFunctionDeclare,
+  ParserFunctionType,
+  ParserImplDeclare,
   ParserImportDeclaration,
   ParserNominalType,
   ParserParameterizedType,
@@ -20,9 +22,11 @@ import {
 } from '../parser/parserAst.ts';
 import {
   CheckedAccessRecord,
-  CheckedAtomType, type CheckedConcreteType,
+  CheckedAtomType,
+  type CheckedConcreteType,
   type CheckedDataLayoutType,
-  CheckedEnumType, type CheckedFuncDeclare, CheckedFunctionDeclare, CheckedFunctionExternDeclare,
+  CheckedEnumType,
+  CheckedFunctionDeclare,
   CheckedFunctionType,
   CheckedFunctionTypeParameter,
   CheckedNominalType,
@@ -100,35 +104,13 @@ export function collectSymbols(files: List<ParserFile>, manager: DependencyManag
           type: qualifier.checkTypeExpression(dec.type),
         }));
       } else if (dec instanceof ParserFunctionDeclare) {
-        const name = file.module.child(dec.func.name);
-
-        declarations.set(name, new CheckedAccessRecord({
-          access: dec.access,
-          name,
-          module: file.module,
-          type: qualifier.checkFunctionDeclare(dec),
-        }));
-
-        dec.func.typeParams.forEach(param => {
-          const paramName = name.child(param.name);
-
-          declarations.set(paramName, new CheckedAccessRecord({
-            access: 'public',
-            name: paramName,
-            module: file.module,
-            type: new CheckedTypeParameterType({
-              name: paramName,
-            }),
-          }));
-        });
-      } else if (dec instanceof ParserFunctionExternDeclare) {
         const name = file.module.child(dec.name);
 
         declarations.set(name, new CheckedAccessRecord({
           access: dec.access,
           name,
           module: file.module,
-          type: qualifier.checkFunctionExternDeclare(dec),
+          type: qualifier.checkFunctionDeclare(dec),
         }));
 
         dec.typeParams.forEach(param => {
@@ -165,14 +147,12 @@ export function collectSymbols(files: List<ParserFile>, manager: DependencyManag
             access: parserFunc.access,
             name,
             module: file.module,
-            type: qualifier.checkFuncDeclare(parserFunc),
+            type: qualifier.checkFunctionDeclare(parserFunc),
           });
 
           declarations.set(name, record);
 
-          const typeParams = parserFunc instanceof ParserFunctionDeclare ? parserFunc.func.typeParams : parserFunc.typeParams;
-
-          typeParams.forEach(param => {
+          parserFunc.typeParams.forEach(param => {
             const paramName = name.child(param.name);
 
             declarations.set(paramName, new CheckedAccessRecord({
@@ -209,7 +189,7 @@ export function collectDeclarations(file: ParserFile, manager: DependencyManager
         usableTypes.set(it.name, it);
       });
     } else if (dec instanceof ParserFunctionDeclare) {
-      usableTypes.set(dec.func.name, file.module.child(dec.func.name));
+      usableTypes.set(dec.name, file.module.child(dec.name));
     } else if (dec instanceof ParserImplDeclare) {
 
     } else {
@@ -368,31 +348,7 @@ export class Qualifier {
     });
   }
 
-  checkFuncDeclare(dec: ParserFuncDeclare): CheckedFunctionType {
-    if (dec instanceof ParserFunctionDeclare) {
-      return this.checkFunctionDeclare(dec);
-    } else {
-      return this.checkFunctionExternDeclare(dec);
-    }
-  }
-
   checkFunctionDeclare(dec: ParserFunctionDeclare): CheckedFunctionType {
-    const childChecker = this.includeTypeParams(dec.symbol, dec.func.typeParams);
-
-    return new CheckedFunctionType({
-      phase: dec.func.lambda.functionPhase,
-      typeParams: dec.func.typeParams.map(it => childChecker.checkTypeParamType(dec.symbol, it)),
-      params: dec.func.lambda.params.map(it => {
-        return new CheckedFunctionTypeParameter({
-          phase: it.phase,
-          type: childChecker.checkTypeExpression(it.type!),
-        });
-      }),
-      result: childChecker.checkTypeExpression(dec.func.result),
-    });
-  }
-
-  checkFunctionExternDeclare(dec: ParserFunctionExternDeclare): CheckedFunctionType {
     const childChecker = this.includeTypeParams(dec.symbol, dec.typeParams);
 
     return new CheckedFunctionType({
@@ -409,14 +365,6 @@ export class Qualifier {
   }
 }
 
-export function isInstanceMethod(dec: CheckedFuncDeclare | ParserFuncDeclare): boolean {
-  if (dec instanceof CheckedFunctionDeclare) {
-    return dec.func.lambda.params.first()?.name === 'self';
-  } else if (dec instanceof CheckedFunctionExternDeclare) {
-    return dec.params.first()?.name === 'self';
-  } if (dec instanceof ParserFunctionDeclare) {
-    return dec.func.lambda.params.first()?.name === 'self';
-  } else {
-    return dec.params.first()?.name === 'self';
-  }
+export function isInstanceMethod(dec: CheckedFunctionDeclare | ParserFunctionDeclare): boolean {
+  return dec.params.first()?.name === 'self';
 }

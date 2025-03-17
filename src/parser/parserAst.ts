@@ -1,5 +1,5 @@
-import { Map, List, Set, Record,  } from 'immutable';
-import { Position, type ExpressionPhase, type FunctionPhase, type Access, Symbol,  } from '../ast.ts';
+import { List, Map, Record } from 'immutable';
+import { type Access, type ExpressionPhase, type FunctionPhase, Position, Symbol } from '../ast.ts';
 
 export type ParserTypeExpression
   = ParserConcreteType
@@ -26,6 +26,7 @@ export type ParserExpression
   | ParserConstructEx
   | ParserLambdaEx
   | ParserBlockEx
+  | ParserNoOpEx
   | ParserCallEx
   | ParserIfEx
   | ParserReturnEx
@@ -43,9 +44,14 @@ export type ParserStatement
   | ParserFunctionStatement
   ;
 
+export type ParserFunction
+  = ParserFunctionStatement
+  | ParserFunctionDeclare
+  ;
+
 export type ParserDeclaration
   = ParserImportDeclaration
-  | ParserFuncDeclare
+  | ParserFunctionDeclare
   | ParserDataDeclare
   | ParserEnumDeclare
   | ParserConstantDeclare
@@ -55,11 +61,6 @@ export type ParserDeclaration
 export type ParserImportExpression
   = ParserNominalImportExpression
   | ParserNestedImportExpression
-  ;
-
-export type ParserFuncDeclare
-  = ParserFunctionDeclare
-  | ParserFunctionExternDeclare
   ;
 
 export type ParserDataLayout
@@ -427,6 +428,17 @@ export class ParserBlockEx extends Record<MutableParserBlockEx>({
   }
 }
 
+interface MutableParserNoOpEx {
+  pos: Position;
+}
+export class ParserNoOpEx extends Record<MutableParserNoOpEx>({
+  pos: undefined as unknown as Position,
+}) {
+  constructor(props: MutableParserNoOpEx) {
+    super(props);
+  }
+}
+
 interface MutableParserExpressionStatement {
   pos: Position;
   expression: ParserExpression;
@@ -480,7 +492,9 @@ interface MutableParserFunctionStatement {
   name: string;
   typeParams: List<ParserTypeParameterType>;
   result: ParserTypeExpression;
-  lambda: ParserLambdaEx;
+  functionPhase: FunctionPhase;
+  params: List<ParserParameter>;
+  body: ParserExpression;
 }
 export class ParserFunctionStatement extends Record<MutableParserFunctionStatement>({
   pos: undefined as unknown as Position,
@@ -488,7 +502,9 @@ export class ParserFunctionStatement extends Record<MutableParserFunctionStateme
   name: undefined as unknown as string,
   typeParams: undefined as unknown as List<ParserTypeParameterType>,
   result: undefined as unknown as ParserTypeExpression,
-  lambda: undefined as unknown as ParserLambdaEx,
+  functionPhase: undefined as unknown as FunctionPhase,
+  params: undefined as unknown as List<ParserParameter>,
+  body: undefined as unknown as ParserExpression,
 }) {
   constructor(props: MutableParserFunctionStatement) {
     super(props);
@@ -588,43 +604,28 @@ export class ParserImportDeclaration extends Record<MutableParserImportDeclarati
 interface MutableParserFunctionDeclare {
   pos: Position;
   access: Access;
+  extern: boolean;
   name: string;
   symbol: Symbol;
-  func: ParserFunctionStatement;
+  typeParams: List<ParserTypeParameterType>;
+  result: ParserTypeExpression;
+  functionPhase: FunctionPhase;
+  params: List<ParserParameter>;
+  body: ParserExpression;
 }
 export class ParserFunctionDeclare extends Record<MutableParserFunctionDeclare>({
   pos: undefined as unknown as Position,
   access: undefined as unknown as Access,
+  extern: undefined as unknown as boolean,
   name: undefined as unknown as string,
   symbol: undefined as unknown as Symbol,
-  func: undefined as unknown as ParserFunctionStatement,
-}) {
-  constructor(props: MutableParserFunctionDeclare) {
-    super(props);
-  }
-}
-
-interface MutableParserFunctionExternDeclare {
-  pos: Position;
-  access: Access;
-  symbol: Symbol;
-  name: string;
-  functionPhase: FunctionPhase;
-  typeParams: List<ParserTypeParameterType>;
-  result: ParserTypeExpression;
-  params: List<ParserParameter>;
-}
-export class ParserFunctionExternDeclare extends Record<MutableParserFunctionExternDeclare>({
-  pos: undefined as unknown as Position,
-  access: undefined as unknown as Access,
-  symbol: undefined as unknown as Symbol,
-  name: undefined as unknown as string,
-  functionPhase: undefined as unknown as FunctionPhase,
   typeParams: undefined as unknown as List<ParserTypeParameterType>,
   result: undefined as unknown as ParserTypeExpression,
+  functionPhase: undefined as unknown as FunctionPhase,
   params: undefined as unknown as List<ParserParameter>,
+  body: undefined as unknown as ParserExpression,
 }) {
-  constructor(props: MutableParserFunctionExternDeclare) {
+  constructor(props: MutableParserFunctionDeclare) {
     super(props);
   }
 }
@@ -767,14 +768,14 @@ interface MutableParserImplDeclare {
   symbol: Symbol;
   typeParams: List<ParserTypeParameterType>;
   base: ParserConcreteType;
-  methods: Map<string, ParserFuncDeclare>;
+  methods: Map<string, ParserFunctionDeclare>;
 }
 export class ParserImplDeclare extends Record<MutableParserImplDeclare>({
   pos: undefined as unknown as Position,
   symbol: undefined as unknown as Symbol,
   typeParams: undefined as unknown as List<ParserTypeParameterType>,
   base: undefined as unknown as ParserConcreteType,
-  methods: undefined as unknown as Map<string, ParserFuncDeclare>,
+  methods: undefined as unknown as Map<string, ParserFunctionDeclare>,
 }) {
   constructor(props: MutableParserImplDeclare) {
     super(props);

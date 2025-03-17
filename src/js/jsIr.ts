@@ -1,5 +1,5 @@
-import { Map, List, Set, Record,  } from 'immutable';
-import { Symbol,  } from '../ast.ts';
+import { List, Record, Set } from 'immutable';
+import { Symbol } from '../ast.ts';
 
 export type JsExpression
   = JsBooleanLiteralEx

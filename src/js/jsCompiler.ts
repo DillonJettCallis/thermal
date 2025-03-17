@@ -13,9 +13,8 @@ import {
   CheckedExpressionStatement,
   type CheckedFile,
   CheckedFloatLiteralEx,
+  type CheckedFunction,
   CheckedFunctionDeclare,
-  CheckedFunctionExternDeclare,
-  CheckedFunctionStatement,
   CheckedFunctionType,
   CheckedIdentifierEx,
   CheckedIfEx,
@@ -30,6 +29,7 @@ import {
   CheckedMapLiteralEx,
   CheckedNominalImportExpression,
   CheckedNominalType,
+  CheckedNoOpEx,
   CheckedNotEx,
   CheckedOrEx,
   CheckedReassignmentStatement,
@@ -155,20 +155,11 @@ export class JsCompiler {
         } else if (dec instanceof CheckedConstantDeclare) {
           return this.#seekStaticReferences(dec.expression);
         } else if (dec instanceof CheckedFunctionDeclare) {
-          return this.#seekStaticReferences(dec.func.lambda);
-        } else if (dec instanceof CheckedFunctionExternDeclare) {
-          return Seq.Indexed<CheckedStaticReferenceEx>();
+          return this.#seekStaticReferences(dec.body);
         } else if (dec instanceof CheckedDataDeclare) {
           return Seq.Indexed<CheckedStaticReferenceEx>();
         } else if (dec instanceof CheckedImplDeclare) {
-          return dec.methods.valueSeq()
-            .flatMap(funcDec => {
-              if (funcDec instanceof CheckedFunctionDeclare) {
-                return this.#seekStaticReferences(funcDec.func.lambda);
-              } else {
-                return Seq.Indexed<CheckedStaticReferenceEx>();
-              }
-            });
+          return dec.methods.valueSeq().flatMap(funcDec => this.#seekStaticReferences(funcDec.body));
         } else {
           // enum
           return Seq.Indexed<CheckedStaticReferenceEx>();
@@ -211,32 +202,34 @@ export class JsCompiler {
           }))
         }
       } else if (dec instanceof CheckedFunctionDeclare) {
-        return Seq.Indexed.of(new JsFunctionDeclare({
-          export: dec.access !== 'private',
-          func: this.#compileFunctionStatement(dec.func),
-        }));
-      } else if (dec instanceof CheckedFunctionExternDeclare) {
-        const ex = externals.get(dec.symbol);
+        if (dec.extern) {
+          const ex = externals.get(dec.symbol);
 
-        if (ex === undefined) {
-          return dec.pos.fail(`No externally defined implementation was found for ${dec.symbol}`);
-        }
+          if (ex === undefined) {
+            return dec.pos.fail(`No externally defined implementation was found for ${dec.symbol}`);
+          }
 
-        const importDec = new JsImport({
-          from: ex.srcFile,
-          take: ex.import,
-          as: dec.name,
-        });
+          const importDec = new JsImport({
+            from: ex.srcFile,
+            take: ex.import,
+            as: dec.name,
+          });
 
-        if (dec.access === 'private') {
-          return Seq.Indexed.of(importDec);
+          if (dec.access === 'private') {
+            return Seq.Indexed.of(importDec);
+          } else {
+            return Seq.Indexed.of<JsDeclaration>(
+              importDec,
+              new JsExport({
+                name: dec.name,
+              }),
+            )
+          }
         } else {
-          return Seq.Indexed.of<JsDeclaration>(
-            importDec,
-            new JsExport({
-              name: dec.name,
-            }),
-          )
+          return Seq.Indexed.of(new JsFunctionDeclare({
+            export: dec.access !== 'private',
+            func: this.#compileFunctionStatement(dec),
+          }));
         }
       } else if (dec instanceof CheckedDataDeclare) {
         return Seq.Indexed.of(new JsDataDeclare({
@@ -248,12 +241,7 @@ export class JsCompiler {
 
         return dec.methods.valueSeq()
           .flatMap(funcDec => {
-            if (funcDec instanceof CheckedFunctionDeclare) {
-              return Seq.Indexed.of(new JsFunctionDeclare({
-                export: funcDec.access !== 'private',
-                func: this.#compileFunctionStatement(funcDec.func.update('name', base => `${prefix}_${base}`)),
-              }));
-            } else {
+            if (funcDec.extern) {
               const ex = externals.get(funcDec.symbol);
 
               if (ex === undefined) {
@@ -276,6 +264,11 @@ export class JsCompiler {
                   }),
                 )
               }
+            } else {
+              return Seq.Indexed.of(new JsFunctionDeclare({
+                export: funcDec.access !== 'private',
+                func: this.#compileFunctionStatement(funcDec.update('name', base => `${prefix}_${base}`)),
+              }));
             }
           });
       } else {
@@ -292,7 +285,7 @@ export class JsCompiler {
 
     return new JsFile({
       name: substringAfterLast(src.src, '/').replace(/\.thermal$/, '.js'),
-      main: src.declarations.some(dec => dec instanceof CheckedFunctionDeclare && dec.func.name === 'main'),
+      main: src.declarations.some(dec => dec instanceof CheckedFunctionDeclare && dec.name === 'main'),
       declarations: this.#defaultImports.concat(staticImportReferences, decs),
     })
   }
@@ -351,7 +344,7 @@ export class JsCompiler {
           } else if (state instanceof CheckedReassignmentStatement) {
             return state.expression;
           } else {
-            return state.lambda;
+            return state.body;
           }
         }).flatMap(it => this.#seekStaticReferences(it));
     } else if (ex instanceof CheckedCallEx) {
@@ -365,6 +358,8 @@ export class JsCompiler {
             return this.#seekStaticReferences(it);
           }
         });
+    } else if (ex instanceof CheckedNoOpEx) {
+      return Seq.Indexed();
     } else {
       return this.#seekStaticReferences(ex.base);
     }
@@ -635,6 +630,9 @@ export class JsCompiler {
           )
         })
       });
+    } else if (ex instanceof CheckedNoOpEx) {
+      // TODO: instead of this, emit a runtime error
+      return ex.pos.fail('This no op is trying to be emitted. This should not happen!');
     } else {
       return ex.body.reduce((prev, state) => {
         const next = this.#compileStatement(state, phase);
@@ -699,8 +697,8 @@ export class JsCompiler {
     }
   }
 
-  #compileFunctionStatement(state: CheckedFunctionStatement): JsFunctionStatement {
-    const body = this.#compileExpression(state.lambda.body, state.lambda.functionPhase);
+  #compileFunctionStatement(state: CheckedFunction): JsFunctionStatement {
+    const body = this.#compileExpression(state.body, state.functionPhase);
 
     if (body instanceof JsBlock) {
       const last = body.body.last();
@@ -708,7 +706,7 @@ export class JsCompiler {
       if (last instanceof JsReturn) {
         return new JsFunctionStatement({
           name: state.name,
-          args: state.lambda.params.map(it => it.name),
+          args: state.params.map(it => it.name),
           body: body.body,
         });
       } else if (last instanceof JsExpressionStatement) {
@@ -716,20 +714,20 @@ export class JsCompiler {
 
         return new JsFunctionStatement({
           name: state.name,
-          args: state.lambda.params.map(it => it.name),
+          args: state.params.map(it => it.name),
           body: init.push(new JsReturn({body: last.base })),
         });
       } else {
         return new JsFunctionStatement({
           name: state.name,
-          args: state.lambda.params.map(it => it.name),
+          args: state.params.map(it => it.name),
           body: body.body.push(new JsReturn({body: body.result})),
         });
       }
     } else {
       return new JsFunctionStatement({
         name: state.name,
-        args: state.lambda.params.map(it => it.name),
+        args: state.params.map(it => it.name),
         body: List.of(new JsReturn({body})),
       });
     }

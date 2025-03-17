@@ -1,11 +1,10 @@
 import { DependencyDictionary, PackageName, Position, Symbol, TypeDictionary, Version } from '../ast.ts';
 import { coreLib } from '../lib.ts';
-import { List, Map } from 'immutable';
+import { List } from 'immutable';
 import { Checker, PhaseType, Scope } from '../checker/checker.ts';
-import { ok, equal, throws } from 'node:assert';
+import { equal, ok, throws } from 'node:assert';
 import { Qualifier } from '../checker/collector.ts';
 import { describe, it } from 'node:test';
-import type { CheckedAccessRecord} from '../checker/checkerAst.ts';
 import { CheckedFunctionType, CheckedFunctionTypeParameter } from '../checker/checkerAst.ts';
 import {
   ParserAccessEx,
@@ -14,7 +13,8 @@ import {
   ParserCallEx,
   type ParserExpression,
   ParserExpressionStatement,
-  ParserFloatLiteralEx, ParserFunctionStatement,
+  ParserFloatLiteralEx,
+  ParserFunctionStatement,
   ParserIdentifierEx,
   ParserIntLiteralEx,
   ParserLambdaEx,
@@ -22,7 +22,6 @@ import {
   ParserNominalType,
   ParserParameter,
   ParserReturnEx,
-  ParserStaticAccessEx,
   ParserStringLiteralEx
 } from '../parser/parserAst.ts';
 import { resolve } from 'node:path';
@@ -502,29 +501,26 @@ describe('Checker', () => {
           }),
         ),
       }),
-      lambda: new ParserLambdaEx({
-        pos,
-        functionPhase: 'fun',
-        params: List.of(
-          new ParserParameter({
-            pos,
-            phase: 'flow',
-            name: 'x',
-            type: new ParserNominalType({
-              pos,
-              name: List.of(
-                new ParserIdentifierEx({
-                  pos,
-                  name: 'Int',
-                }),
-              ),
-            }),
-          }),
-        ),
-        body: new ParserIntLiteralEx({
+      functionPhase: 'fun',
+      params: List.of(
+        new ParserParameter({
           pos,
-          value: 0,
+          phase: 'flow',
+          name: 'x',
+          type: new ParserNominalType({
+            pos,
+            name: List.of(
+              new ParserIdentifierEx({
+                pos,
+                name: 'Int',
+              }),
+            ),
+          }),
         }),
+      ),
+      body: new ParserIntLiteralEx({
+        pos,
+        value: 0,
       }),
     });
 
@@ -557,43 +553,40 @@ describe('Checker', () => {
           }),
         ),
       }),
-      lambda: new ParserLambdaEx({
+      functionPhase: 'fun',
+      params: List.of(
+        new ParserParameter({
+          pos,
+          name: 'y',
+          phase: undefined,
+          type: new ParserNominalType({
+            pos,
+            name: List.of(
+              new ParserIdentifierEx({
+                pos,
+                name: 'Int',
+              }),
+            ),
+          }),
+        }),
+      ),
+      body: new ParserCallEx({
         pos,
-        functionPhase: 'fun',
-        params: List.of(
-          new ParserParameter({
+        typeArgs: List(),
+        func: new ParserIdentifierEx({
+          pos,
+          name: '+',
+        }),
+        args: List.of(
+          new ParserIdentifierEx({
+            pos,
+            name: 'x',
+          }),
+          new ParserIdentifierEx({
             pos,
             name: 'y',
-            phase: undefined,
-            type: new ParserNominalType({
-              pos,
-              name: List.of(
-                new ParserIdentifierEx({
-                  pos,
-                  name: 'Int',
-                }),
-              ),
-            }),
           }),
         ),
-        body: new ParserCallEx({
-          pos,
-          typeArgs: List(),
-          func: new ParserIdentifierEx({
-            pos,
-            name: '+',
-          }),
-          args: List.of(
-            new ParserIdentifierEx({
-              pos,
-              name: 'x',
-            }),
-            new ParserIdentifierEx({
-              pos,
-              name: 'y',
-            }),
-          ),
-        }),
       }),
     }), scope, root);
 
@@ -622,43 +615,40 @@ describe('Checker', () => {
           }),
         ),
       }),
-      lambda: new ParserLambdaEx({
+      functionPhase: 'fun',
+      params: List.of(
+        new ParserParameter({
+          pos,
+          name: 'y',
+          phase: undefined,
+          type: new ParserNominalType({
+            pos,
+            name: List.of(
+              new ParserIdentifierEx({
+                pos,
+                name: 'Int',
+              }),
+            ),
+          }),
+        }),
+      ),
+      body: new ParserCallEx({
         pos,
-        functionPhase: 'fun',
-        params: List.of(
-          new ParserParameter({
+        typeArgs: List(),
+        func: new ParserIdentifierEx({
+          pos,
+          name: '+',
+        }),
+        args: List.of(
+          new ParserIdentifierEx({
+            pos,
+            name: 'x',
+          }),
+          new ParserIdentifierEx({
             pos,
             name: 'y',
-            phase: undefined,
-            type: new ParserNominalType({
-              pos,
-              name: List.of(
-                new ParserIdentifierEx({
-                  pos,
-                  name: 'Int',
-                }),
-              ),
-            }),
           }),
         ),
-        body: new ParserCallEx({
-          pos,
-          typeArgs: List(),
-          func: new ParserIdentifierEx({
-            pos,
-            name: '+',
-          }),
-          args: List.of(
-            new ParserIdentifierEx({
-              pos,
-              name: 'x',
-            }),
-            new ParserIdentifierEx({
-              pos,
-              name: 'y',
-            }),
-          ),
-        }),
       }),
     });
 

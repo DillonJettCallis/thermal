@@ -88,22 +88,22 @@ class Generator {
     this.#imports.set('immutable', Set.of('Map', 'List', 'Set', 'Record'));
   }
 
-  type(name: string, member?: { kind: 'local', name: string }): { kind: 'local', name: string } {
+  type(name: string, ...members: Array<{ kind: 'local', name: string }>): { kind: 'local', name: string } {
     const newName = this.#prefix + name;
     this.#types.set(newName, List());
 
-    if (member !== undefined) {
+    for (const member of members) {
       this.#types.update(member.name, prev => prev?.push(newName) ?? List());
     }
 
     return {kind: 'local', name: newName};
   }
 
-  add(name: string, fields: { [key: string]: Type }, member?: { kind: 'local', name: string }): { kind: 'local', name: string } {
+  add(name: string, fields: { [key: string]: Type }, ...members: Array<{ kind: 'local', name: string }>): { kind: 'local', name: string } {
     const newName = this.#prefix + name;
     this.#records.push({name: newName, fields});
 
-    if (member !== undefined) {
+    for (const member of members) {
       this.#types.update(member.name, prev => prev?.push(newName) ?? List());
     }
 
@@ -319,7 +319,7 @@ function parser(): Generator {
     type: optional(typeExpression),
   });
 
-  const lambda = gen.add('LambdaEx', {
+  gen.add('LambdaEx', {
     pos,
     functionPhase,
     params: list(lambdaParameter),
@@ -331,6 +331,10 @@ function parser(): Generator {
   gen.add('BlockEx', {
     pos,
     body: list(statement),
+  }, expression);
+
+  gen.add('NoOpEx', {
+    pos,
   }, expression);
 
   gen.add('ExpressionStatement', {
@@ -352,14 +356,18 @@ function parser(): Generator {
     expression,
   }, statement);
 
-  const func = gen.add('FunctionStatement', {
+  const func = gen.type('Function');
+
+  gen.add('FunctionStatement', {
     pos,
     phase: expressionPhase,
     name: native('string'),
     typeParams: list(typeParameterType),
     result: typeExpression,
-    lambda,
-  }, statement);
+    functionPhase,
+    params: list(lambdaParameter),
+    body: expression,
+  }, statement, func);
 
   gen.add('CallEx', {
     pos,
@@ -400,26 +408,18 @@ function parser(): Generator {
     ex: importEx,
   }, declare);
 
-  const funcDeclare = gen.type('FuncDeclare', declare);
-
-  gen.add('FunctionDeclare', {
+  const funcDeclare = gen.add('FunctionDeclare', {
     pos,
     access,
+    extern: native('boolean'),
     name: native('string'),
     symbol,
-    func,
-  }, funcDeclare);
-
-  gen.add('FunctionExternDeclare', {
-    pos,
-    access,
-    symbol,
-    name: native('string'),
-    functionPhase,
     typeParams: list(typeParameterType),
     result: typeExpression,
+    functionPhase,
     params: list(lambdaParameter),
-  }, funcDeclare);
+    body: expression,
+  }, declare, func);
 
   const structField = gen.add('StructField', {
     pos,
@@ -692,7 +692,7 @@ function checker(): Generator {
     type: typeExpression,
   });
 
-  const lambda = gen.add('LambdaEx', {
+  gen.add('LambdaEx', {
     pos,
     functionPhase,
     params: list(lambdaParameter),
@@ -706,6 +706,12 @@ function checker(): Generator {
   gen.add('BlockEx', {
     pos,
     body: list(statement),
+    type: typeExpression,
+    phase: expressionPhase,
+  }, expression);
+
+  gen.add('NoOpEx', {
+    pos,
     type: typeExpression,
     phase: expressionPhase,
   }, expression);
@@ -733,15 +739,19 @@ function checker(): Generator {
     expression,
   }, statement);
 
-  const func = gen.add('FunctionStatement', {
+  const func = gen.type('Function');
+
+  gen.add('FunctionStatement', {
     pos,
     phase: expressionPhase,
     name: native('string'),
     typeParams: list(typeParameterType),
     result: typeExpression,
-    lambda,
+    functionPhase,
+    params: list(lambdaParameter),
+    body: expression,
     type: typeExpression,
-  }, statement);
+  }, statement, func);
 
   gen.add('CallEx', {
     pos,
@@ -788,26 +798,18 @@ function checker(): Generator {
     ex: importEx,
   }, declare);
 
-  const funcDeclare = gen.type('FuncDeclare', declare);
-
-  gen.add('FunctionDeclare', {
+  const funcDeclare = gen.add('FunctionDeclare', {
     pos,
     access,
+    extern: native('boolean'),
     name: native('string'),
     symbol,
-    func,
-  }, funcDeclare);
-
-  gen.add('FunctionExternDeclare', {
-    pos,
-    access,
-    symbol,
-    name: native('string'),
     functionPhase,
     typeParams: list(typeParameterType),
     result: typeExpression,
     params: list(lambdaParameter),
-  }, funcDeclare);
+    body: expression,
+  }, declare, func);
 
   const structField = gen.add('StructField', {
     pos,

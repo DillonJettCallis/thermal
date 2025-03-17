@@ -7,10 +7,10 @@ public data Set<Item> {
 }
 
 implement <Item> Set<Item> {
-  public fun empty(): Set<Item> = extern;
-  public fun from(src: Array<Item>): Set<Item> = extern;
-  public fun add(self, item: Item): Set<Item> = extern;
-  public fun remove(self, item: Item): Set<Item> = extern;
-  public fun has(self, item: Item): Boolean = extern;
-  public fun merge(self, other: Set<Item>): Set<Item> = extern;
+  external public fun empty(): Set<Item>;
+  external public fun from(src: Array<Item>): Set<Item>;
+  external public fun add(self, item: Item): Set<Item>;
+  external public fun remove(self, item: Item): Set<Item>;
+  external public fun has(self, item: Item): Boolean;
+  external public fun merge(self, other: Set<Item>): Set<Item>;
 }

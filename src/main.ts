@@ -2,7 +2,7 @@ import { Parser } from './parser/parser.ts';
 import { DependencyDictionary, PackageName, Symbol, TypeDictionary, Version } from './ast.ts';
 import { coreLib, domLib } from './lib.ts';
 import { collectSymbols } from './checker/collector.ts';
-import { List, Map } from 'immutable';
+import { List } from 'immutable';
 import { verifyImports } from './checker/verifier.ts';
 import { Checker } from './checker/checker.ts';
 import { substringBeforeLast } from './utils.ts';
