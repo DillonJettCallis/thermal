@@ -1,5 +1,5 @@
-import { List, Map, Record } from 'immutable';
-import { type Access, type ExpressionPhase, type FunctionPhase, Position, Symbol } from '../ast.ts';
+import { Map, List, Set, Record,  } from 'immutable';
+import { Position, type ExpressionPhase, type FunctionPhase, type Access, Symbol,  } from '../ast.ts';
 
 export type ParserTypeExpression
   = ParserConcreteType
@@ -746,6 +746,7 @@ interface MutableParserConstantDeclare {
   pos: Position;
   access: Access;
   symbol: Symbol;
+  extern: boolean;
   name: string;
   expression: ParserExpression;
   type: ParserTypeExpression;
@@ -754,6 +755,7 @@ export class ParserConstantDeclare extends Record<MutableParserConstantDeclare>(
   pos: undefined as unknown as Position,
   access: undefined as unknown as Access,
   symbol: undefined as unknown as Symbol,
+  extern: undefined as unknown as boolean,
   name: undefined as unknown as string,
   expression: undefined as unknown as ParserExpression,
   type: undefined as unknown as ParserTypeExpression,

@@ -13,9 +13,7 @@ export class HashMap<Key, Value> {
   }
 }
 
-export function empty(): HashMap<never, never> {
-  return new HashMap<never, never>(new Array(3), 0);
-}
+export const emptyMap = new HashMap<never, never>(new Array(3), 0);
 
 export function from<Key, Value>(pairs: Iterable<readonly [Key, Value]>): HashMap<Key, Value> {
   let bucketsCopy = new Array<Bucket<Key, Value>>(3);
@@ -426,7 +424,7 @@ export function remove<Key, Value>(self: HashMap<Key, Value>, key: Key): HashMap
 
       if (self.size === 1) {
         // we are removing the only item, just return the EMPTY starter map
-        return empty();
+        return emptyMap;
       } else {
         const newBuckets = self.buckets.slice();
         newBuckets[bucketIndex] = undefined;

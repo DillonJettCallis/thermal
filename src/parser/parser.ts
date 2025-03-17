@@ -194,8 +194,7 @@ export class Parser {
 
         return this.#parseImportDeclare(pos);
       case 'const':
-        // TODO: handle extern const
-        return this.#parseConstDeclare(mods.access, pos);
+        return this.#parseConstDeclare(mods.access, mods.external, pos);
       case 'fun':
       case 'def':
       case 'sig':
@@ -295,18 +294,19 @@ export class Parser {
     });
   }
 
-  #parseConstDeclare(access: Access, pos: Position): ParserConstantDeclare {
+  #parseConstDeclare(access: Access, extern: boolean, pos: Position): ParserConstantDeclare {
     // we've already parsed the 'const' keyword and the access modifier
 
     const nameToken = this.#assertKind('identifier');
     this.#assertSymbol(':');
     const type = this.#parseTypeExpression();
-    this.#assertSymbol('=');
-    const expression = this.#parseExpression();
+    // yes, I'm using a comma expression. In my defense, typescript doesn't have `if` expressions.
+    const expression = extern ? (this.#checkSymbol(';'), new ParserNoOpEx({ pos: nameToken.pos })) : (this.#assertSymbol('='), this.#parseExpression());
 
     return new ParserConstantDeclare({
       pos,
       access,
+      extern,
       symbol: this.#module.child(nameToken.value),
       name: nameToken.value,
       type,

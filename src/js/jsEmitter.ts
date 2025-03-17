@@ -152,6 +152,9 @@ class Output {
           this.#write(';\n');
         });
       } else if (dec instanceof JsConst) {
+        if (dec.export) {
+          this.#write('export ');
+        }
         this.#write('const ');
         this.#write(dec.name);
         this.#write(' = ');

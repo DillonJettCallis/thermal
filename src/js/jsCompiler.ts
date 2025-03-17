@@ -84,7 +84,7 @@ import {
   JsUndefined
 } from './jsIr.ts';
 import { List, Map, Seq } from 'immutable';
-import type { ExpressionPhase, FunctionPhase, Symbol } from '../ast.ts';
+import { type ExpressionPhase, type FunctionPhase, Position, type Symbol } from '../ast.ts';
 import { Extern } from '../ast.ts';
 import { substringAfterLast } from '../utils.ts';
 
@@ -182,49 +182,34 @@ export class JsCompiler {
       if (dec instanceof CheckedImportDeclaration) {
         return Seq(this.#deconstructImport('.', dec.ex));
       } else if (dec instanceof CheckedConstantDeclare) {
-        const value = this.#compileExpression(dec.expression, 'fun');
-
-        if (value instanceof JsBlock) {
-          return Seq.Indexed.of(new JsConst({
-            name: dec.name,
-            body: new JsCall({
-              func: new JsLambdaEx({
-                args: List(),
-                body: value.body.push(new JsReturn({ body: value.result })),
-              }),
-              args: List(),
-            })
-          }));
+        if (dec.extern) {
+          return this.#importExternal(dec.name, dec.pos, dec.symbol, dec.access === 'private', externals);
         } else {
-          return Seq.Indexed.of(new JsConst({
-            name: dec.name,
-            body: value,
-          }))
+          const value = this.#compileExpression(dec.expression, 'fun');
+
+          if (value instanceof JsBlock) {
+            return Seq.Indexed.of(new JsConst({
+              name: dec.name,
+              export: dec.access !== 'private',
+              body: new JsCall({
+                func: new JsLambdaEx({
+                  args: List(),
+                  body: value.body.push(new JsReturn({ body: value.result })),
+                }),
+                args: List(),
+              })
+            }));
+          } else {
+            return Seq.Indexed.of(new JsConst({
+              name: dec.name,
+              export: dec.access !== 'private',
+              body: value,
+            }))
+          }
         }
       } else if (dec instanceof CheckedFunctionDeclare) {
         if (dec.extern) {
-          const ex = externals.get(dec.symbol);
-
-          if (ex === undefined) {
-            return dec.pos.fail(`No externally defined implementation was found for ${dec.symbol}`);
-          }
-
-          const importDec = new JsImport({
-            from: ex.srcFile,
-            take: ex.import,
-            as: dec.name,
-          });
-
-          if (dec.access === 'private') {
-            return Seq.Indexed.of(importDec);
-          } else {
-            return Seq.Indexed.of<JsDeclaration>(
-              importDec,
-              new JsExport({
-                name: dec.name,
-              }),
-            )
-          }
+          return this.#importExternal(dec.name, dec.pos, dec.symbol, dec.access === 'private', externals);
         } else {
           return Seq.Indexed.of(new JsFunctionDeclare({
             export: dec.access !== 'private',
@@ -288,6 +273,31 @@ export class JsCompiler {
       main: src.declarations.some(dec => dec instanceof CheckedFunctionDeclare && dec.name === 'main'),
       declarations: this.#defaultImports.concat(staticImportReferences, decs),
     })
+  }
+
+  #importExternal(name: string, pos: Position, symbol: Symbol, isPrivate: boolean, externals: Map<Symbol, Extern>): Seq.Indexed<JsDeclaration> {
+    const ex = externals.get(symbol);
+
+    if (ex === undefined) {
+      return pos.fail(`No externally defined implementation was found for ${symbol}`);
+    }
+
+    const importDec = new JsImport({
+      from: ex.srcFile,
+      take: ex.import,
+      as: name,
+    });
+
+    if (isPrivate) {
+      return Seq.Indexed.of(importDec);
+    } else {
+      return Seq.Indexed.of<JsDeclaration>(
+        importDec,
+        new JsExport({
+          name: name,
+        }),
+      )
+    }
   }
 
   /**

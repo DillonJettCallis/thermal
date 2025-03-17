@@ -160,6 +160,7 @@ export class Checker {
           name: dec.name,
           access: dec.access,
           symbol: dec.symbol,
+          extern: dec.extern,
           expression,
           type,
         });

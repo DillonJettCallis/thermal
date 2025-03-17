@@ -474,6 +474,7 @@ function parser(): Generator {
     pos,
     access,
     symbol,
+    extern: native('boolean'),
     name: native('string'),
     expression,
     type: typeExpression,
@@ -873,6 +874,7 @@ function checker(): Generator {
     pos,
     access,
     symbol,
+    extern: native('boolean'),
     name: native('string'),
     expression,
     type: typeExpression,
@@ -1038,6 +1040,7 @@ function jsIr(): Generator {
   }, declare);
 
   const constDeclare = gen.add('Const', {
+    export: native('boolean'),
     name: native('string'),
     body: expression,
   }, declare);

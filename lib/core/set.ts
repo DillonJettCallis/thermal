@@ -1,4 +1,4 @@
-import { type HashMap, from as hashMapFrom, empty as emptyHashMap, set as mapSet, remove as mapRemove, has as mapHas, merge as mapMerge } from './map.js';
+import { type HashMap, from as hashMapFrom, emptyMap as emptyHashMap, set as mapSet, remove as mapRemove, has as mapHas, merge as mapMerge } from './map.js';
 
 export class HashSet<Item> {
   readonly map: HashMap<Item, boolean>;
@@ -13,7 +13,7 @@ export class HashSet<Item> {
 }
 
 export function empty(): HashSet<never> {
-  return new HashSet<never>(emptyHashMap());
+  return new HashSet<never>(emptyHashMap);
 }
 
 export function from<Item>(source: Iterable<Item>): HashSet<Item> {

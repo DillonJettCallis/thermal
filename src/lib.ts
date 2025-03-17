@@ -30,7 +30,12 @@ import { Parser } from './parser/parser.ts';
 import { collectSymbols } from './checker/collector.ts';
 import { verifyImports } from './checker/verifier.ts';
 import { Checker } from './checker/checker.ts';
-import { type ParserDeclaration, ParserFunctionDeclare, ParserImplDeclare } from './parser/parserAst.ts';
+import {
+  ParserConstantDeclare,
+  type ParserDeclaration,
+  ParserFunctionDeclare,
+  ParserImplDeclare
+} from './parser/parserAst.ts';
 
 const coreVersion = new Version(0, 1, 0);
 const corePackageName = new PackageName('core', 'core', coreVersion);
@@ -195,6 +200,14 @@ function handleNativeImpls(content: List<ParserDeclaration>, srcFile: string, ex
     }
 
     if (dec instanceof ParserFunctionDeclare && dec.extern) {
+      externs.set(dec.symbol, new Extern({
+        symbol: dec.symbol,
+        srcFile,
+        import: dec.name === 'new' ? '_new' : dec.name,
+      }));
+    }
+
+    if (dec instanceof ParserConstantDeclare && dec.extern) {
       externs.set(dec.symbol, new Extern({
         symbol: dec.symbol,
         srcFile,

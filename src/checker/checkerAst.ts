@@ -1,5 +1,5 @@
-import { List, Map, Record } from 'immutable';
-import { type Access, type ExpressionPhase, type FunctionPhase, PackageName, Position, Symbol } from '../ast.ts';
+import { Map, List, Set, Record,  } from 'immutable';
+import { Position, type ExpressionPhase, Symbol, type FunctionPhase, type Access, PackageName,  } from '../ast.ts';
 
 export type CheckedImportExpression
   = CheckedNominalImportExpression
@@ -975,6 +975,7 @@ interface MutableCheckedConstantDeclare {
   pos: Position;
   access: Access;
   symbol: Symbol;
+  extern: boolean;
   name: string;
   expression: CheckedExpression;
   type: CheckedTypeExpression;
@@ -983,6 +984,7 @@ export class CheckedConstantDeclare extends Record<MutableCheckedConstantDeclare
   pos: undefined as unknown as Position,
   access: undefined as unknown as Access,
   symbol: undefined as unknown as Symbol,
+  extern: undefined as unknown as boolean,
   name: undefined as unknown as string,
   expression: undefined as unknown as CheckedExpression,
   type: undefined as unknown as CheckedTypeExpression,

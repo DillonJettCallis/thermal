@@ -1,5 +1,5 @@
-import { List, Record, Set } from 'immutable';
-import { Symbol } from '../ast.ts';
+import { Map, List, Set, Record,  } from 'immutable';
+import { Symbol,  } from '../ast.ts';
 
 export type JsExpression
   = JsBooleanLiteralEx
@@ -405,10 +405,12 @@ export class JsExport extends Record<MutableJsExport>({
 }
 
 interface MutableJsConst {
+  export: boolean;
   name: string;
   body: JsExpression;
 }
 export class JsConst extends Record<MutableJsConst>({
+  export: undefined as unknown as boolean,
   name: undefined as unknown as string,
   body: undefined as unknown as JsExpression,
 }) {

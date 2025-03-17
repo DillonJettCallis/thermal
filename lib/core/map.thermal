@@ -1,14 +1,15 @@
 import core/array::Array;
 import core/bool::Boolean;
 import core/math::Int;
+import core/base::Nothing;
 
 public data Map<Key, Value> {
   size: Int,
 }
 
-implement <Key, Value> Map<Key, Value> {
-  external public fun empty(): Map<Key, Value>;
+external public const emptyMap: Map<Nothing, Nothing>;
 
+implement <Key, Value> Map<Key, Value> {
   external public fun has(self, key: Key): Boolean;
   external public fun get(self, key: Key): Value;
   external public fun set(self, key: Key, value: Value): Map<Key, Value>;
