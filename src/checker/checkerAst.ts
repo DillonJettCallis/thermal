@@ -814,7 +814,7 @@ export class CheckedImportDeclaration extends Record<MutableCheckedImportDeclara
 interface MutableCheckedFunctionDeclare {
   pos: Position;
   access: Access;
-  extern: boolean;
+  external: boolean;
   name: string;
   symbol: Symbol;
   functionPhase: FunctionPhase;
@@ -826,7 +826,7 @@ interface MutableCheckedFunctionDeclare {
 export class CheckedFunctionDeclare extends Record<MutableCheckedFunctionDeclare>({
   pos: undefined as unknown as Position,
   access: undefined as unknown as Access,
-  extern: undefined as unknown as boolean,
+  external: undefined as unknown as boolean,
   name: undefined as unknown as string,
   symbol: undefined as unknown as Symbol,
   functionPhase: undefined as unknown as FunctionPhase,
@@ -975,7 +975,7 @@ interface MutableCheckedConstantDeclare {
   pos: Position;
   access: Access;
   symbol: Symbol;
-  extern: boolean;
+  external: boolean;
   name: string;
   expression: CheckedExpression;
   type: CheckedTypeExpression;
@@ -984,7 +984,7 @@ export class CheckedConstantDeclare extends Record<MutableCheckedConstantDeclare
   pos: undefined as unknown as Position,
   access: undefined as unknown as Access,
   symbol: undefined as unknown as Symbol,
-  extern: undefined as unknown as boolean,
+  external: undefined as unknown as boolean,
   name: undefined as unknown as string,
   expression: undefined as unknown as CheckedExpression,
   type: undefined as unknown as CheckedTypeExpression,

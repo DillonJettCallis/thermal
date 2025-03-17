@@ -160,7 +160,7 @@ export class Checker {
           name: dec.name,
           access: dec.access,
           symbol: dec.symbol,
-          extern: dec.extern,
+          external: dec.external,
           expression,
           type,
         });
@@ -262,7 +262,7 @@ export class Checker {
       name: dec.name,
       functionPhase: dec.functionPhase,
       access: dec.access,
-      extern: dec.extern,
+      external: dec.external,
       symbol: dec.symbol,
       ...state,
     });

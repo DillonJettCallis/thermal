@@ -189,7 +189,7 @@ function handleNativeImpls(content: List<ParserDeclaration>, srcFile: string, ex
   content.forEach(dec => {
     if (dec instanceof ParserImplDeclare) {
       dec.methods.forEach(method => {
-        if (method.extern) {
+        if (method.external) {
           externs.set(method.symbol, new Extern({
             symbol: method.symbol,
             srcFile,
@@ -199,7 +199,7 @@ function handleNativeImpls(content: List<ParserDeclaration>, srcFile: string, ex
       });
     }
 
-    if (dec instanceof ParserFunctionDeclare && dec.extern) {
+    if (dec instanceof ParserFunctionDeclare && dec.external) {
       externs.set(dec.symbol, new Extern({
         symbol: dec.symbol,
         srcFile,
@@ -207,7 +207,7 @@ function handleNativeImpls(content: List<ParserDeclaration>, srcFile: string, ex
       }));
     }
 
-    if (dec instanceof ParserConstantDeclare && dec.extern) {
+    if (dec instanceof ParserConstantDeclare && dec.external) {
       externs.set(dec.symbol, new Extern({
         symbol: dec.symbol,
         srcFile,

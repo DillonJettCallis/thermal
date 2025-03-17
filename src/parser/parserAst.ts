@@ -604,7 +604,7 @@ export class ParserImportDeclaration extends Record<MutableParserImportDeclarati
 interface MutableParserFunctionDeclare {
   pos: Position;
   access: Access;
-  extern: boolean;
+  external: boolean;
   name: string;
   symbol: Symbol;
   typeParams: List<ParserTypeParameterType>;
@@ -616,7 +616,7 @@ interface MutableParserFunctionDeclare {
 export class ParserFunctionDeclare extends Record<MutableParserFunctionDeclare>({
   pos: undefined as unknown as Position,
   access: undefined as unknown as Access,
-  extern: undefined as unknown as boolean,
+  external: undefined as unknown as boolean,
   name: undefined as unknown as string,
   symbol: undefined as unknown as Symbol,
   typeParams: undefined as unknown as List<ParserTypeParameterType>,
@@ -746,7 +746,7 @@ interface MutableParserConstantDeclare {
   pos: Position;
   access: Access;
   symbol: Symbol;
-  extern: boolean;
+  external: boolean;
   name: string;
   expression: ParserExpression;
   type: ParserTypeExpression;
@@ -755,7 +755,7 @@ export class ParserConstantDeclare extends Record<MutableParserConstantDeclare>(
   pos: undefined as unknown as Position,
   access: undefined as unknown as Access,
   symbol: undefined as unknown as Symbol,
-  extern: undefined as unknown as boolean,
+  external: undefined as unknown as boolean,
   name: undefined as unknown as string,
   expression: undefined as unknown as ParserExpression,
   type: undefined as unknown as ParserTypeExpression,

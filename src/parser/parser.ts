@@ -200,10 +200,10 @@ export class Parser {
       case 'sig':
         return this.#parseFunctionDeclare(this.#module, mods.access, mods.external, next.value, pos, undefined);
       case 'data':
-        // TODO: handle extern data
+        // TODO: handle external data
         return this.#parseDataDeclare(mods.access, pos);
       case 'enum':
-        // TODO: handle extern enum
+        // TODO: handle external enum
         return this.#parseEnumDeclare(mods.access, pos);
       case 'implement':
         if (mods.access !== 'internal') {
@@ -240,7 +240,7 @@ export class Parser {
         }
       } else if (next.value === 'external') {
         if (mods.external) {
-          return next.pos.fail('Duplicate `extern` modifier.');
+          return next.pos.fail('Duplicate `external` modifier.');
         } else {
           mods.external = true;
         }
@@ -294,19 +294,19 @@ export class Parser {
     });
   }
 
-  #parseConstDeclare(access: Access, extern: boolean, pos: Position): ParserConstantDeclare {
+  #parseConstDeclare(access: Access, external: boolean, pos: Position): ParserConstantDeclare {
     // we've already parsed the 'const' keyword and the access modifier
 
     const nameToken = this.#assertKind('identifier');
     this.#assertSymbol(':');
     const type = this.#parseTypeExpression();
     // yes, I'm using a comma expression. In my defense, typescript doesn't have `if` expressions.
-    const expression = extern ? (this.#checkSymbol(';'), new ParserNoOpEx({ pos: nameToken.pos })) : (this.#assertSymbol('='), this.#parseExpression());
+    const expression = external ? (this.#checkSymbol(';'), new ParserNoOpEx({ pos: nameToken.pos })) : (this.#assertSymbol('='), this.#parseExpression());
 
     return new ParserConstantDeclare({
       pos,
       access,
-      extern,
+      external,
       symbol: this.#module.child(nameToken.value),
       name: nameToken.value,
       type,
@@ -314,17 +314,17 @@ export class Parser {
     });
   }
 
-  #parseFunctionDeclare(parent: Symbol, access: Access, extern: boolean, functionPhase: FunctionPhase, pos: Position, self: ParserTypeExpression | undefined): ParserFunctionDeclare {
+  #parseFunctionDeclare(parent: Symbol, access: Access, external: boolean, functionPhase: FunctionPhase, pos: Position, self: ParserTypeExpression | undefined): ParserFunctionDeclare {
     const { name, typeParams, params, result } = this.#parseFunctionSignature(self);
     const symbol = parent.child(name);
 
-    if (extern) {
+    if (external) {
       this.#checkSymbol(';');
       return new ParserFunctionDeclare({
         pos,
         access,
         functionPhase,
-        extern,
+        external,
         name,
         symbol,
         typeParams,
@@ -347,7 +347,7 @@ export class Parser {
     return new ParserFunctionDeclare({
       pos,
       access,
-      extern,
+      external,
       name,
       symbol,
       typeParams,

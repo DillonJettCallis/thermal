@@ -182,7 +182,7 @@ export class JsCompiler {
       if (dec instanceof CheckedImportDeclaration) {
         return Seq(this.#deconstructImport('.', dec.ex));
       } else if (dec instanceof CheckedConstantDeclare) {
-        if (dec.extern) {
+        if (dec.external) {
           return this.#importExternal(dec.name, dec.pos, dec.symbol, dec.access === 'private', externals);
         } else {
           const value = this.#compileExpression(dec.expression, 'fun');
@@ -208,7 +208,7 @@ export class JsCompiler {
           }
         }
       } else if (dec instanceof CheckedFunctionDeclare) {
-        if (dec.extern) {
+        if (dec.external) {
           return this.#importExternal(dec.name, dec.pos, dec.symbol, dec.access === 'private', externals);
         } else {
           return Seq.Indexed.of(new JsFunctionDeclare({
@@ -226,7 +226,7 @@ export class JsCompiler {
 
         return dec.methods.valueSeq()
           .flatMap(funcDec => {
-            if (funcDec.extern) {
+            if (funcDec.external) {
               const ex = externals.get(funcDec.symbol);
 
               if (ex === undefined) {
