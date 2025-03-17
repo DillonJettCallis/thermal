@@ -171,18 +171,20 @@ export class Checker {
           pos: dec.pos,
           name: dec.name,
           symbol: dec.symbol,
+          external: dec.external,
           access: dec.access,
           typeParams,
-          layout: this.#checkDataLayout(dec.layout, typeParams, fileScope),
+          layout: this.#checkDataLayout(dec.layout, dec.typeParams, fileScope),
         });
       } else if (dec instanceof ParserEnumDeclare) {
         const typeParams = dec.typeParams.map(it => fileScope.qualifier.checkTypeParamType(dec.symbol, it));
-        const variants = dec.variants.map(variant => this.#checkDataLayout(variant, typeParams, fileScope));
+        const variants = dec.variants.map(variant => this.#checkDataLayout(variant, dec.typeParams, fileScope));
 
         return new CheckedEnumDeclare({
           pos: dec.pos,
           name: dec.name,
           symbol: dec.symbol,
+          external: dec.external,
           access: dec.access,
           typeParams,
           variants,
@@ -205,13 +207,16 @@ export class Checker {
     });
   }
 
-  #checkDataLayout(ex: ParserDataLayout, typeParams: List<CheckedTypeParameterType>, fileScope: Scope): CheckedDataLayout {
+  #checkDataLayout(ex: ParserDataLayout, typeParams: List<ParserTypeParameterType>, fileScope: Scope): CheckedDataLayout {
+    const scope = fileScope.childFunction(ex.symbol, typeParams, this.#coreTypes.nothing, 'fun');
+    const checkedTypeParams = typeParams.map(it => scope.qualifier.checkTypeParamType(ex.symbol, it) as CheckedTypeParameterType);
+
     if (ex instanceof ParserStruct) {
-      return this.#checkStruct(ex, typeParams, fileScope);
+      return this.#checkStruct(ex, checkedTypeParams, scope);
     } else if (ex instanceof ParserTuple) {
-      return this.#checkTuple(ex, typeParams, fileScope);
+      return this.#checkTuple(ex, checkedTypeParams, scope);
     } else {
-      return this.#checkAtom(ex, typeParams, fileScope);
+      return this.#checkAtom(ex, checkedTypeParams, scope);
     }
   }
 
@@ -798,7 +803,7 @@ export class Checker {
   #checkLambdaBody(ex: ParserLambdaEx, scope: Scope, params: List<CheckedParameter>, expectedResult: CheckedTypeExpression | undefined): { phase: ExpressionPhase, body: CheckedExpression, result: CheckedTypeExpression } {
     // TODO: I'm not sure if 'Nothing' is actually going to work here, make sure to test that
     // TODO: create a system to give annon lambdas names
-    const childScope = scope.childFunction(scope.functionScope.symbol.child('<lambda>'), expectedResult ?? this.#coreTypes.nothing, ex.functionPhase);
+    const childScope = scope.childFunction(scope.functionScope.symbol.child('<lambda>'), List(), expectedResult ?? this.#coreTypes.nothing, ex.functionPhase);
 
     for (const param of params) {
       childScope.set(param.name, new PhaseType(param.type, param.phase ?? 'val', param.pos));
@@ -1070,7 +1075,7 @@ export class Checker {
       functionPhase: state.functionPhase,
     }, scope, symbol);
 
-    const childScope = scope.childFunction(symbol, result, state.functionPhase);
+    const childScope = scope.childFunction(symbol, state.typeParams, result, state.functionPhase);
 
     for (const typeParam of typeParams) {
       childScope.set(typeParam.name.name, new PhaseType(typeParam, 'val', state.pos));
@@ -1719,8 +1724,14 @@ export class Scope {
     return new Scope(this, undefined, this.qualifier, this.functionScope);
   }
 
-  childFunction(symbol: Symbol, resultType: CheckedTypeExpression, phase: FunctionPhase): Scope {
-    return new Scope(this, undefined, this.qualifier, new FunctionScope(this.functionScope.module, symbol, resultType, phase));
+  childFunction(symbol: Symbol, typeParams: List<ParserTypeParameterType>, resultType: CheckedTypeExpression, phase: FunctionPhase): Scope {
+    const child = new Scope(this, undefined, this.qualifier.includeTypeParams(symbol, typeParams), new FunctionScope(this.functionScope.module, symbol, resultType, phase));
+
+    for (const typeParam of typeParams) {
+      child.set(typeParam.name, new PhaseType(child.qualifier.checkTypeParamType(symbol, typeParam), 'const', typeParam.pos));
+    }
+
+    return child;
   }
 
   get(name: string, pos: Position): PhaseType {

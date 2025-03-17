@@ -914,6 +914,7 @@ interface MutableCheckedDataDeclare {
   pos: Position;
   access: Access;
   symbol: Symbol;
+  external: boolean;
   name: string;
   typeParams: List<CheckedTypeParameterType>;
   layout: CheckedDataLayout;
@@ -922,6 +923,7 @@ export class CheckedDataDeclare extends Record<MutableCheckedDataDeclare>({
   pos: undefined as unknown as Position,
   access: undefined as unknown as Access,
   symbol: undefined as unknown as Symbol,
+  external: undefined as unknown as boolean,
   name: undefined as unknown as string,
   typeParams: undefined as unknown as List<CheckedTypeParameterType>,
   layout: undefined as unknown as CheckedDataLayout,
@@ -935,6 +937,7 @@ interface MutableCheckedEnumDeclare {
   pos: Position;
   access: Access;
   symbol: Symbol;
+  external: boolean;
   name: string;
   typeParams: List<CheckedTypeParameterType>;
   variants: Map<string, CheckedDataLayout>;
@@ -943,6 +946,7 @@ export class CheckedEnumDeclare extends Record<MutableCheckedEnumDeclare>({
   pos: undefined as unknown as Position,
   access: undefined as unknown as Access,
   symbol: undefined as unknown as Symbol,
+  external: undefined as unknown as boolean,
   name: undefined as unknown as string,
   typeParams: undefined as unknown as List<CheckedTypeParameterType>,
   variants: undefined as unknown as Map<string, CheckedDataLayout>,

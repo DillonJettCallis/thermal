@@ -236,7 +236,7 @@ export class Qualifier {
       name,
       typeParams: dec.typeParams.map(it => this.checkTypeParamType(name, it)),
       variants: dec.variants.map((variant, key) => {
-        return this.#qualifyDataLayout(variant, name.child(key));
+        return this.includeTypeParams(name, dec.typeParams).#qualifyDataLayout(variant, name.child(key));
       }),
     });
   }

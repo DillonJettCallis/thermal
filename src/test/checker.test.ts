@@ -398,7 +398,7 @@ describe('Checker', () => {
     const parentScope = testScope();
 
     // set up the child scope with a variable named 'x' that we will use
-    const scope = parentScope.childFunction(root.child('testFunc'), coreTypes.nothing, 'fun');
+    const scope = parentScope.childFunction(root.child('testFunc'), List(), coreTypes.nothing, 'fun');
     scope.set('x', new PhaseType(coreTypes.int, 'val', pos));
 
     const actual = checker.checkCall(new ParserCallEx({
@@ -429,7 +429,7 @@ describe('Checker', () => {
     const parentScope = testScope();
 
     // set up the child scope with a variable named 'x' that we will use
-    const scope = parentScope.childFunction(root.child('testFunc'), coreTypes.nothing, 'fun');
+    const scope = parentScope.childFunction(root.child('testFunc'), List(), coreTypes.nothing, 'fun');
     scope.set('x', new PhaseType(coreTypes.int, 'flow', pos));
 
     const actual = checker.checkCall(new ParserCallEx({
@@ -460,7 +460,7 @@ describe('Checker', () => {
     const parentScope = testScope();
 
     // set up the child scope with a variable named 'x' that we will use
-    const scope = parentScope.childFunction(root.child('testFunc'), coreTypes.nothing, 'fun');
+    const scope = parentScope.childFunction(root.child('testFunc'), List(), coreTypes.nothing, 'fun');
     scope.set('x', new PhaseType(coreTypes.int, 'var', pos));
 
     const actual = checker.checkCall(new ParserCallEx({
@@ -536,7 +536,7 @@ describe('Checker', () => {
     const parentScope = testScope();
 
     // set up the child scope with a variable named 'x' that we will use
-    const scope = parentScope.childFunction(root.child('testFunc'), coreTypes.nothing, 'fun');
+    const scope = parentScope.childFunction(root.child('testFunc'), List(), coreTypes.nothing, 'fun');
     scope.set('x', new PhaseType(coreTypes.int, 'flow', pos));
 
     const actual = checker.checkFunctionStatement(new ParserFunctionStatement({
@@ -598,7 +598,7 @@ describe('Checker', () => {
     const parentScope = testScope();
 
     // set up the child scope with a variable named 'x' that we will use
-    const scope = parentScope.childFunction(root.child('testFunc'), coreTypes.nothing, 'fun');
+    const scope = parentScope.childFunction(root.child('testFunc'), List(), coreTypes.nothing, 'fun');
     scope.set('x', new PhaseType(coreTypes.int, 'flow', pos));
 
     const input = new ParserFunctionStatement({

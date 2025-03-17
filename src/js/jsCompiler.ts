@@ -217,10 +217,14 @@ export class JsCompiler {
           }));
         }
       } else if (dec instanceof CheckedDataDeclare) {
-        return Seq.Indexed.of(new JsDataDeclare({
-          export: dec.access !== 'private',
-          layout: this.#compileDataLayout(dec.name, dec.layout),
-        }));
+        if (dec.external) {
+          return this.#importExternal(dec.name, dec.pos, dec.symbol, dec.access === 'private', externals);
+        } else {
+          return Seq.Indexed.of(new JsDataDeclare({
+            export: dec.access !== 'private',
+            layout: this.#compileDataLayout(dec.name, dec.layout),
+          }));
+        }
       } else if (dec instanceof CheckedImplDeclare) {
         const prefix = dec.symbol.serializedName();
 
@@ -257,14 +261,21 @@ export class JsCompiler {
             }
           });
       } else {
-        return Seq.Indexed.of(new JsEnumDeclare({
-          export: dec.access !== 'private',
-          name: dec.name,
-          symbol: dec.symbol,
-          variants: dec.variants.entrySeq().map(([name, variant]) => {
-            return this.#compileDataLayout(name, variant);
-          }).toList(),
-        }))
+        if (dec.external) {
+          const enumType = this.#importExternal(dec.name, dec.pos, dec.symbol, dec.access === 'private', externals);
+          const variants = dec.variants.entrySeq().flatMap(([name, it]) => this.#importExternal(name, it.pos, it.symbol, dec.access === 'private', externals));
+
+          return enumType.concat(variants);
+        } else {
+          return Seq.Indexed.of(new JsEnumDeclare({
+            export: dec.access !== 'private',
+            name: dec.name,
+            symbol: dec.symbol,
+            variants: dec.variants.entrySeq().map(([name, variant]) => {
+              return this.#compileDataLayout(name, variant);
+            }).toList(),
+          }));
+        }
       }
     });
 

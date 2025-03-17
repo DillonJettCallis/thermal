@@ -704,6 +704,7 @@ interface MutableParserDataDeclare {
   pos: Position;
   access: Access;
   symbol: Symbol;
+  external: boolean;
   name: string;
   typeParams: List<ParserTypeParameterType>;
   layout: ParserDataLayout;
@@ -712,6 +713,7 @@ export class ParserDataDeclare extends Record<MutableParserDataDeclare>({
   pos: undefined as unknown as Position,
   access: undefined as unknown as Access,
   symbol: undefined as unknown as Symbol,
+  external: undefined as unknown as boolean,
   name: undefined as unknown as string,
   typeParams: undefined as unknown as List<ParserTypeParameterType>,
   layout: undefined as unknown as ParserDataLayout,
@@ -725,6 +727,7 @@ interface MutableParserEnumDeclare {
   pos: Position;
   access: Access;
   symbol: Symbol;
+  external: boolean;
   name: string;
   typeParams: List<ParserTypeParameterType>;
   variants: Map<string, ParserDataLayout>;
@@ -733,6 +736,7 @@ export class ParserEnumDeclare extends Record<MutableParserEnumDeclare>({
   pos: undefined as unknown as Position,
   access: undefined as unknown as Access,
   symbol: undefined as unknown as Symbol,
+  external: undefined as unknown as boolean,
   name: undefined as unknown as string,
   typeParams: undefined as unknown as List<ParserTypeParameterType>,
   variants: undefined as unknown as Map<string, ParserDataLayout>,

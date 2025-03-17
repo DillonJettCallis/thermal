@@ -31,8 +31,8 @@ import { collectSymbols } from './checker/collector.ts';
 import { verifyImports } from './checker/verifier.ts';
 import { Checker } from './checker/checker.ts';
 import {
-  ParserConstantDeclare,
-  type ParserDeclaration,
+  ParserConstantDeclare, ParserDataDeclare,
+  type ParserDeclaration, ParserEnumDeclare,
   ParserFunctionDeclare,
   ParserImplDeclare
 } from './parser/parserAst.ts';
@@ -213,6 +213,30 @@ function handleNativeImpls(content: List<ParserDeclaration>, srcFile: string, ex
         srcFile,
         import: dec.name === 'new' ? '_new' : dec.name,
       }));
+    }
+
+    if (dec instanceof ParserDataDeclare && dec.external) {
+      externs.set(dec.symbol, new Extern({
+        symbol: dec.symbol,
+        srcFile,
+        import: dec.name === 'new' ? '_new' : dec.name,
+      }));
+    }
+
+    if (dec instanceof ParserEnumDeclare && dec.external) {
+      externs.set(dec.symbol, new Extern({
+        symbol: dec.symbol,
+        srcFile,
+        import: dec.name === 'new' ? '_new' : dec.name,
+      }));
+
+      for (const [name, layout] of dec.variants) {
+        externs.set(layout.symbol, new Extern({
+          symbol: layout.symbol,
+          srcFile,
+          import: name === 'new' ? '_new' : name,
+        }));
+      }
     }
   })
 }

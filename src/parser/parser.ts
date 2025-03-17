@@ -200,11 +200,9 @@ export class Parser {
       case 'sig':
         return this.#parseFunctionDeclare(this.#module, mods.access, mods.external, next.value, pos, undefined);
       case 'data':
-        // TODO: handle external data
-        return this.#parseDataDeclare(mods.access, pos);
+        return this.#parseDataDeclare(mods.access, mods.external, pos);
       case 'enum':
-        // TODO: handle external enum
-        return this.#parseEnumDeclare(mods.access, pos);
+        return this.#parseEnumDeclare(mods.access, mods.external, pos);
       case 'implement':
         if (mods.access !== 'internal') {
           pos.fail('implementations cannot specify any access level')
@@ -358,7 +356,7 @@ export class Parser {
     });
   }
 
-  #parseDataDeclare(access: Access, pos: Position): ParserDataDeclare {
+  #parseDataDeclare(access: Access, external: boolean, pos: Position): ParserDataDeclare {
     const name = this.#assertKind('identifier').value;
     const typeParams = this.#parseTypeParams();
     const symbol = this.#module.child(name);
@@ -368,6 +366,7 @@ export class Parser {
     return new ParserDataDeclare({
       pos,
       access,
+      external,
       symbol,
       name,
       typeParams,
@@ -375,7 +374,7 @@ export class Parser {
     });
   }
 
-  #parseEnumDeclare(access: Access, pos: Position): ParserEnumDeclare {
+  #parseEnumDeclare(access: Access, external: boolean, pos: Position): ParserEnumDeclare {
     const name = this.#assertKind('identifier').value;
     const typeParams = this.#parseTypeParams();
     this.#assertSymbol('{');
@@ -393,6 +392,7 @@ export class Parser {
     return new ParserEnumDeclare({
       pos,
       access,
+      external,
       symbol,
       name,
       typeParams,
