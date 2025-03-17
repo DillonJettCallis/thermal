@@ -453,6 +453,8 @@ export class Parser {
       return type.args.reduce((sum, next) => this.#localSymbol(sum, next), this.#localSymbol(root, type.base).child('<')).child('>');
     } else if (type instanceof ParserFunctionTypeParameter) {
       return this.#localSymbol(root, type.type);
+    } else if (type instanceof ParserTypeParameterType) {
+      return root.child(type.name);
     } else {
       return this.#localSymbol(type.params.reduce((sum, next) => this.#localSymbol(sum, next), root.child('{')).child('=>'), type.result);
     }

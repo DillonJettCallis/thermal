@@ -8,6 +8,7 @@ import { describe, it } from 'node:test';
 import type { CheckedAccessRecord} from '../checker/checkerAst.ts';
 import { CheckedFunctionType, CheckedFunctionTypeParameter } from '../checker/checkerAst.ts';
 import {
+  ParserAccessEx,
   ParserBlockEx,
   ParserBooleanLiteralEx,
   ParserCallEx,
@@ -22,9 +23,12 @@ import {
   ParserParameter,
   ParserReturnEx,
   ParserStaticAccessEx,
-  ParserStringLiteralEx,
+  ParserStringLiteralEx
 } from '../parser/parserAst.ts';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
+const projectRootPath = resolve(fileURLToPath(import.meta.url), '../../..');
 const version = new Version(0, 1, 0);
 const packageName = new PackageName('sample', 'sample', version);
 const root = new Symbol(packageName);
@@ -32,12 +36,12 @@ const pos = new Position('sample', 1, 1);
 
 const depDict = new DependencyDictionary();
 const rootManager = depDict.addManager(packageName);
-const {package: corePackage, preamble, coreTypes} = coreLib();
+const {package: corePackage, preamble, coreTypes} = coreLib(projectRootPath, rootManager);
 depDict.addManager(corePackage.name);
 rootManager.addDependency(corePackage.name);
 
 const typeDict = new TypeDictionary();
-typeDict.loadPackage(corePackage.declarations, Map());
+typeDict.loadPackage(corePackage.declarations, corePackage.methods);
 
 const checker = new Checker(rootManager, typeDict, coreTypes, preamble);
 const qualifier = new Qualifier(preamble);
@@ -140,35 +144,24 @@ describe('Checker', () => {
   it('should typecheck a list get operation', () => {
     const actual = checker.checkCall(new ParserCallEx({
       pos,
-      func: new ParserStaticAccessEx({
+      func: new ParserAccessEx({
         pos,
-        path: List.of(
-          new ParserIdentifierEx({
-            pos,
-            name: 'core',
-          }), new ParserIdentifierEx({
-            pos,
-            name: 'list',
-          }), new ParserIdentifierEx({
-            pos,
-            name: 'List',
-          }), new ParserIdentifierEx({
-            pos,
-            name: 'get',
-          }),
-        ),
-      }),
-      typeArgs: List(),
-      args: List.of<ParserExpression>(
-        new ParserListLiteralEx({
+        base: new ParserListLiteralEx({
           pos,
           values: List.of(
             new ParserIntLiteralEx({
               pos,
-              value: 1,
-            }),
-          ),
+              value: 1
+            })
+          )
         }),
+        field: new ParserIdentifierEx({
+          pos,
+          name: 'get'
+        })
+      }),
+      typeArgs: List(),
+      args: List.of<ParserExpression>(
         new ParserIntLiteralEx({
           pos,
           value: 0,
@@ -233,32 +226,14 @@ describe('Checker', () => {
   });
 
   it('should typecheck a call to List::map with a lambda literal', () => {
-    // core::list::map([1, 2, 3], { x => toString(x) })
+    // [1, 2, 3].map({ x => toString(x) })
 
     // this whole AST just to represent the code above
     const actual = checker.checkCall(new ParserCallEx({
       pos,
-      func: new ParserStaticAccessEx({
+      func: new ParserAccessEx({
         pos,
-        path: List.of(
-          new ParserIdentifierEx({
-            pos,
-            name: 'core',
-          }), new ParserIdentifierEx({
-            pos,
-            name: 'list',
-          }), new ParserIdentifierEx({
-            pos,
-            name: 'List',
-          }), new ParserIdentifierEx({
-            pos,
-            name: 'map',
-          }),
-        ),
-      }),
-      typeArgs: List(),
-      args: List.of<ParserExpression>(
-        new ParserListLiteralEx({
+        base: new ParserListLiteralEx({
           pos,
           values: List.of(
             new ParserIntLiteralEx({
@@ -273,6 +248,13 @@ describe('Checker', () => {
             }),
           ),
         }),
+        field: new ParserIdentifierEx({
+          pos,
+          name: 'map',
+        }),
+      }),
+      typeArgs: List(),
+      args: List.of<ParserExpression>(
         new ParserLambdaEx({
           pos,
           functionPhase: 'fun',
@@ -306,32 +288,14 @@ describe('Checker', () => {
   });
 
   it('should typecheck a call to List::flatMap with a lambda literal', () => {
-    // core::list::flatMap([1, 2, 3], { x => [x, x * 2] })
+    // [1, 2, 3].flatMap({ x => [x, x * 2] })
 
     // this whole AST just to represent the code above
     const actual = checker.checkCall(new ParserCallEx({
       pos,
-      func: new ParserStaticAccessEx({
+      func: new ParserAccessEx({
         pos,
-        path: List.of(
-          new ParserIdentifierEx({
-            pos,
-            name: 'core',
-          }), new ParserIdentifierEx({
-            pos,
-            name: 'list',
-          }), new ParserIdentifierEx({
-            pos,
-            name: 'List',
-          }), new ParserIdentifierEx({
-            pos,
-            name: 'flatMap',
-          }),
-        ),
-      }),
-      typeArgs: List(),
-      args: List.of<ParserExpression>(
-        new ParserListLiteralEx({
+        base: new ParserListLiteralEx({
           pos,
           values: List.of(
             new ParserIntLiteralEx({
@@ -346,6 +310,13 @@ describe('Checker', () => {
             }),
           ),
         }),
+        field: new ParserIdentifierEx({
+          pos,
+          name: 'flatMap',
+        }),
+      }),
+      typeArgs: List(),
+      args: List.of<ParserExpression>(
         new ParserLambdaEx({
           pos,
           functionPhase: 'fun',

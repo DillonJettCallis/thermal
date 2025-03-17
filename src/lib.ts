@@ -91,7 +91,7 @@ export function coreLib(workingDir: string, rootManager: DependencyManager): { p
         ),
       });
     },
-    list: createStructType(coreSymbol.child('list'), declarations, 'List', ['Item'], {}),
+    list: createStructType(coreSymbol.child('vector'), declarations, 'Vec', ['Item'], {}),
     listOf(content: CheckedTypeExpression): CheckedTypeExpression {
       return new CheckedParameterizedType({
         base: this.list,
