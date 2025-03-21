@@ -541,7 +541,7 @@ interface MutableCheckedConstructEx {
   base: CheckedExpression;
   typeArgs: List<CheckedTypeExpression>;
   fields: List<CheckedConstructEntry>;
-  type: CheckedTypeExpression;
+  type: CheckedConcreteType;
   phase: ExpressionPhase;
 }
 export class CheckedConstructEx extends Record<MutableCheckedConstructEx>({
@@ -549,7 +549,7 @@ export class CheckedConstructEx extends Record<MutableCheckedConstructEx>({
   base: undefined as unknown as CheckedExpression,
   typeArgs: undefined as unknown as List<CheckedTypeExpression>,
   fields: undefined as unknown as List<CheckedConstructEntry>,
-  type: undefined as unknown as CheckedTypeExpression,
+  type: undefined as unknown as CheckedConcreteType,
   phase: undefined as unknown as ExpressionPhase,
 }) {
   constructor(props: MutableCheckedConstructEx) {

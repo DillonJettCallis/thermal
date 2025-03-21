@@ -23,6 +23,7 @@ implement Counter {
 }
 
 def main(): Html {
+  val test: Option<Int> = Option::Some { item: 2 };
   var reset = Status { state: false }
 
   return Html {

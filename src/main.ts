@@ -36,6 +36,7 @@ async function main(): Promise<void> {
   const allFiles = sources.map(file => Parser.parseFile(`${workingDir}/${dir}/${file}`, root.child(substringBeforeLast(file, '.thermal'))));
   // const allFiles = [Parser.parseFile(`${dir}/simple.thermal`, root.child('simple'))];
   typeDict.loadPackage(corePackage.declarations, corePackage.methods);
+  typeDict.loadExternals(coreExterns);
   typeDict.loadPackage(domPackage.declarations, domPackage.methods);
 
   const { symbols, methods } = collectSymbols(allFiles, rootManager, preamble);
@@ -49,8 +50,8 @@ async function main(): Promise<void> {
   // TODO: libraries need to be handled better than this
   const checkedFiles = allFiles.map(file => checker.checkFile(file)).concat(domPackage.files).concat(corePackage.files);
 
-  const jsCompiler = new JsCompiler();
-  const jsCompilePrep = checkedFiles.map(file => jsCompiler.compileFile(file, coreExterns));
+  const jsCompiler = new JsCompiler(coreExterns);
+  const jsCompilePrep = checkedFiles.map(file => jsCompiler.compileFile(file));
 
   const jsEmitter = new JsEmitter(`${workingDir}/dist`);
   for (const file of jsCompilePrep) {

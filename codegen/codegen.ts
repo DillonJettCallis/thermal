@@ -684,7 +684,7 @@ function checker(): Generator {
     base: expression,
     typeArgs: list(typeExpression),
     fields: list(constructEntry),
-    type: typeExpression,
+    type: concreteType,
     phase: expressionPhase,
   }, expression);
 

@@ -221,7 +221,7 @@ export class Qualifier {
   qualifyData(module: Symbol, dec: ParserDataDeclare): CheckedDataLayoutType {
     const name = module.child(dec.name);
 
-    return this.#qualifyDataLayout(dec.layout, name);
+    return this.#qualifyDataLayout(dec.layout, name, name);
   }
 
   #qualifyStructFields(fields: Map<string, ParserStructField>): Map<string, CheckedTypeExpression> {
@@ -236,46 +236,46 @@ export class Qualifier {
       name,
       typeParams: dec.typeParams.map(it => this.checkTypeParamType(name, it)),
       variants: dec.variants.map((variant, key) => {
-        return this.includeTypeParams(name, dec.typeParams).#qualifyDataLayout(variant, name.child(key));
+        return this.includeTypeParams(name, dec.typeParams).#qualifyDataLayout(variant, name.child(key), name);
       }),
     });
   }
 
-  #qualifyDataLayout(ex: ParserDataLayout, name: Symbol): CheckedDataLayoutType {
+  #qualifyDataLayout(ex: ParserDataLayout, name: Symbol, typeParamName: Symbol): CheckedDataLayoutType {
     if (ex instanceof ParserStruct) {
-      return this.#qualifyStruct(ex, name);
+      return this.#qualifyStruct(ex, name, typeParamName);
     } else if (ex instanceof ParserTuple) {
-      return this.#qualifyTuple(ex, name);
+      return this.#qualifyTuple(ex, name, typeParamName);
     } else {
-      return this.#qualifyAtom(ex, name);
+      return this.#qualifyAtom(ex, name, typeParamName);
     }
   }
 
-  #qualifyStruct(ex: ParserStruct, name: Symbol): CheckedStructType {
+  #qualifyStruct(ex: ParserStruct, name: Symbol, typeParamName: Symbol): CheckedStructType {
     return new CheckedStructType({
       pos: ex.pos,
       name,
-      typeParams: ex.typeParams.map(it => this.checkTypeParamType(name, it)),
+      typeParams: ex.typeParams.map(it => this.checkTypeParamType(typeParamName, it)),
       fields: this.#qualifyStructFields(ex.fields),
       enum: ex.enum,
     });
   }
 
-  #qualifyTuple(ex: ParserTuple, name: Symbol): CheckedTupleType {
+  #qualifyTuple(ex: ParserTuple, name: Symbol, typeParamName: Symbol): CheckedTupleType {
     return new CheckedTupleType({
       pos: ex.pos,
       name,
-      typeParams: ex.typeParams.map(it => this.checkTypeParamType(name, it)),
+      typeParams: ex.typeParams.map(it => this.checkTypeParamType(typeParamName, it)),
       fields: ex.fields.map(it => this.checkTypeExpression(it)),
       enum: ex.enum,
     });
   }
 
-  #qualifyAtom(ex: ParserAtom, name: Symbol): CheckedAtomType {
+  #qualifyAtom(ex: ParserAtom, name: Symbol, typeParamName: Symbol): CheckedAtomType {
     return new CheckedAtomType({
       pos: ex.pos,
       name,
-      typeParams: ex.typeParams.map(it => this.checkTypeParamType(name, it)),
+      typeParams: ex.typeParams.map(it => this.checkTypeParamType(typeParamName, it)),
       enum: ex.enum,
     })
   }

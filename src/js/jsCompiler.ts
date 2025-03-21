@@ -90,8 +90,8 @@ import { substringAfterLast } from '../utils.ts';
 
 export class JsCompiler {
 
-  #nextTempId = 0;
-  #defaultImports = List.of('thermalClass', 'thermalClassMarker', 'is', 'equals', 'hashCode').map(take => {
+  readonly #externals: Map<Symbol, Extern>;
+  readonly #defaultImports = List.of('thermalClass', 'thermalClassMarker', 'is', 'equals', 'hashCode').map(take => {
     return new JsImport({
       from: '../runtime/reflect.ts',
       take,
@@ -108,21 +108,6 @@ export class JsCompiler {
       take: 'from',
       as: '_Map_from',
     }),
-    // new JsImport({
-    //   from: '../runtime/reflect.ts',
-    //   take: 'List',
-    //   as: undefined,
-    // }),
-    // new JsImport({
-    //   from: '../runtime/reflect.ts',
-    //   take: 'HashMap',
-    //   as: 'Map',
-    // }),
-    // new JsImport({
-    //   from: '../runtime/reflect.ts',
-    //   take: 'HashSet',
-    //   as: 'Set',
-    // }),
     new JsImport({
       from: '../runtime/reflect.ts',
       take: 'stringConcat',
@@ -147,7 +132,13 @@ export class JsCompiler {
     }),
   );
 
-  compileFile(src: CheckedFile, externals: Map<Symbol, Extern>): JsFile {
+  #nextTempId = 0;
+
+  constructor(externals: Map<Symbol, Extern>) {
+    this.#externals = externals;
+  }
+
+  compileFile(src: CheckedFile): JsFile {
     const staticImportReferences = src.declarations.toSeq()
       .flatMap(dec => {
         if (dec instanceof CheckedImportDeclaration) {
@@ -183,7 +174,7 @@ export class JsCompiler {
         return Seq(this.#deconstructImport('.', dec.ex));
       } else if (dec instanceof CheckedConstantDeclare) {
         if (dec.external) {
-          return this.#importExternal(dec.name, dec.pos, dec.symbol, dec.access === 'private', externals);
+          return this.#importExternal(dec.pos, dec.symbol, dec.access === 'private');
         } else {
           const value = this.#compileExpression(dec.expression, 'fun');
 
@@ -209,7 +200,7 @@ export class JsCompiler {
         }
       } else if (dec instanceof CheckedFunctionDeclare) {
         if (dec.external) {
-          return this.#importExternal(dec.name, dec.pos, dec.symbol, dec.access === 'private', externals);
+          return this.#importExternal(dec.pos, dec.symbol, dec.access === 'private');
         } else {
           return Seq.Indexed.of(new JsFunctionDeclare({
             export: dec.access !== 'private',
@@ -218,7 +209,7 @@ export class JsCompiler {
         }
       } else if (dec instanceof CheckedDataDeclare) {
         if (dec.external) {
-          return this.#importExternal(dec.name, dec.pos, dec.symbol, dec.access === 'private', externals);
+          return this.#importExternal(dec.pos, dec.symbol, dec.access === 'private');
         } else {
           return Seq.Indexed.of(new JsDataDeclare({
             export: dec.access !== 'private',
@@ -231,7 +222,7 @@ export class JsCompiler {
         return dec.methods.valueSeq()
           .flatMap(funcDec => {
             if (funcDec.external) {
-              const ex = externals.get(funcDec.symbol);
+              const ex = this.#externals.get(funcDec.symbol);
 
               if (ex === undefined) {
                 return dec.pos.fail(`No externally defined implementation was found for ${funcDec.symbol}`);
@@ -262,8 +253,8 @@ export class JsCompiler {
           });
       } else {
         if (dec.external) {
-          const enumType = this.#importExternal(dec.name, dec.pos, dec.symbol, dec.access === 'private', externals);
-          const variants = dec.variants.entrySeq().flatMap(([name, it]) => this.#importExternal(name, it.pos, it.symbol, dec.access === 'private', externals));
+          const enumType = this.#importExternal(dec.pos, dec.symbol, dec.access === 'private');
+          const variants = dec.variants.valueSeq().flatMap(it => this.#importExternal(it.pos, it.symbol, dec.access === 'private'));
 
           return enumType.concat(variants);
         } else {
@@ -286,8 +277,9 @@ export class JsCompiler {
     })
   }
 
-  #importExternal(name: string, pos: Position, symbol: Symbol, isPrivate: boolean, externals: Map<Symbol, Extern>): Seq.Indexed<JsDeclaration> {
-    const ex = externals.get(symbol);
+  #importExternal(pos: Position, symbol: Symbol, isPrivate: boolean): Seq.Indexed<JsDeclaration> {
+    const name = symbol.serializedName();
+    const ex = this.#externals.get(symbol);
 
     if (ex === undefined) {
       return pos.fail(`No externally defined implementation was found for ${symbol}`);

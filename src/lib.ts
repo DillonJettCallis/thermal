@@ -31,8 +31,10 @@ import { collectSymbols } from './checker/collector.ts';
 import { verifyImports } from './checker/verifier.ts';
 import { Checker } from './checker/checker.ts';
 import {
-  ParserConstantDeclare, ParserDataDeclare,
-  type ParserDeclaration, ParserEnumDeclare,
+  ParserConstantDeclare,
+  ParserDataDeclare,
+  type ParserDeclaration,
+  ParserEnumDeclare,
   ParserFunctionDeclare,
   ParserImplDeclare
 } from './parser/parserAst.ts';
@@ -242,7 +244,7 @@ function handleNativeImpls(content: List<ParserDeclaration>, srcFile: string, ex
 }
 
 function initOption(declarations: Map<Symbol, CheckedAccessRecord>): CheckedNominalType {
-  const option = coreSymbol.child('Option');
+  const option = coreSymbol.child("base").child('Option');
   const typeParams = typeParamList(option, ['Item']);
 
   return createEnumType(coreSymbol, option, declarations, typeParams, {

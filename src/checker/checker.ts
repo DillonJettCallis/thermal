@@ -1412,7 +1412,7 @@ export class Checker {
     }
 
     if (actual instanceof CheckedParameterizedType && expected instanceof CheckedParameterizedType) {
-      return actual.base.name.equals(expected.base.name) && this.#checkAllAssignable(actual.args, expected.args);
+      return this.#checkAssignable(actual.base, expected.base) && this.#checkAllAssignable(actual.args, expected.args);
     }
 
     if (actual instanceof CheckedNominalType) {

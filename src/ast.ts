@@ -217,6 +217,8 @@ export class TypeDictionary {
    */
   #methods = Map<Symbol, Map<string, CheckedAccessRecord>>().asMutable();
 
+  #externals = Map<Symbol, Extern>().asMutable();
+
   get symbols(): Map<Symbol, CheckedAccessRecord> {
     return this.#symbols;
   }
@@ -230,12 +232,20 @@ export class TypeDictionary {
     this.#methods.merge(methods);
   }
 
+  loadExternals(externals: Map<Symbol, Extern>): void {
+    this.#externals.merge(externals);
+  }
+
   lookupSymbol(symbol: Symbol): CheckedAccessRecord | undefined {
     return this.#symbols.get(symbol);
   }
 
   lookupMethod(base: Symbol, name: string): CheckedAccessRecord | undefined {
     return this.#methods.get(base)?.get(name);
+  }
+
+  lookupExternal(base: Symbol): Extern | undefined {
+    return this.#externals.get(base);
   }
 
   /**
