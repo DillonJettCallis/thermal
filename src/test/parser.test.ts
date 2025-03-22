@@ -357,6 +357,50 @@ Entry {
     })
   }));
 
+"a".concat("b").concat("c");
+
+  it('should parse chained method calls', () => expressionParserTest({
+    code: '"a".concat("b").concat("c")',
+    expected: new ParserCallEx({
+      pos: new Position(src, 1, 16),
+      func: new ParserAccessEx({
+        pos: new Position(src, 1, 16),
+        base: new ParserCallEx({
+          pos: new Position(src, 1, 4),
+          func: new ParserAccessEx({
+            pos: new Position(src, 1, 4),
+            base: new ParserStringLiteralEx({
+              pos: new Position(src, 1, 1),
+              value: 'a',
+            }),
+            field: new ParserIdentifierEx({
+              pos: new Position(src, 1, 5),
+              name: 'concat',
+            })
+          }),
+          typeArgs: List(),
+          args: List.of(
+            new ParserStringLiteralEx({
+              pos: new Position(src, 1, 12),
+              value: 'b',
+            }),
+          ),
+        }),
+        field: new ParserIdentifierEx({
+          pos: new Position(src, 1, 17),
+          name: 'concat',
+        })
+      }),
+      typeArgs: List(),
+      args: List.of(
+        new ParserStringLiteralEx({
+          pos: new Position(src, 1, 24),
+          value: "c",
+        })
+      )
+    })
+  }));
+
   it('should parse using braces for order of operations', () => expressionParserTest({
     code: '3 * { 2 + 9 }',
     expected: new ParserCallEx({

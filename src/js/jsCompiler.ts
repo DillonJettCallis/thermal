@@ -63,7 +63,7 @@ import {
   JsExport,
   type JsExpression,
   JsExpressionStatement,
-  JsFile,
+  JsFile, JsFlow,
   JsFlowGet,
   JsFunctionDeclare,
   JsFunctionStatement,
@@ -500,36 +500,7 @@ export class JsCompiler {
         })
       });
     } else if (ex instanceof CheckedLambdaEx) {
-      const args = ex.params.map(it => it.name);
-      const body = this.#compileExpression(ex.body, ex.functionPhase);
-
-      if (body instanceof JsBlock) {
-        const last = body.body.last();
-
-        if (last instanceof JsReturn) {
-          return new JsLambdaEx({
-            args,
-            body: body.body,
-          });
-        } else if (last instanceof JsExpressionStatement) {
-          const init = body.body.pop();
-
-          return new JsLambdaEx({
-            args,
-            body: init.push(new JsReturn({body: last.base })),
-          });
-        } else {
-          return new JsLambdaEx({
-            args,
-            body: body.body.push(new JsReturn({body: body.result})),
-          });
-        }
-      } else {
-        return new JsLambdaEx({
-          args,
-          body: List.of(new JsReturn({ body })),
-        })
-      }
+      return this.#handleClosure(ex);
     } else if (ex instanceof CheckedCallEx) {
       // handle operators here
       // todo: find a better way to extract operators than this
@@ -647,6 +618,15 @@ export class JsCompiler {
       // TODO: instead of this, emit a runtime error
       return ex.pos.fail('This no op is trying to be emitted. This should not happen!');
     } else {
+      if (ex.body.size === 1) {
+        // special case for blocks with only one expression in them
+        const onlyStatement = ex.body.first();
+
+        if (onlyStatement instanceof CheckedExpressionStatement) {
+          return this.#compileExpression(onlyStatement.expression, phase);
+        }
+      }
+
       return ex.body.reduce((prev, state) => {
         const next = this.#compileStatement(state, phase);
 
@@ -691,14 +671,29 @@ export class JsCompiler {
       }, new JsIdentifierEx({ name: state.name.first()!.name }));
       const value = this.#compileExpression(state.expression, phase);
 
+      function reassign(base: JsExpression): JsStatement {
+        // output `$name.set($base)`
+        return new JsExpressionStatement({
+          base: new JsCall({
+            func: new JsAccess({
+              base: name,
+              field: 'set',
+            }),
+            args: List.of(
+              base,
+            )
+          }),
+        });
+      }
+
       if (value instanceof JsBlock) {
         return new JsBlock({
-          body: value.body.push(new JsReassign({ name, body: value.result })),
+          body: value.body.push(reassign(value.result)),
           result: new JsUndefined({}),
         });
       } else {
         return new JsBlock({
-          body: List.of(new JsReassign({ name, body: value })),
+          body: List.of(reassign(value)),
           result: new JsUndefined({}),
         });
       }
@@ -770,6 +765,60 @@ export class JsCompiler {
       }
     } else {
       return handle(src);
+    }
+  }
+
+  #handleClosure(ex: CheckedLambdaEx): JsBlock | JsExpression {
+    // TODO: do the same thing for local functions that capture
+    const args = ex.params.map(it => it.name);
+    const body = this.#compileExpression(ex.body, ex.functionPhase);
+    const lambda = this.#handleLambda(args, body);
+
+    if (ex.functionPhase === 'fun' && ex.phase === 'flow') {
+      // we need to capture any `flow` or `var` with a flow call
+
+      const capturedClosures = ex.closures.filter(it => it.phase === 'flow' || it.phase === 'var').keySeq().toList();
+
+      return new JsFlow({
+        args: capturedClosures.map(name => new JsIdentifierEx({ name })),
+        body: new JsLambdaEx({
+          args: capturedClosures,
+          body: List.of(new JsReturn({ body: lambda })),
+        })
+      })
+    } else {
+      // nothing special, normal lambda
+      return lambda;
+    }
+  }
+
+  #handleLambda(args: List<string>, body: JsBlock | JsExpression): JsLambdaEx {
+    if (body instanceof JsBlock) {
+      const last = body.body.last();
+
+      if (last instanceof JsReturn) {
+        return new JsLambdaEx({
+          args,
+          body: body.body,
+        });
+      } else if (last instanceof JsExpressionStatement) {
+        const init = body.body.pop();
+
+        return new JsLambdaEx({
+          args,
+          body: init.push(new JsReturn({body: last.base })),
+        });
+      } else {
+        return new JsLambdaEx({
+          args,
+          body: body.body.push(new JsReturn({body: body.result})),
+        });
+      }
+    } else {
+      return new JsLambdaEx({
+        args,
+        body: List.of(new JsReturn({ body })),
+      })
     }
   }
 

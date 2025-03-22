@@ -1,5 +1,13 @@
+import core/string::String;
+
 
 public data Int {}
 public data Float {}
 
+implement Int {
+  external public fun toString(self): String;
+}
 
+implement Float {
+  external public fun toString(self): String;
+}

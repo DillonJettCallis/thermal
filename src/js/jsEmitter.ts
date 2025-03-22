@@ -348,7 +348,7 @@ class Output {
   #writeStatement(state: JsStatement): void {
     if (state instanceof JsDeclareVar) {
       this.#writeIndent();
-      this.#write('var ');
+      this.#write('let ');
       this.#write(state.name);
       this.#write(';\n');
     } else if (state instanceof JsAssign) {
@@ -361,9 +361,9 @@ class Output {
     } else if (state instanceof JsReassign) {
       this.#writeIndent();
       this.#writeExpression(state.name);
-      this.#write('.set(');
+      this.#write(' = ');
       this.#writeExpression(state.body);
-      this.#write(');\n');
+      this.#write(';\n');
     } else if (state instanceof JsFunctionStatement) {
       this.#writeFunctionStatement(state);
     } else if (state instanceof JsReturn) {
@@ -380,7 +380,7 @@ class Output {
       state.thenBlock.forEach(it => this.#writeStatement(it));
       this.#indent--;
       this.#writeIndent();
-      this.#write('} else {');
+      this.#write('} else {\n');
       this.#indent++;
       state.elseBlock.forEach(it => this.#writeStatement(it));
       this.#indent--;

@@ -70,7 +70,7 @@ public fun style(style: String): fun { Element::Tag -> Element::Tag } {
   return fun { tag =>
     Element::Tag {
       tag: tag.tag,
-      attributes: tag.attributes.update("style", fun { prev => stringConcat(stringConcat(prev, ";"), style) }),
+      attributes: tag.attributes.update("style", fun { prev => { prev.concat(";") }.concat(style) } ),
       onClick: tag.onClick,
       children: tag.children,
     }

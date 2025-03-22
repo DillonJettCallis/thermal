@@ -31,7 +31,7 @@ async function main(): Promise<void> {
   rootManager.addDependency(domPackage.name);
 
   // const sources = readdirSync(dir);
-  const sources = List.of('simple.thermal');
+  const sources = List.of('ticktac.thermal');
 
   const allFiles = sources.map(file => Parser.parseFile(`${workingDir}/${dir}/${file}`, root.child(substringBeforeLast(file, '.thermal'))));
   // const allFiles = [Parser.parseFile(`${dir}/simple.thermal`, root.child('simple'))];

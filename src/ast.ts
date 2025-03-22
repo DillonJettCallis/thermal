@@ -6,7 +6,7 @@ import {
   type CheckedImportDeclaration,
   type CheckedImportExpression,
   CheckedNestedImportExpression,
-  CheckedNominalImportExpression
+  CheckedNominalImportExpression, type CheckedTypeExpression
 } from './checker/checkerAst.ts';
 
 export class Position extends Record({src: '', line: 0, column: 0}){
@@ -267,6 +267,17 @@ export class Extern extends Record({
   import: '',
 }) {
 }
+
+export class PhaseType extends Record({
+  type: undefined as unknown as CheckedTypeExpression,
+  phase: undefined as unknown as ExpressionPhase,
+  pos: undefined as unknown as Position,
+}) {
+  constructor(type: CheckedTypeExpression, phase: ExpressionPhase, pos: Position) {
+    super({type, phase, pos});
+  }
+}
+
 
 
 export type ExpressionPhase

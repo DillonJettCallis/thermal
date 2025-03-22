@@ -128,7 +128,6 @@ export function coreLib(workingDir: string, rootManager: DependencyManager): { p
   const preamble = Map<string, Symbol>().asMutable();
   boolLib(declarations, coreTypes, preamble);
   mathLib(declarations, coreTypes, preamble);
-  stringLib(declarations, coreTypes, preamble);
   preamble.set('Boolean', coreTypes.boolean.name);
   preamble.set('String', coreTypes.string.name);
   preamble.set('Int', coreTypes.int.name);
@@ -143,7 +142,7 @@ export function coreLib(workingDir: string, rootManager: DependencyManager): { p
   const typeDict = new TypeDictionary();
   typeDict.loadPackage(declarations, Map());
 
-  const files = List.of('array', 'map', 'set', 'vector', 'bool', 'base', 'math')
+  const files = List.of('array', 'map', 'set', 'vector', 'bool', 'base', 'math', 'string')
     .map(key => {
       const parsed = Parser.parseFile(`${workingDir}/lib/core/${key}.thermal`, coreSymbol.child(key));
 
@@ -323,14 +322,7 @@ function boolLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: Core
     access: 'public',
     name: boolSymbol.child('=='),
     module: boolSymbol,
-    type: new CheckedOverloadFunctionType({
-      branches: List.of(
-        unphasedFunction([coreTypes.boolean, coreTypes.boolean], coreTypes.boolean),
-        unphasedFunction([coreTypes.int, coreTypes.int], coreTypes.boolean),
-        unphasedFunction([coreTypes.float, coreTypes.float], coreTypes.boolean),
-        unphasedFunction([coreTypes.string, coreTypes.string], coreTypes.boolean),
-      ),
-    }),
+    type: unphasedFunction([coreTypes.nothing, coreTypes.nothing], coreTypes.boolean),
   }));
   preamble.set('==', boolSymbol.child('=='));
 
@@ -338,14 +330,7 @@ function boolLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: Core
     access: 'public',
     name: boolSymbol.child('!='),
     module: boolSymbol,
-    type: new CheckedOverloadFunctionType({
-      branches: List.of(
-        unphasedFunction([coreTypes.boolean, coreTypes.boolean], coreTypes.boolean),
-        unphasedFunction([coreTypes.int, coreTypes.int], coreTypes.boolean),
-        unphasedFunction([coreTypes.float, coreTypes.float], coreTypes.boolean),
-        unphasedFunction([coreTypes.string, coreTypes.string], coreTypes.boolean),
-      ),
-    }),
+    type: unphasedFunction([coreTypes.nothing, coreTypes.nothing], coreTypes.boolean),
   }));
   preamble.set('!=', boolSymbol.child('!='));
 }
@@ -448,47 +433,6 @@ function mathLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: Core
     module: mathSymbol,
     type: unphasedFunction([intType, intType], intType),
   }));
-}
-
-function stringLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: CoreTypes, preamble: Map<string, Symbol>): void {
-  const stringSymbol = coreSymbol.child('string').child('String');
-
-  declarations.set(stringSymbol.child('toString'), new CheckedAccessRecord({
-    access: 'public',
-    name: stringSymbol.child('toString'),
-    module: stringSymbol,
-    type: new CheckedOverloadFunctionType({
-      branches: List.of(
-        unphasedFunction([coreTypes.boolean], coreTypes.string),
-        unphasedFunction([coreTypes.int], coreTypes.string),
-        unphasedFunction([coreTypes.float], coreTypes.string),
-      ),
-    }),
-  }));
-  preamble.set('toString', stringSymbol.child('toString'));
-
-  const concatSymbol = stringSymbol.child("stringConcat");
-  declarations.set(concatSymbol, new CheckedAccessRecord({
-    access: 'public',
-    name: concatSymbol,
-    module: stringSymbol,
-    type: new CheckedFunctionType({
-      phase: 'fun',
-      typeParams: List(),
-      params: List.of(
-        new CheckedFunctionTypeParameter({
-          phase: undefined,
-          type: coreTypes.string,
-        }),
-        new CheckedFunctionTypeParameter({
-          phase: undefined,
-          type: coreTypes.string,
-        }),
-      ),
-      result: coreTypes.string,
-    }),
-  }));
-  preamble.set('stringConcat', concatSymbol);
 }
 
 function createStructType(parent: Symbol, declarations: Map<Symbol, CheckedAccessRecord>, baseName: string, typeParams: Array<string>, fields: Record<string, CheckedTypeExpression>): CheckedNominalType {

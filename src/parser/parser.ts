@@ -401,15 +401,21 @@ export class Parser {
   }
 
   #parseDataLayout(pos: Position, symbol: Symbol, typeParams: List<ParserTypeParameterType>, enumName?: Symbol): ParserDataLayout {
-    const next = this.#assertKind('symbol');
+    const next = this.#peek();
+
+    if (next.kind !== 'symbol') {
+      return next.pos.fail(`Expected to find data layout but found ${next.kind} instead`);
+    }
 
     switch (next.value) {
       case '{': {
+        this.#skip();
         const fields: Map<string, ParserStructField> = Map(this.#parseList('}', true, () => this.#parseStructField()));
 
         return new ParserStruct({ pos, symbol, typeParams, fields, enum: enumName });
       }
       case '(': {
+        this.#skip();
         const fields = this.#parseList(')', false, () => this.#parseTypeExpression());
         return new ParserTuple({ pos, fields, symbol, typeParams, enum: enumName });
       }
@@ -717,7 +723,7 @@ export class Parser {
       return new ParserCallEx({
         pos: base.pos,
         func: base,
-        typeArgs: List(),
+        typeArgs: typeArgs ?? List(),
         args,
       });
     } else {
@@ -789,6 +795,24 @@ export class Parser {
           name: field.value,
         }),
       });
+
+      // After checking access, check for a (possible) method call
+      const typeArgs = this.#parseFunctionTypeArguments();
+
+      if (this.#checkSymbol('(')) {
+        const args = this.#parseList(')', true, () => this.#parseExpression());
+
+        base = new ParserCallEx({
+          pos: base.pos,
+          func: base,
+          typeArgs: typeArgs ?? List(),
+          args
+        });
+      } else {
+        if (typeArgs !== undefined) {
+          base.pos.fail('Found generics but no function call');
+        }
+      }
     }
 
     return base;

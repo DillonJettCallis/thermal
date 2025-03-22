@@ -1,5 +1,5 @@
 import { Map, List, Set, Record,  } from 'immutable';
-import { Position, type ExpressionPhase, Symbol, type FunctionPhase, type Access, PackageName,  } from '../ast.ts';
+import { Position, type ExpressionPhase, Symbol, type FunctionPhase, PhaseType, type Access, PackageName,  } from '../ast.ts';
 
 export type CheckedImportExpression
   = CheckedNominalImportExpression
@@ -581,6 +581,7 @@ interface MutableCheckedLambdaEx {
   body: CheckedExpression;
   type: CheckedTypeExpression;
   phase: ExpressionPhase;
+  closures: Map<string, PhaseType>;
 }
 export class CheckedLambdaEx extends Record<MutableCheckedLambdaEx>({
   pos: undefined as unknown as Position,
@@ -589,6 +590,7 @@ export class CheckedLambdaEx extends Record<MutableCheckedLambdaEx>({
   body: undefined as unknown as CheckedExpression,
   type: undefined as unknown as CheckedTypeExpression,
   phase: undefined as unknown as ExpressionPhase,
+  closures: undefined as unknown as Map<string, PhaseType>,
 }) {
   constructor(props: MutableCheckedLambdaEx) {
     super(props);

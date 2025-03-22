@@ -47,7 +47,7 @@ def clickCounter(status: Status, var resetter: Boolean): Element {
       gap: 10px;
     '),
     content([
-      label(toString(counter.count)),
+      label(counter.count.toString()),
       tag('button', [
         onClick(sig { => counter.increment(); true }),
         content([text('Click here')]),

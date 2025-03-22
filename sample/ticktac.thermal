@@ -1,0 +1,149 @@
+import dom/dom::{ Html, head, tag, text, content, Element, style, onClick };
+
+enum Mark {
+  X,
+  O,
+  Empty,
+}
+
+implement Mark {
+  fun toString(self): String {
+    if (self == Mark::X) {
+      'X'
+    } else if (self == Mark::O) {
+      'O'
+    } else {
+      '_'
+    }
+  }
+}
+
+data Board {
+  cells: List<Mark>,
+}
+
+const rows: List<List<Int>> = [
+  [0, 1, 2],
+  [3, 4, 5],
+  [6, 7, 8],
+]
+
+const lines: List<List<Int>> = rows.concat([
+  [0, 3, 6],
+  [1, 4, 7],
+  [2, 5, 8],
+
+  [1, 4, 8],
+  [2, 4, 6],
+]);
+
+implement Board {
+  fun init(): Board {
+    return Board {
+      cells: [
+        Mark::Empty, Mark::Empty, Mark::Empty,
+        Mark::Empty, Mark::Empty, Mark::Empty,
+        Mark::Empty, Mark::Empty, Mark::Empty,
+      ]
+    }
+  }
+
+  fun checkWinner(self): Mark {
+    val lineResults = lines.map(fun {row => row.map(fun {index => self.cells.get(index)})});
+
+    val matchingResults = lineResults.filter(fun { all => all.get(0) != Mark::Empty && all.get(0) == all.get(1) && all.get(1) == all.get(2) })
+
+    return if (matchingResults.size == 0) {
+      Mark::Empty
+    } else {
+      matchingResults.first().first()
+    };
+  }
+
+  fun markSlot(self, slot: Int, mark: Mark): Board {
+    return Board {
+      cells: self.cells.set(slot, mark),
+    }
+  }
+}
+
+def main(): Html {
+  Html {
+    head: head('Tick-Tac-Toe'),
+    body: tag('body', [content([
+      game(),
+    ])]),
+  }
+}
+
+def game(): Element {
+  var board = Board::init();
+  var state: Mark = Mark::X;
+
+  flow winner = board.checkWinner();
+
+  tag('div', [content([
+    table(board, state, winner != Mark::Empty),
+    banner(winner, state.toString()),
+  ])])
+}
+
+def table(var board: Board, var state: Mark, flow complete: Boolean): Element {
+  val handler = sig { index: Int =>
+    if (!complete) {
+      board = board.markSlot(index, state);
+
+      if (state == Mark::X) {
+        state = Mark::O;
+      } else {
+        state = Mark::X;
+      }
+    }
+  }
+
+  return tag('table', [
+    content(rows.map(fun { row => displayRow(row, board, handler) }))
+  ])
+}
+
+fun banner(winner: Mark, nextTurn: String): Element {
+  return if (winner == Mark::Empty) {
+    tag('span', [
+      content([
+        text(nextTurn.concat("'s turn"))
+      ])
+    ])
+  } else {
+    tag('span', [
+      content([
+        text(winner.toString().concat(" won!"))
+      ])
+    ])
+  }
+}
+
+fun displayRow(row: List<Int>, board: Board, select: sig { Int -> Unit }): Element {
+  tag('tr', [content(row.map(fun { index =>
+    displayCell(board.cells.get(index), sig { =>
+      select(index);
+    })
+  }))]);
+}
+
+fun displayCell(cell: Mark, select: sig { -> Unit }): Element {
+  val display = content([text(cell.toString())]);
+
+  return if (cell == Mark::Empty) {
+    tag('td', [
+      onClick(sig { =>
+        select();
+        return true;
+      }),
+      display,
+    ])
+  } else {
+    tag('td', [
+      display,
+    ])
+  }
+}

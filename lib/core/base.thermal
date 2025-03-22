@@ -2,7 +2,7 @@
 public data Unit {}
 public data Nothing {}
 
-external public enum Option<Item> {
+public enum Option<Item> {
   Some { item: Item },
   None,
 }

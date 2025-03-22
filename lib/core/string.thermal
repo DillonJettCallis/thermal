@@ -1,0 +1,10 @@
+import core/math::Int;
+
+data String {
+  length: Int,
+}
+
+implement String {
+  external public fun concat(self, other: String): String;
+}
+

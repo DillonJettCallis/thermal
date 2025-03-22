@@ -76,6 +76,7 @@ const access = util('Access', true);
 const expressionPhase = util('ExpressionPhase', true);
 const functionPhase = util('FunctionPhase', true);
 const packageName = util('PackageName', false);
+const phaseType = util('PhaseType', false);
 
 class Generator {
   readonly #records = List<Record>().asMutable();
@@ -702,6 +703,7 @@ function checker(): Generator {
     body: expression,
     type: typeExpression,
     phase: expressionPhase,
+    closures: map(native('string'), phaseType),
   }, expression);
 
   const statement = gen.type('Statement');

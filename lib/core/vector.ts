@@ -1,6 +1,6 @@
 const factor = 32;
 
-export class Vec<Item> {
+export class Vec<Item> implements Iterable<Item> {
   readonly size: number;
   readonly scale: number;
   readonly content: Array<any>;
@@ -9,6 +9,10 @@ export class Vec<Item> {
     this.size = size;
     this.scale = scale;
     this.content = content;
+  }
+
+  [Symbol.iterator](): IterableIterator<Item> {
+    return internalIterator(this.content, this.scale);
   }
 }
 
@@ -195,7 +199,7 @@ export function set<Item>(self: Vec<Item>, index: number, item: Item): Vec<Item>
   }
 
   const contentCopy = self.content.slice();
-  setInternal(contentCopy, self.scale, self.size, item);
+  setInternal(contentCopy, self.scale, index, item);
   return new Vec(contentCopy, self.size, self.scale);
 }
 

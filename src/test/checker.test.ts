@@ -1,7 +1,7 @@
-import { DependencyDictionary, PackageName, Position, Symbol, TypeDictionary, Version } from '../ast.ts';
+import { DependencyDictionary, PackageName, Position, Symbol, TypeDictionary, Version, PhaseType } from '../ast.ts';
 import { coreLib } from '../lib.ts';
 import { List } from 'immutable';
-import { Checker, PhaseType, Scope } from '../checker/checker.ts';
+import { Checker, Scope } from '../checker/checker.ts';
 import { equal, ok, throws } from 'node:assert';
 import { Qualifier } from '../checker/collector.ts';
 import { describe, it } from 'node:test';
@@ -225,7 +225,7 @@ describe('Checker', () => {
   });
 
   it('should typecheck a call to List::map with a lambda literal', () => {
-    // [1, 2, 3].map({ x => toString(x) })
+    // [1, 2, 3].map({ x => x.toString() })
 
     // this whole AST just to represent the code above
     const actual = checker.checkCall(new ParserCallEx({
@@ -267,17 +267,19 @@ describe('Checker', () => {
           ),
           body: new ParserCallEx({
             pos,
-            func: new ParserIdentifierEx({
+            func: new ParserAccessEx({
               pos,
-              name: 'toString',
-            }),
-            typeArgs: List(),
-            args: List.of(
-              new ParserIdentifierEx({
+              base: new ParserIdentifierEx({
                 pos,
                 name: 'x',
               }),
-            ),
+              field: new ParserIdentifierEx({
+                pos,
+                name: 'toString',
+              }),
+            }),
+            typeArgs: List(),
+            args: List(),
           }),
         }),
       ),
