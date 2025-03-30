@@ -164,9 +164,35 @@ export class Lexer {
     return next;
   }
 
+  #skipComment(): boolean {
+    const next = this.#content[this.#index]!;
+    const nextNext = this.#content[this.#index + 1]!;
+
+    if (next === '/' && nextNext === '/') {
+      // skip line comment
+      while (!this.#endOfFile() && this.#peek() !== '\n') {
+        this.#skip();
+      }
+      this.#skip();
+      return true;
+    } else if (next === '/' && nextNext === '*') {
+      // skip block comment
+      this.#skip();
+      this.#skip();
+      while (!this.#endOfFile() && this.#content[this.#index] !== '*' && this.#content[this.#index + 1] !== '/') {
+        this.#skip();
+      }
+      this.#skip();
+      this.#skip();
+      return true;
+    } else {
+      return !this.#endOfFile();
+    }
+  }
+
   #skipWhitespace(): boolean {
     // until we reach the end of the file, if the next char is whitespace, skip it
-    while (!this.#endOfFile() && whitespace.has(this.#peek())) {
+    while (this.#skipComment() && whitespace.has(this.#peek())) {
       this.#skip();
     }
 

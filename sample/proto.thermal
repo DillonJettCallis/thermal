@@ -11,9 +11,14 @@ data Rectangle {
 data Triangle {
   height: Int,
 }
+/*
+this
+is a
+block comment
+*/
 
 protocol Shape {
-  fun render(self, char: String): Element;
+  fun render(self, char: String): Element; // this is a line comment
 }
 
 implement Shape for Rectangle {
