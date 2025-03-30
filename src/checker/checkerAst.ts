@@ -1,5 +1,5 @@
 import { Map, List, Set, Record,  } from 'immutable';
-import { Position, type ExpressionPhase, Symbol, type FunctionPhase, PhaseType, type Access, PackageName,  } from '../ast.ts';
+import { Position, type ExpressionPhase, Symbol, type FunctionPhase, PhaseType, type Access, PackageName, Extern,  } from '../ast.ts';
 
 export type CheckedImportExpression
   = CheckedNominalImportExpression
@@ -24,6 +24,7 @@ export type CheckedDeclaration
   | CheckedDataDeclare
   | CheckedEnumDeclare
   | CheckedImplDeclare
+  | CheckedProtocolDeclare
   | CheckedConstantDeclare
   ;
 
@@ -40,6 +41,7 @@ export type CheckedTypeExpression
   | CheckedFunctionType
   | CheckedOverloadFunctionType
   | CheckedModuleType
+  | CheckedProtocolType
   | CheckedDataLayoutType
   | CheckedEnumType
   ;
@@ -248,6 +250,19 @@ export class CheckedModuleType extends Record<MutableCheckedModuleType>({
   name: undefined as unknown as Symbol,
 }) {
   constructor(props: MutableCheckedModuleType) {
+    super(props);
+  }
+}
+
+interface MutableCheckedProtocolType {
+  name: Symbol;
+  methods: Map<string, CheckedFunctionType>;
+}
+export class CheckedProtocolType extends Record<MutableCheckedProtocolType>({
+  name: undefined as unknown as Symbol,
+  methods: undefined as unknown as Map<string, CheckedFunctionType>,
+}) {
+  constructor(props: MutableCheckedProtocolType) {
     super(props);
   }
 }
@@ -963,6 +978,7 @@ interface MutableCheckedImplDeclare {
   symbol: Symbol;
   typeParams: List<CheckedTypeParameterType>;
   base: CheckedConcreteType;
+  protocol: CheckedConcreteType | undefined;
   methods: Map<string, CheckedFunctionDeclare>;
 }
 export class CheckedImplDeclare extends Record<MutableCheckedImplDeclare>({
@@ -970,9 +986,29 @@ export class CheckedImplDeclare extends Record<MutableCheckedImplDeclare>({
   symbol: undefined as unknown as Symbol,
   typeParams: undefined as unknown as List<CheckedTypeParameterType>,
   base: undefined as unknown as CheckedConcreteType,
+  protocol: undefined as unknown as CheckedConcreteType | undefined,
   methods: undefined as unknown as Map<string, CheckedFunctionDeclare>,
 }) {
   constructor(props: MutableCheckedImplDeclare) {
+    super(props);
+  }
+}
+
+interface MutableCheckedProtocolDeclare {
+  pos: Position;
+  name: string;
+  symbol: Symbol;
+  typeParams: List<CheckedTypeParameterType>;
+  methods: Map<string, CheckedFunctionDeclare>;
+}
+export class CheckedProtocolDeclare extends Record<MutableCheckedProtocolDeclare>({
+  pos: undefined as unknown as Position,
+  name: undefined as unknown as string,
+  symbol: undefined as unknown as Symbol,
+  typeParams: undefined as unknown as List<CheckedTypeParameterType>,
+  methods: undefined as unknown as Map<string, CheckedFunctionDeclare>,
+}) {
+  constructor(props: MutableCheckedProtocolDeclare) {
     super(props);
   }
 }
@@ -1035,14 +1071,12 @@ export class CheckedAccessRecord extends Record<MutableCheckedAccessRecord>({
 interface MutableCheckedPackage {
   name: PackageName;
   files: List<CheckedFile>;
-  declarations: Map<Symbol, CheckedAccessRecord>;
-  methods: Map<Symbol, Map<string, CheckedAccessRecord>>;
+  externals: Map<Symbol, Extern>;
 }
 export class CheckedPackage extends Record<MutableCheckedPackage>({
   name: undefined as unknown as PackageName,
   files: undefined as unknown as List<CheckedFile>,
-  declarations: undefined as unknown as Map<Symbol, CheckedAccessRecord>,
-  methods: undefined as unknown as Map<Symbol, Map<string, CheckedAccessRecord>>,
+  externals: undefined as unknown as Map<Symbol, Extern>,
 }) {
   constructor(props: MutableCheckedPackage) {
     super(props);

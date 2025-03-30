@@ -1,0 +1,42 @@
+import dom/dom::{ Html, head, tag, text, content, Element, style, onClick };
+import self/range::{ Range, range };
+
+
+
+data Rectangle {
+  height: Int,
+  width: Int,
+}
+
+data Triangle {
+  height: Int,
+}
+
+protocol Shape {
+  fun render(self, char: String): Element;
+}
+
+implement Shape for Rectangle {
+  fun render(self, char: String): Element {
+    val topAndBottom = { Range { start: 0, end: self.width } }.fold("", fun { prev, next => prev.concat(char) });
+    val middleSpace = { Range { start: 1, end: self.width - 1 } }.fold("", fun { prev, next => prev.concat("_") });
+    val middle = char.concat(middleSpace).concat(char);
+
+    val body = [topAndBottom].concat(range(self.height - 2, fun { index => middle })).push(topAndBottom);
+
+    return tag('div', [
+      content(body.map(fun { text => tag('div', [content([Element::Text{ text }])]) }))
+    ]);
+  }
+}
+
+def main(): Html {
+  var title = 'Proto'
+  val square = Rectangle { height: 8, width: 8 };
+
+  Html {
+    head: head(title),
+    body: tag('body', [content([square.render("+")])]),
+  }
+}
+

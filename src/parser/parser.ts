@@ -16,7 +16,7 @@ import {
   ParserAtom,
   ParserBlockEx,
   ParserBooleanLiteralEx,
-  ParserCallEx,
+  ParserCallEx, type ParserConcreteType,
   ParserConstantDeclare,
   ParserConstructEntry,
   ParserConstructEx,
@@ -50,7 +50,7 @@ import {
   ParserNotEx,
   ParserOrEx,
   ParserParameter,
-  ParserParameterizedType,
+  ParserParameterizedType, ParserProtocolDeclare,
   ParserReassignmentStatement,
   ParserReturnEx,
   ParserSetLiteralEx,
@@ -203,6 +203,8 @@ export class Parser {
         return this.#parseDataDeclare(mods.access, mods.external, pos);
       case 'enum':
         return this.#parseEnumDeclare(mods.access, mods.external, pos);
+      case 'protocol':
+        return this.#parseProtocolDeclare(mods.access, pos);
       case 'implement':
         if (mods.access !== 'internal') {
           pos.fail('implementations cannot specify any access level')
@@ -445,12 +447,72 @@ export class Parser {
     ];
   }
 
+  #parseProtocolDeclare(access: Access, pos: Position): ParserProtocolDeclare {
+    // public protocol Test<Item> {
+    //    fun someMethod(): String;
+    // }
+
+    const nameToken = this.#assertKind('identifier');
+    const name = nameToken?.value;
+    const symbol = this.#module.child(name);
+    const typeParams = this.#parseTypeParams();
+    const self = new ParserNominalType({
+      pos: nameToken.pos,
+      name: List.of(
+        new ParserIdentifierEx({
+          pos: nameToken.pos,
+          name,
+        })
+      ),
+    });
+
+    this.#assertSymbol('{');
+    const methods = Map<string, ParserFunctionDeclare>().asMutable();
+
+    while(!this.#checkSymbol('}')) {
+      const { pos, mods, next: phase } = this.#parseDeclarationModifiers();
+
+      if (!isFunctionPhase(phase.value)) {
+        return phase.pos.fail('Expected to find fun, def or sig');
+      }
+
+      const { name, typeParams, params, result } = this.#parseFunctionSignature(self);
+      const method = new ParserFunctionDeclare({
+        name,
+        pos,
+        access: mods.access,
+        external: mods.external,
+        functionPhase: phase.value,
+        symbol: symbol.child(name),
+        typeParams,
+        params,
+        result,
+        body: new ParserNoOpEx({ pos }),
+      });
+
+      methods.set(method.name, method.update('typeParams', params => typeParams.concat(params)));
+
+      // skip any `;` that we find here
+      while (this.#checkSymbol(';')) {
+      }
+    }
+
+    return new ParserProtocolDeclare({
+      pos,
+      access,
+      name,
+      symbol,
+      typeParams,
+      methods: methods.asImmutable(),
+    })
+  }
+
   #parseImplementation(pos: Position): ParserImplDeclare {
     // parse type params, if there are any
     const typeParams = this.#parseTypeParams();
 
-    const base = this.#parseParameterizedTypeExpression();
-    const implSymbol = this.#localSymbol(this.#module, base);
+    const { base, protocol } = this.#parseImplDeclaration();
+    const implSymbol = this.#implSymbol(this.#implSymbol(this.#module, base), protocol);
 
     // TODO: in the future, this will need to handle protocol implementations too
     this.#assertSymbol('{');
@@ -473,22 +535,33 @@ export class Parser {
       pos,
       symbol: implSymbol,
       base,
+      protocol,
       typeParams,
       methods: methods.asImmutable(),
     });
   }
 
-  #localSymbol(root: Symbol, type: ParserTypeExpression): Symbol {
-    if (type instanceof ParserNominalType) {
-      return type.name.reduce((sum, next) => sum.child(next.name), root);
-    } else if (type instanceof ParserParameterizedType) {
-      return type.args.reduce((sum, next) => this.#localSymbol(sum, next), this.#localSymbol(root, type.base).child('<')).child('>');
-    } else if (type instanceof ParserFunctionTypeParameter) {
-      return this.#localSymbol(root, type.type);
-    } else if (type instanceof ParserTypeParameterType) {
-      return root.child(type.name);
+  #parseImplDeclaration(): { base: ParserConcreteType, protocol: ParserConcreteType | undefined } {
+    const maybeBase = this.#parseParameterizedTypeExpression();
+
+    if (this.#checkKeyword('for')) {
+      // protocol impl
+      const base = this.#parseParameterizedTypeExpression();
+
+      return { base, protocol: maybeBase };
     } else {
-      return this.#localSymbol(type.params.reduce((sum, next) => this.#localSymbol(sum, next), root.child('{')).child('=>'), type.result);
+      // method impl
+      return { base: maybeBase, protocol: undefined }
+    }
+  }
+
+  #implSymbol(root: Symbol, type: ParserConcreteType | undefined): Symbol {
+    if (type === undefined) {
+      return root;
+    } else if (type instanceof ParserNominalType) {
+      return root.child(type.name.last()!.name);
+    } else {
+      return root.child(type.base.name.last()!.name);
     }
   }
 

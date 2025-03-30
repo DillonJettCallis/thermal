@@ -1,7 +1,7 @@
 import {
   DependencyManager,
   Extern,
-  type FunctionPhase,
+  type FunctionPhase, type Package,
   PackageName,
   Position,
   Symbol,
@@ -34,9 +34,9 @@ import {
   ParserConstantDeclare,
   ParserDataDeclare,
   type ParserDeclaration,
-  ParserEnumDeclare,
+  ParserEnumDeclare, ParserFile,
   ParserFunctionDeclare,
-  ParserImplDeclare
+  ParserImplDeclare, ParserPackage
 } from './parser/parserAst.ts';
 
 const coreVersion = new Version(0, 1, 0);
@@ -45,41 +45,22 @@ const coreSymbol = new Symbol(corePackageName);
 
 const pos = new Position('<native>', 0, 0);
 
-export function domLib(workingDir: string, corePackage: CheckedPackage, coreTypes: CoreTypes, rootManager: DependencyManager, preamble: Map<string, Symbol>): CheckedPackage {
+export function domLib(workingDir: string): ParserPackage {
   // TODO: dom lib needs to be prebuild, not checked per use case
   const version = new Version(0, 1, 0);
   const packageName = new PackageName('core', 'dom', version);
   const root = new Symbol(packageName);
 
   const allFiles = List.of(Parser.parseFile(`${workingDir}/lib/dom/dom.thermal`, root.child('dom')));
-  // const allFiles = [Parser.parseFile(`${dir}/simple.thermal`, root.child('simple'))];
-  const typeDict = new TypeDictionary();
-  typeDict.loadPackage(corePackage.declarations, corePackage.methods);
 
-  const { symbols, methods } = collectSymbols(allFiles, rootManager, preamble);
-  typeDict.loadPackage(symbols, methods);
-
-  const allProgramSymbols = Map<PackageName, Map<Symbol, CheckedAccessRecord>>().asMutable();
-  allProgramSymbols.set(corePackage.name, corePackage.declarations);
-  allProgramSymbols.set(packageName, symbols);
-
-  // throws exception if an import is invalid
-  verifyImports(allFiles, rootManager, typeDict);
-
-  const checker = new Checker(rootManager, typeDict, coreTypes, preamble);
-
-  const checkedFiles = List(allFiles.map(file => checker.checkFile(file)));
-
-  return new CheckedPackage({
+  return new ParserPackage({
     name: packageName,
-    files: checkedFiles,
-    declarations: symbols,
-    methods,
+    files: allFiles,
+    externals: Map(),
   });
 }
 
-export function coreLib(workingDir: string, rootManager: DependencyManager): { package: CheckedPackage, coreTypes: CoreTypes, preamble: Map<string, Symbol>, externs: Map<Symbol, Extern> } {
-  rootManager.addDependency(corePackageName);
+export function coreLib(workingDir: string): { package: ParserPackage, coreTypes: CoreTypes, preamble: Map<string, Symbol>, declarations: Map<Symbol, CheckedAccessRecord> } {
   const declarations = Map<Symbol, CheckedAccessRecord>().asMutable();
 
   const coreTypes: CoreTypes = {
@@ -134,55 +115,32 @@ export function coreLib(workingDir: string, rootManager: DependencyManager): { p
   preamble.set('Float', coreTypes.float.name);
   preamble.set('Option', coreTypes.option.name);
   preamble.set('Unit', coreTypes.unit.name);
-
-  const externs = Map<Symbol, Extern>().asMutable();
-
-  // TODO: this is a huge mess. Make core libs use explicit imports and not rely on the preamble, that will help solve the preamble bootstrap problem
-  // TODO: core library needs to be pre-checked so we don't have to recheck when we're just trying to use it.
-  const typeDict = new TypeDictionary();
-  typeDict.loadPackage(declarations, Map());
-
-  const files = List.of('array', 'map', 'set', 'vector', 'bool', 'base', 'math', 'string')
-    .map(key => {
-      const parsed = Parser.parseFile(`${workingDir}/lib/core/${key}.thermal`, coreSymbol.child(key));
-
-      handleNativeImpls(parsed.declarations, `../lib/core/${key}.ts`, externs);
-
-      return parsed;
-    });
-
-  const { symbols, methods } = collectSymbols(files, rootManager, Map());
-  typeDict.loadPackage(symbols, methods);
-  declarations.merge(symbols);
-
-  const checker = new Checker(rootManager, typeDict, coreTypes, Map());
-  const checkedFiles = files.map(it => checker.checkFile(it));
-
-  declarations.set(coreSymbol, new CheckedAccessRecord({
-    access: 'public',
-    name: coreSymbol,
-    module: coreSymbol,
-    type: new CheckedModuleType({
-      name: coreSymbol,
-    }),
-  }));
-
-  preamble.set('core', coreSymbol);
-
   preamble.set('Array', coreSymbol.child('array').child('Array'));
   preamble.set('List', coreSymbol.child('vector').child('Vec'));
   preamble.set('Map', coreSymbol.child('map').child('Map'));
 
+  const externals = Map<Symbol, Extern>().asMutable();
+
+  // TODO: this is a huge mess. Make core libs use explicit imports and not rely on the preamble, that will help solve the preamble bootstrap problem
+  // TODO: core library needs to be pre-checked so we don't have to recheck when we're just trying to use it.
+  const files = List.of('array', 'map', 'set', 'vector', 'bool', 'base', 'math', 'string')
+    .map(key => {
+      const parsed = Parser.parseFile(`${workingDir}/lib/core/${key}.thermal`, coreSymbol.child(key));
+
+      handleNativeImpls(parsed.declarations, `../lib/core/${key}.ts`, externals);
+
+      return parsed;
+    });
+
   return {
-    package: new CheckedPackage({
+    package: new ParserPackage({
       name: corePackageName,
-      files: checkedFiles,
-      declarations: declarations.asImmutable(),
-      methods,
+      files,
+      externals: externals.asImmutable(),
     }),
     coreTypes,
     preamble: preamble.asImmutable(),
-    externs: externs.asImmutable(),
+    declarations: declarations.asImmutable(),
   };
 }
 

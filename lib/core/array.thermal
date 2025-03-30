@@ -1,7 +1,7 @@
-import core/math::Int;
+import self/math::Int;
 
 public data Array<Item>{
-  size: Int,
+  length: Int,
 };
 
 implement <Item> Array<Item> {

@@ -31,7 +31,7 @@ import {
   CheckedNominalType,
   CheckedNoOpEx,
   CheckedNotEx,
-  CheckedOrEx,
+  CheckedOrEx, CheckedProtocolDeclare,
   CheckedReassignmentStatement,
   CheckedReturnEx,
   CheckedSetLiteralEx,
@@ -138,7 +138,7 @@ export class JsCompiler {
     this.#externals = externals;
   }
 
-  compileFile(src: CheckedFile): JsFile {
+  compileFile(src: CheckedFile, lookForMain: boolean): JsFile {
     const staticImportReferences = src.declarations.toSeq()
       .flatMap(dec => {
         if (dec instanceof CheckedImportDeclaration) {
@@ -216,6 +216,9 @@ export class JsCompiler {
             layout: this.#compileDataLayout(dec.name, dec.layout),
           }));
         }
+      } else if (dec instanceof CheckedProtocolDeclare) {
+        // TODO: output protocols in some format
+        return Seq.Indexed.of();
       } else if (dec instanceof CheckedImplDeclare) {
         const prefix = dec.symbol.serializedName();
 
@@ -272,7 +275,7 @@ export class JsCompiler {
 
     return new JsFile({
       name: substringAfterLast(src.src, '/').replace(/\.thermal$/, '.js'),
-      main: src.declarations.some(dec => dec instanceof CheckedFunctionDeclare && dec.name === 'main'),
+      main: lookForMain && src.declarations.some(dec => dec instanceof CheckedFunctionDeclare && dec.name === 'main'),
       declarations: this.#defaultImports.concat(staticImportReferences, decs),
     })
   }

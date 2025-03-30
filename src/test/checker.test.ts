@@ -1,9 +1,9 @@
 import { DependencyDictionary, PackageName, Position, Symbol, TypeDictionary, Version, PhaseType } from '../ast.ts';
 import { coreLib } from '../lib.ts';
-import { List } from 'immutable';
+import { List, Set } from 'immutable';
 import { Checker, Scope } from '../checker/checker.ts';
 import { equal, ok, throws } from 'node:assert';
-import { Qualifier } from '../checker/collector.ts';
+import { collectSymbols, Qualifier } from '../checker/collector.ts';
 import { describe, it } from 'node:test';
 import { CheckedFunctionType, CheckedFunctionTypeParameter } from '../checker/checkerAst.ts';
 import {
@@ -35,17 +35,19 @@ const pos = new Position('sample', 1, 1);
 
 const depDict = new DependencyDictionary();
 const rootManager = depDict.addManager(packageName);
-const {package: corePackage, preamble, coreTypes} = coreLib(projectRootPath, rootManager);
-depDict.addManager(corePackage.name);
+const {package: corePackage, preamble, coreTypes} = coreLib(projectRootPath);
+const coreManager = depDict.addManager(corePackage.name);
 rootManager.addDependency(corePackage.name);
 
+const corePack = collectSymbols(corePackage.name, corePackage.files, coreManager, preamble);
+
 const typeDict = new TypeDictionary();
-typeDict.loadPackage(corePackage.declarations, corePackage.methods);
+typeDict.loadPackage(corePack);
 
 const checker = new Checker(rootManager, typeDict, coreTypes, preamble);
 const qualifier = new Qualifier(preamble);
 const preambleScope = preamble.map(name => {
-  const type = corePackage.declarations.get(name)?.type;
+  const type = typeDict.lookupSymbol(name)?.type;
   if (type === undefined) {
     throw new Error('Huh? Something is very wrong!');
   }
@@ -54,7 +56,7 @@ const preambleScope = preamble.map(name => {
 });
 
 function testScope(): Scope {
-  return Scope.init(preambleScope, qualifier, root, coreTypes.unit);
+  return Scope.init(preambleScope, Set(), qualifier, root, coreTypes.unit);
 }
 
 describe('Checker', () => {

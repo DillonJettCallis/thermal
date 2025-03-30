@@ -1,12 +1,16 @@
 import { List, Map, Record, Set } from 'immutable';
-import type { ParserImportDeclaration, ParserNestedImportExpression } from './parser/parserAst.ts';
+import {
+  ParserIdentifierEx,
+  type ParserImportDeclaration,
+  type ParserNestedImportExpression
+} from './parser/parserAst.ts';
 import { type ParserImportExpression, ParserNominalImportExpression } from './parser/parserAst.ts';
 import {
   CheckedAccessRecord,
   type CheckedImportDeclaration,
   type CheckedImportExpression,
   CheckedNestedImportExpression,
-  CheckedNominalImportExpression, type CheckedTypeExpression
+  CheckedNominalImportExpression, CheckedProtocolType, type CheckedTypeExpression
 } from './checker/checkerAst.ts';
 
 export class Position extends Record({src: '', line: 0, column: 0}){
@@ -206,18 +210,127 @@ export class DependencyDictionary {
   }
 }
 
+export interface Package {
+  /**
+   * The name of this package
+   */
+  readonly name: PackageName;
+
+  /**
+   * every single declared symbol in the entire system - every struct, enum top level function, all of it.
+   * this only excludes things like enum variants, generics, inner functions and other stuff not defined at the top level of a file
+   **/
+  readonly symbols: Map<Symbol, CheckedAccessRecord>;
+
+  /**
+   * Every single method in the system, keyed by the symbol of the base type
+   */
+  readonly methods: Map<Symbol, Map<string, CheckedAccessRecord>>;
+
+  /**
+   * Map of every base type to every protocol to that implementation, which can itself be found as a key in `methods`
+   */
+  readonly protocolImpls: Map<Symbol, Map<Symbol, Symbol>>;
+
+  /**
+   * Externals for this package
+   */
+  readonly externals: Map<Symbol, Extern>;
+}
+
+export class PackageBuilder {
+
+  /**
+   * The name of this package
+   */
+  readonly #name: PackageName;
+
+  /**
+   * every single declared symbol in the entire system - every struct, enum top level function, all of it.
+   * this only excludes things like enum variants, generics, inner functions and other stuff not defined at the top level of a file
+   **/
+  readonly #symbols = Map<Symbol, CheckedAccessRecord>().asMutable();
+
+  /**
+   * Every single method in the system, keyed by the symbol of the base type
+   */
+  readonly #methods = Map<Symbol, Map<string, CheckedAccessRecord>>().asMutable();
+
+  /**
+   * Map of every base type to every protocol to that implementation, which can itself be found as a key in `methods`
+   */
+  readonly #protocolImpls = Map<Symbol, Map<Symbol, Symbol>>().asMutable();
+
+  /**
+   * Externals for this package
+   */
+  readonly #externals = Map<Symbol, Extern>().asMutable();
+
+  constructor(name: PackageName) {
+    this.#name = name;
+  }
+
+  get name(): PackageName {
+    return this.#name;
+  }
+
+  declare(symbol: Symbol, record: CheckedAccessRecord): void {
+    this.#symbols.set(symbol, record);
+  }
+
+  method(symbol: Symbol, name: string, record: CheckedAccessRecord): void {
+    // the fully static version of the method
+    this.declare(symbol.child(name), record);
+    // the method lookup
+    this.#methods.update(symbol, prev => (prev ?? Map<string, CheckedAccessRecord>().asMutable()).set(name, record));
+  }
+
+  protocolImpl(impl: Symbol, base: Symbol, proto: Symbol, name: string, record: CheckedAccessRecord): void {
+    // the method lookup of this specific impl
+    this.method(impl, name, record);
+    // point the base to proto at the impl
+    this.#protocolImpls.update(base, prev => (prev ?? Map<Symbol, Symbol>().asMutable()).set(proto, impl));
+  }
+
+  external(symbol: Symbol, extern: Extern): void {
+    this.#externals.set(symbol, extern);
+  }
+
+  build(): Package {
+    return {
+      name: this.name,
+      symbols: this.#symbols.asImmutable(),
+      methods: this.#methods.map(it => it.asImmutable()).asImmutable(),
+      protocolImpls: this.#protocolImpls.asImmutable(),
+      externals: this.#externals.asImmutable(),
+    };
+  }
+}
+
 export class TypeDictionary {
   /**
    * every single declared symbol in the entire system - every struct, enum top level function, all of it.
    * this only excludes things like enum variants, generics, inner functions and other stuff not defined at the top level of a file
    **/
-  #symbols = Map<Symbol, CheckedAccessRecord>().asMutable();
+  readonly #symbols = Map<Symbol, CheckedAccessRecord>().asMutable();
   /**
    * Every single method in the system, keyed by the symbol of the base type
    */
-  #methods = Map<Symbol, Map<string, CheckedAccessRecord>>().asMutable();
+  readonly #methods = Map<Symbol, Map<string, CheckedAccessRecord>>().asMutable();
 
-  #externals = Map<Symbol, Extern>().asMutable();
+  /**
+   * Map of every base type to every protocol to that implementation, which can itself be found as a key in `methods`
+   */
+  readonly #protocolImpls = Map<Symbol, Map<Symbol, Symbol>>().asMutable();
+
+  /**
+   * Externals for this package
+   */
+  readonly #externals = Map<Symbol, Extern>().asMutable();
+
+  constructor(coreDeclarations: Map<Symbol, CheckedAccessRecord>) {
+    this.#symbols.merge(coreDeclarations);
+  }
 
   get symbols(): Map<Symbol, CheckedAccessRecord> {
     return this.#symbols;
@@ -227,21 +340,33 @@ export class TypeDictionary {
     return this.#methods;
   }
 
-  loadPackage(symbols: Map<Symbol, CheckedAccessRecord>, methods: Map<Symbol, Map<string, CheckedAccessRecord>>): void {
-    this.#symbols.merge(symbols);
-    this.#methods.merge(methods);
-  }
-
-  loadExternals(externals: Map<Symbol, Extern>): void {
-    this.#externals.merge(externals);
+  loadPackage(pack: Package): void {
+    this.#symbols.merge(pack.symbols);
+    this.#methods.merge(pack.methods);
+    this.#protocolImpls.merge(pack.protocolImpls);
+    this.#externals.merge(pack.externals);
   }
 
   lookupSymbol(symbol: Symbol): CheckedAccessRecord | undefined {
     return this.#symbols.get(symbol);
   }
 
-  lookupMethod(base: Symbol, name: string): CheckedAccessRecord | undefined {
-    return this.#methods.get(base)?.get(name);
+  // TODO: consider what protocols are in scope at this point
+  lookupMethod(base: Symbol, id: ParserIdentifierEx, protocols: Set<Symbol>): CheckedAccessRecord | undefined {
+    const protoImpls = this.#protocolImpls.get(base) ?? Map<Symbol, Symbol>();
+
+    const methods = protocols.map(it => protoImpls.get(it)).filter(it => it !== undefined)
+      .add(base)
+      .map(it => this.#methods.get(it)?.get(id.name))
+      .filter(it => it !== undefined);
+
+    if (methods.size === 0) {
+      return undefined;
+    } else if (methods.size === 1) {
+      return methods.first()!;
+    } else {
+      id.pos.fail(`More than one implementation of ${id.name} found`);
+    }
   }
 
   lookupExternal(base: Symbol): Extern | undefined {
@@ -257,6 +382,13 @@ export class TypeDictionary {
    */
   lookupModule(name: Symbol): Symbol | undefined {
     return this.#symbols.get(name)?.module;
+  }
+
+  /**
+   * is this a protocol? True if it is, false if not or if not found
+   */
+  isProtocol(name: Symbol): boolean {
+    return this.lookupSymbol(name)?.type instanceof CheckedProtocolType;
   }
 }
 

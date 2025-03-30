@@ -7,7 +7,7 @@ import {
   type Symbol,
   TypeDictionary
 } from '../ast.ts';
-import type { Set } from 'immutable';
+import { Set } from 'immutable';
 import { List, Map, Seq } from 'immutable';
 import { collectDeclarations, Qualifier } from './collector.ts';
 import type { CoreTypes } from '../lib.ts';
@@ -57,7 +57,7 @@ import {
   CheckedOrEx,
   CheckedOverloadFunctionType,
   CheckedParameter,
-  CheckedParameterizedType,
+  CheckedParameterizedType, CheckedProtocolDeclare, CheckedProtocolType,
   CheckedReassignmentStatement,
   CheckedReturnEx,
   type CheckedSetLiteralEx,
@@ -105,7 +105,7 @@ import {
   ParserNoOpEx,
   ParserNotEx,
   ParserOrEx,
-  type ParserParameter,
+  type ParserParameter, ParserProtocolDeclare,
   ParserReassignmentStatement,
   ParserReturnEx,
   ParserSetLiteralEx,
@@ -137,7 +137,8 @@ export class Checker {
     const declarations = collectDeclarations(file, this.#manager, this.#preamble);
     const filePos = new Position(file.src, 0, 0);
     const qualifier = new Qualifier(declarations);
-    const fileScope = Scope.init(declarations.map(symbol => this.#typeSymbolToPhaseType(symbol, filePos)), qualifier, file.module, this.#coreTypes.unit);
+    const protocols = declarations.valueSeq().filter(it => this.#typeDict.isProtocol(it)).toSet();
+    const fileScope = Scope.init(declarations.map(symbol => this.#typeSymbolToPhaseType(symbol, filePos)), protocols, qualifier, file.module, this.#coreTypes.unit);
 
     const checkedDeclarations = file.declarations.map(dec => {
       if (dec instanceof ParserImportDeclaration) {
@@ -190,11 +191,20 @@ export class Checker {
           typeParams,
           variants,
         });
+      } else if (dec instanceof ParserProtocolDeclare) {
+        return new CheckedProtocolDeclare({
+          pos: dec.pos,
+          name: dec.name,
+          symbol: dec.symbol,
+          typeParams: dec.typeParams.map(it => fileScope.qualifier.checkTypeParamType(dec.symbol, it)),
+          methods: dec.methods.map(it => this.#checkFuncDeclare(it, fileScope, file.module)),
+        });
       } else {
         return new CheckedImplDeclare({
           pos: dec.pos,
           symbol: dec.symbol,
           base: fileScope.qualifier.includeTypeParams(dec.symbol, dec.typeParams).checkConcreteTypeExpression(dec.base),
+          protocol: dec.protocol === undefined ? undefined : fileScope.qualifier.includeTypeParams(dec.symbol, dec.typeParams).checkConcreteTypeExpression(dec.protocol),
           typeParams: dec.typeParams.map(it => fileScope.qualifier.checkTypeParamType(dec.symbol, it)),
           methods: dec.methods.map(it => this.#checkFuncDeclare(it, fileScope, file.module)),
         })
@@ -552,7 +562,7 @@ export class Checker {
   #checkMethod(ex: ParserCallEx, scope: Scope): CheckedCallEx | undefined {
     if (ex.func instanceof ParserAccessEx) {
       const checkBase = this.#checkExpression(ex.func.base, scope, undefined);
-      const maybeMethod = this.#processMethod(checkBase.type, ex.func.field);
+      const maybeMethod = this.#processMethod(checkBase.type, ex.func.field, scope.protocols());
 
       if (maybeMethod === undefined) {
         return undefined;
@@ -1550,6 +1560,9 @@ export class Checker {
       return id.pos.fail('Atom type has no fields');
     } else if (type instanceof CheckedModuleType) {
       return id.pos.fail('Module type has no fields');
+    } else if (type instanceof CheckedProtocolType) {
+      // TODO: we want to be able to define properties for protocols someday
+      return id.pos.fail('Protocol type has no fields');
     } else if (type instanceof CheckedFunctionType || type instanceof CheckedOverloadFunctionType) {
       return id.pos.fail('Function type has no fields');
     } else if (type instanceof CheckedFunctionTypeParameter) {
@@ -1593,21 +1606,25 @@ export class Checker {
     }
   }
 
-  #processMethod(type: CheckedTypeExpression, id: ParserIdentifierEx): CheckedAccessRecord | undefined {
+  #processMethod(type: CheckedTypeExpression, id: ParserIdentifierEx, protocols: Set<Symbol>): CheckedAccessRecord | undefined {
     if (type instanceof CheckedStructType) {
-      return this.#typeDict.lookupMethod(type.name, id.name);
+      return this.#typeDict.lookupMethod(type.name, id, protocols);
     } else if (type instanceof CheckedTupleType) {
-      return this.#typeDict.lookupMethod(type.name, id.name);
+      return this.#typeDict.lookupMethod(type.name, id, protocols);
     } else if (type instanceof CheckedAtomType) {
-      return this.#typeDict.lookupMethod(type.name, id.name);
+      return this.#typeDict.lookupMethod(type.name, id, protocols);
     } else if (type instanceof CheckedModuleType) {
       return undefined;
+    } else if (type instanceof CheckedProtocolType) {
+      // TODO: this might not work until we have proper bounds
+      // this might also never happen, I'm not sure, needs more thought
+      return this.#typeDict.lookupMethod(type.name, id, protocols);
     } else if (type instanceof CheckedFunctionType || type instanceof CheckedOverloadFunctionType) {
       return undefined;
     } else if (type instanceof CheckedFunctionTypeParameter) {
       return id.pos.fail('Something is wrong, it should be impossible to access this');
     } else if (type instanceof CheckedEnumType) {
-      return this.#typeDict.lookupMethod(type.name, id.name);
+      return this.#typeDict.lookupMethod(type.name, id, protocols);
     } else if (type instanceof CheckedTypeParameterType) {
       // TODO: someday we'll have protocols and bounds, and when we do this will need to be changed to allow method access to valid bounds
       return id.pos.fail('Unknown type has no methods');
@@ -1619,7 +1636,7 @@ export class Checker {
         return id.pos.fail('Unable to find type information');
       }
 
-      return this.#processMethod(realType, id);
+      return this.#processMethod(realType, id, protocols);
     } else {
       const realType = this.#typeDict.lookupSymbol(type.base.name);
 
@@ -1635,7 +1652,7 @@ export class Checker {
           return id.pos.fail(`Incorrect number of type params. Expected ${realType.type.typeParams.size} but found ${type.args.size}`);
         }
 
-        return this.#typeDict.lookupMethod(realType.type.name, id.name);
+        return this.#typeDict.lookupMethod(realType.type.name, id, protocols);
       } else {
         return id.pos.fail('Parameterized type has no fields');
       }
@@ -1698,7 +1715,7 @@ export class Checker {
         return ex;
       } else {
         // the magic happens here
-        return generics.get(ex.name) ?? pos.fail(`Unable to find generic type parameter with name ${ex.name}`);
+        return generics.get(ex.name) ?? ex; // TODO: is this the right action to take?
       }
     }
 
@@ -1735,26 +1752,28 @@ class FunctionScope {
 export class Scope {
   readonly #parent: Scope | undefined;
   readonly #symbols: Map<string, PhaseType>;
+  readonly #protocols: Set<Symbol>;
   readonly qualifier: Qualifier;
   readonly functionScope: FunctionScope;
 
-  private constructor(parent: Scope | undefined, declared: Map<string, PhaseType> | undefined, qualifier: Qualifier, functionScope: FunctionScope) {
+  private constructor(parent: Scope | undefined, declared: Map<string, PhaseType> | undefined, qualifier: Qualifier, functionScope: FunctionScope, protocols: Set<Symbol>) {
     this.#parent = parent;
     this.#symbols = (declared ?? Map<string, PhaseType>()).asMutable();
+    this.#protocols = protocols;
     this.qualifier = qualifier;
     this.functionScope = functionScope;
   }
 
-  static init(declared: Map<string, PhaseType>, qualifier: Qualifier, module: Symbol, resultType: CheckedTypeExpression): Scope {
-    return new Scope(undefined, declared, qualifier, new FunctionScope(module, module, resultType, 'fun'));
+  static init(declared: Map<string, PhaseType>, protocols: Set<Symbol>, qualifier: Qualifier, module: Symbol, resultType: CheckedTypeExpression): Scope {
+    return new Scope(undefined, declared, qualifier, new FunctionScope(module, module, resultType, 'fun'), protocols);
   }
 
   child(): Scope {
-    return new Scope(this, undefined, this.qualifier, this.functionScope);
+    return new Scope(this, undefined, this.qualifier, this.functionScope, this.#protocols);
   }
 
   childFunction(symbol: Symbol, typeParams: List<ParserTypeParameterType>, resultType: CheckedTypeExpression, phase: FunctionPhase): Scope {
-    const child = new Scope(this, undefined, this.qualifier.includeTypeParams(symbol, typeParams), new FunctionScope(this.functionScope.module, symbol, resultType, phase));
+    const child = new Scope(this, undefined, this.qualifier.includeTypeParams(symbol, typeParams), new FunctionScope(this.functionScope.module, symbol, resultType, phase), this.#protocols);
 
     for (const typeParam of typeParams) {
       child.set(typeParam.name, new PhaseType(child.qualifier.checkTypeParamType(symbol, typeParam), 'const', typeParam.pos));
@@ -1792,5 +1811,9 @@ export class Scope {
 
   set(name: string, type: PhaseType): void {
     this.#symbols.set(name, type);
+  }
+
+  protocols(): Set<Symbol> {
+    return this.#protocols;
   }
 }

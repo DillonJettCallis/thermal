@@ -1,4 +1,4 @@
-import core/string::String;
+import self/string::String;
 
 
 public data Int {}

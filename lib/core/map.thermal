@@ -1,7 +1,7 @@
-import core/array::Array;
-import core/bool::Boolean;
-import core/math::Int;
-import core/base::Nothing;
+import self/array::Array;
+import self/bool::Boolean;
+import self/math::Int;
+import self/base::Nothing;
 
 public data Map<Key, Value> {
   size: Int,

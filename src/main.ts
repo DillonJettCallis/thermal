@@ -2,56 +2,74 @@ import { Parser } from './parser/parser.ts';
 import { DependencyDictionary, PackageName, Symbol, TypeDictionary, Version } from './ast.ts';
 import { coreLib, domLib } from './lib.ts';
 import { collectSymbols } from './checker/collector.ts';
-import { List } from 'immutable';
+import { List, Map } from 'immutable';
 import { verifyImports } from './checker/verifier.ts';
 import { Checker } from './checker/checker.ts';
 import { substringBeforeLast } from './utils.ts';
 import { JsCompiler } from './js/jsCompiler.ts';
 import { JsEmitter } from './js/jsEmitter.ts';
+import { ParserPackage } from './parser/parserAst.ts';
+import { CheckedPackage } from './checker/checkerAst.ts';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import * as process from 'node:process';
+import { readdirSync } from 'node:fs';
 
-async function main(): Promise<void> {
-  const workingDir = `.`;
-  const dir = 'sample';
+async function main(mainFileName: string): Promise<void> {
+  const workingDir = resolve(fileURLToPath(import.meta.url), '../..');
+  const dir = resolve(workingDir, 'sample');
 
   const version = new Version(0, 1, 0);
   const packageName = new PackageName('sample', 'sample', version);
   const root = new Symbol(packageName);
 
   const depDict = new DependencyDictionary();
-  const rootManager = depDict.addManager(packageName);
 
-  const typeDict = new TypeDictionary();
-
-  const {package: corePackage, preamble, coreTypes, externs: coreExterns} = coreLib(workingDir, rootManager);
+  const {package: corePackage, preamble, coreTypes, declarations: coreDeclarations } = coreLib(workingDir);
   depDict.addManager(corePackage.name);
-  rootManager.addDependency(corePackage.name);
 
-  const domPackage = domLib(workingDir, corePackage, coreTypes, rootManager, preamble);
+  const domPackage = domLib(workingDir);
   depDict.addManager(domPackage.name).addDependency(corePackage.name);
-  rootManager.addDependency(domPackage.name);
 
-  // const sources = readdirSync(dir);
-  const sources = List.of('ticktac.thermal');
+  const sources = List(readdirSync(dir));
 
-  const allFiles = sources.map(file => Parser.parseFile(`${workingDir}/${dir}/${file}`, root.child(substringBeforeLast(file, '.thermal'))));
-  // const allFiles = [Parser.parseFile(`${dir}/simple.thermal`, root.child('simple'))];
-  typeDict.loadPackage(corePackage.declarations, corePackage.methods);
-  typeDict.loadExternals(coreExterns);
-  typeDict.loadPackage(domPackage.declarations, domPackage.methods);
+  const selfPackage = new ParserPackage({
+    name: packageName,
+    files: sources.map(file => Parser.parseFile(`${dir}/${file}`, root.child(substringBeforeLast(file, '.thermal')))),
+    externals: Map(),
+  });
 
-  const { symbols, methods } = collectSymbols(allFiles, rootManager, preamble);
-  typeDict.loadPackage(symbols, methods);
+  const selfManager = depDict.addManager(packageName);
+  selfManager.addDependency(corePackage.name);
+  selfManager.addDependency(domPackage.name);
 
-  // throws exception if an import is invalid
-  verifyImports(allFiles, rootManager, typeDict);
+  const packages = List.of(corePackage, domPackage, selfPackage);
 
-  const checker = new Checker(rootManager, typeDict, coreTypes, preamble);
+  const typeDict = new TypeDictionary(coreDeclarations);
 
-  // TODO: libraries need to be handled better than this
-  const checkedFiles = allFiles.map(file => checker.checkFile(file)).concat(domPackage.files).concat(corePackage.files);
+  // load up all type information
+  packages.forEach(pack => {
+    typeDict.loadPackage(collectSymbols(pack.name, pack.files, depDict.getManager(pack.name)!, preamble));
+  });
 
-  const jsCompiler = new JsCompiler(coreExterns);
-  const jsCompilePrep = checkedFiles.map(file => jsCompiler.compileFile(file));
+  // check all packages to ensure their imports are valid
+  packages.forEach(pack => {
+    // throws exception if an import is invalid
+    verifyImports(pack.files, depDict.getManager(pack.name)!, typeDict);
+  });
+
+  const checkedPackages = packages.map(pack => {
+    const checker = new Checker(depDict.getManager(pack.name)!, typeDict, coreTypes, preamble);
+
+    return new CheckedPackage({
+      name: pack.name,
+      files: pack.files.map(file => checker.checkFile(file)),
+      externals: pack.externals,
+    })
+  });
+
+  const jsCompiler = new JsCompiler(checkedPackages.reduce((sum, next) => sum.merge(next.externals), Map()));
+  const jsCompilePrep = checkedPackages.toSeq().flatMap(pack => pack.files).map(file => jsCompiler.compileFile(file, file.src.includes(mainFileName)));
 
   const jsEmitter = new JsEmitter(`${workingDir}/dist`);
   for (const file of jsCompilePrep) {
@@ -59,4 +77,4 @@ async function main(): Promise<void> {
   }
 }
 
-await main();
+await main(process.argv[2]!);

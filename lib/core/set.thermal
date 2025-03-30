@@ -1,6 +1,6 @@
-import core/array::Array;
-import core/bool::Boolean;
-import core/math::Int;
+import self/array::Array;
+import self/bool::Boolean;
+import self/math::Int;
 
 public data Set<Item> {
   size: Int,

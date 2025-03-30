@@ -1,7 +1,7 @@
-import core/array::Array;
-import core/bool::Boolean;
-import core/math::Int;
-import core/base::Unit;
+import self/array::Array;
+import self/bool::Boolean;
+import self/math::Int;
+import self/base::Unit;
 
 public data Vec<Item> {
   size: Int,

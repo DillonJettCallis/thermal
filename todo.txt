@@ -1,15 +1,15 @@
 
 * Better parsing of more complex expressions
+* Calling a method right after construction
+* Explicit type arguments in ALL use cases
+* Protocol generics
 * Core library support - make proper modules for core stuff, extern as much as possible
 * Serialization format for libraries, implement core lib like this
-* Methods - static references
 * Const evaluation
 * Test and evaluate effect system
 * Named arguments - if we do them, how we will do them - possibly unify constructors
 * Extend and fill out both dom library and effects like http fetch, timeouts, mouse and keyboard events
-* Output multiple files
 * Handle libraries
-* Type classes - at least a simple system
 * Documentation - find a way to better describe all possible combinations of phases
 * Pattern matching - will depend at least partly on data types
 * Destructuring - possibly based on pattern matching

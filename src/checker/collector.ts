@@ -1,5 +1,5 @@
 import { List, Map } from 'immutable';
-import type { DependencyManager, Symbol } from '../ast.ts';
+import { type DependencyManager, type Package, PackageBuilder, PackageName, type Symbol } from '../ast.ts';
 import {
   ParserAtom,
   type ParserConcreteType,
@@ -13,7 +13,7 @@ import {
   ParserImplDeclare,
   ParserImportDeclaration,
   ParserNominalType,
-  ParserParameterizedType,
+  ParserParameterizedType, ParserProtocolDeclare,
   ParserStruct,
   type ParserStructField,
   ParserTuple,
@@ -30,7 +30,7 @@ import {
   CheckedFunctionType,
   CheckedFunctionTypeParameter,
   CheckedNominalType,
-  CheckedParameterizedType,
+  CheckedParameterizedType, CheckedProtocolType,
   CheckedStructType,
   CheckedTupleType,
   type CheckedTypeExpression,
@@ -40,9 +40,8 @@ import {
 /**
  * Given this file of parsed things, return a map of all symbols with their access level and type
  */
-export function collectSymbols(files: List<ParserFile>, manager: DependencyManager, preamble: Map<string, Symbol>): { symbols: Map<Symbol, CheckedAccessRecord>, methods: Map<Symbol, Map<string, CheckedAccessRecord>> } {
-  const declarations = Map<Symbol, CheckedAccessRecord>().asMutable();
-  const methods = Map<Symbol, Map<string, CheckedAccessRecord>>().asMutable();
+export function collectSymbols(packageName: PackageName, files: List<ParserFile>, manager: DependencyManager, preamble: Map<string, Symbol>): Package {
+  const pack = new PackageBuilder(packageName);
 
   files.forEach(file => {
     const qualifier = new Qualifier(collectDeclarations(file, manager, preamble));
@@ -53,7 +52,7 @@ export function collectSymbols(files: List<ParserFile>, manager: DependencyManag
         // imports are never exported
       } else if (dec instanceof ParserDataDeclare) {
         const checked = qualifier.qualifyData(file.module, dec);
-        declarations.set(checked.name, new CheckedAccessRecord({
+        pack.declare(checked.name, new CheckedAccessRecord({
           access: dec.access,
           name: checked.name,
           module: file.module,
@@ -61,7 +60,7 @@ export function collectSymbols(files: List<ParserFile>, manager: DependencyManag
         }));
 
         checked.typeParams.forEach(param => {
-          declarations.set(param.name, new CheckedAccessRecord({
+          pack.declare(param.name, new CheckedAccessRecord({
             access: 'public',
             name: param.name,
             module: file.module,
@@ -70,7 +69,7 @@ export function collectSymbols(files: List<ParserFile>, manager: DependencyManag
         });
       } else if (dec instanceof ParserEnumDeclare) {
         const checked = qualifier.qualifyEnum(file.module, dec);
-        declarations.set(checked.name, new CheckedAccessRecord({
+        pack.declare(checked.name, new CheckedAccessRecord({
           access: dec.access,
           name: checked.name,
           module: file.module,
@@ -78,7 +77,7 @@ export function collectSymbols(files: List<ParserFile>, manager: DependencyManag
         }));
 
         checked.typeParams.forEach(param => {
-          declarations.set(param.name, new CheckedAccessRecord({
+          pack.declare(param.name, new CheckedAccessRecord({
             access: 'public',
             name: param.name,
             module: file.module,
@@ -87,7 +86,7 @@ export function collectSymbols(files: List<ParserFile>, manager: DependencyManag
         });
 
         checked.variants.valueSeq().forEach(varient => {
-          declarations.set(varient.name, new CheckedAccessRecord({
+          pack.declare(varient.name, new CheckedAccessRecord({
             access: dec.access,
             name: varient.name,
             module: file.module,
@@ -97,7 +96,7 @@ export function collectSymbols(files: List<ParserFile>, manager: DependencyManag
       } else if (dec instanceof ParserConstantDeclare) {
         const name = file.module.child(dec.name);
 
-        declarations.set(name, new CheckedAccessRecord({
+        pack.declare(name, new CheckedAccessRecord({
           access: dec.access,
           name,
           module: file.module,
@@ -106,7 +105,7 @@ export function collectSymbols(files: List<ParserFile>, manager: DependencyManag
       } else if (dec instanceof ParserFunctionDeclare) {
         const name = file.module.child(dec.name);
 
-        declarations.set(name, new CheckedAccessRecord({
+        pack.declare(name, new CheckedAccessRecord({
           access: dec.access,
           name,
           module: file.module,
@@ -116,7 +115,7 @@ export function collectSymbols(files: List<ParserFile>, manager: DependencyManag
         dec.typeParams.forEach(param => {
           const paramName = name.child(param.name);
 
-          declarations.set(paramName, new CheckedAccessRecord({
+          pack.declare(paramName, new CheckedAccessRecord({
             access: 'public',
             name: paramName,
             module: file.module,
@@ -125,6 +124,51 @@ export function collectSymbols(files: List<ParserFile>, manager: DependencyManag
             }),
           }));
         });
+      } else if (dec instanceof ParserProtocolDeclare) {
+        const methods = dec.methods.map(parserFunc => {
+          const name = dec.symbol.child(parserFunc.name);
+          const type = qualifier.checkFunctionDeclare(parserFunc);
+
+          const record = new CheckedAccessRecord({
+            access: parserFunc.access,
+            name,
+            module: file.module,
+            type,
+          });
+
+          parserFunc.typeParams.forEach(param => {
+            const paramName = name.child(param.name);
+
+            pack.declare(paramName, new CheckedAccessRecord({
+              access: parserFunc.access,
+              name: paramName,
+              module: file.module,
+              type: new CheckedTypeParameterType({
+                name: paramName,
+              }),
+            }));
+          });
+
+          if (isInstanceMethod(parserFunc)) {
+            // only include instance methods. Static methods are still accessible from a pure static context
+            pack.method(dec.symbol, parserFunc.name, record)
+          } else {
+            // static methods only go here
+            pack.declare(name, record);
+          }
+
+          return type;
+        });
+
+        pack.declare(dec.symbol, new CheckedAccessRecord({
+          access: dec.access,
+          name: dec.symbol,
+          module: file.module,
+          type: new CheckedProtocolType({
+            name: dec.symbol,
+            methods,
+          }),
+        }));
       } else if (dec instanceof ParserImplDeclare) {
         const base = qualifier.checkNominalType(dec.base instanceof ParserNominalType ? dec.base : dec.base.base).name;
 
@@ -132,13 +176,6 @@ export function collectSymbols(files: List<ParserFile>, manager: DependencyManag
           // TODO: this is a temporary limitation that we'll need to find a way around
           dec.pos.fail(`Impl can only be declared within the same file as it's base type!`);
         }
-
-        if (methods.has(base)) {
-          // TODO: this is a temporary limitation that we'll need to find a way around
-          dec.pos.fail('Cannot have duplicate declarations of impls for any base type!');
-        }
-
-        const baseMethods = Map<string, CheckedAccessRecord>().asMutable();
 
         for (const [key, parserFunc] of dec.methods) {
           const name = dec.symbol.child(parserFunc.name);
@@ -150,13 +187,11 @@ export function collectSymbols(files: List<ParserFile>, manager: DependencyManag
             type: qualifier.checkFunctionDeclare(parserFunc),
           });
 
-          declarations.set(name, record);
-
           parserFunc.typeParams.forEach(param => {
             const paramName = name.child(param.name);
 
-            declarations.set(paramName, new CheckedAccessRecord({
-              access: 'public',
+            pack.declare(paramName, new CheckedAccessRecord({
+              access: parserFunc.access,
               name: paramName,
               module: file.module,
               type: new CheckedTypeParameterType({
@@ -165,18 +200,26 @@ export function collectSymbols(files: List<ParserFile>, manager: DependencyManag
             }));
           });
 
-          // only include instance methods. Static methods are still accessible from a pure static context
-          if (isInstanceMethod(parserFunc)) {
-            baseMethods.set(key, record);
+          if (dec.protocol !== undefined) {
+            const proto = qualifier.checkNominalType(dec.protocol instanceof ParserNominalType ? dec.protocol : dec.protocol.base).name;
+
+            // protocol impls go here
+            pack.protocolImpl(dec.symbol, base, proto, key, record);
+          } else {
+            if (isInstanceMethod(parserFunc)) {
+              // only include instance methods. Static methods are still accessible from a pure static context
+              pack.method(base, key, record)
+            } else {
+              // static methods only go here
+              pack.declare(name, record);
+            }
           }
         }
-
-        methods.set(base, baseMethods);
       }
     });
   });
 
-  return { symbols: declarations.asImmutable(), methods: methods.asImmutable() };
+  return pack.build();
 }
 
 export function collectDeclarations(file: ParserFile, manager: DependencyManager, preamble: Map<string, Symbol>): Map<string, Symbol> {

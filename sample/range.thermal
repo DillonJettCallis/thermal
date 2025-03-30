@@ -1,0 +1,37 @@
+
+data Range {
+  start: Int,
+  end: Int,
+}
+
+implement Range {
+  fun map<Out>(self, mapper: fun { Int -> Out }): List<Out> {
+    return Range::loop(self.start, self.end, [], mapper);
+  }
+
+  fun fold<Out>(self, init: Out, mapper: fun { Out, Int -> Out }): Out {
+    return Range::internalFold(self.start, self.end, init, mapper);
+  }
+
+  private fun internalFold<Out>(index: Int, limit: Int, out: Out, mapper: fun { Out, Int -> Out }): Out {
+    if (index == limit) {
+      return out;
+    } else {
+      return Range::internalFold(index + 1, limit, mapper(out, index), mapper);
+    }
+  }
+
+  private fun loop<Out>(index: Int, limit: Int, init: List<Out>, mapper: fun { Int -> Out }): List<Out> {
+    if (index == limit) {
+      return init;
+    } else {
+      val next = init.push(mapper(index));
+
+      return Range::loop(index + 1, limit, next, mapper);
+    }
+  }
+}
+
+fun range<Out>(limit: Int, mapper: fun { Int -> Out }): List<Out> {
+  return Range::loop(0, limit, [], mapper);
+}

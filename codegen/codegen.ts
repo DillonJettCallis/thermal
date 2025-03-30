@@ -77,6 +77,7 @@ const expressionPhase = util('ExpressionPhase', true);
 const functionPhase = util('FunctionPhase', true);
 const packageName = util('PackageName', false);
 const phaseType = util('PhaseType', false);
+const extern = util('Extern', false);
 
 class Generator {
   readonly #records = List<Record>().asMutable();
@@ -483,19 +484,34 @@ function parser(): Generator {
     type: typeExpression,
   }, declare);
 
-  // TODO: handle protocol implementations in the future
   gen.add('ImplDeclare', {
     pos,
     symbol,
     typeParams: list(typeParameterType),
     base: concreteType,
+    protocol: optional(concreteType),
     methods: map(native('string'), funcDeclare),
   }, declare);
 
-  gen.add('File', {
+  gen.add('ProtocolDeclare', {
+    pos,
+    access,
+    name: native('string'),
+    symbol,
+    typeParams: list(typeParameterType),
+    methods: map(native('string'), funcDeclare),
+  }, declare);
+
+  const file = gen.add('File', {
     src: native('string'),
     module: symbol,
     declarations: list(declare),
+  });
+
+  gen.add('Package', {
+    name: packageName,
+    files: list(file),
+    externals: map(symbol, extern),
   });
 
   return gen;
@@ -558,6 +574,11 @@ function checker(): Generator {
 
   gen.add('ModuleType', {
     name: symbol,
+  }, typeExpression);
+
+  gen.add('ProtocolType', {
+    name: symbol,
+    methods: map(native('string'), functionType),
   }, typeExpression);
 
   const dataLayoutType = gen.type('DataLayoutType', typeExpression);
@@ -867,12 +888,20 @@ function checker(): Generator {
     variants: map(native('string'), dataLayout),
   }, declare);
 
-  // TODO: handle protocol implementations in the future
   gen.add('ImplDeclare', {
     pos,
     symbol,
     typeParams: list(typeParameterType),
     base: concreteType,
+    protocol: optional(concreteType),
+    methods: map(native('string'), funcDeclare),
+  }, declare);
+
+  gen.add('ProtocolDeclare', {
+    pos,
+    name: native('string'),
+    symbol,
+    typeParams: list(typeParameterType),
     methods: map(native('string'), funcDeclare),
   }, declare);
 
@@ -892,7 +921,7 @@ function checker(): Generator {
     declarations: list(declare),
   });
 
-  const accessRecord = gen.add('AccessRecord', {
+  gen.add('AccessRecord', {
     access,
     name: symbol,
     module: symbol,
@@ -902,8 +931,7 @@ function checker(): Generator {
   gen.add('Package', {
     name: packageName,
     files: list(file),
-    declarations: map(symbol, accessRecord),
-    methods: map(symbol, map(native('string'), accessRecord)),
+    externals: map(symbol, extern),
   });
 
   return gen;

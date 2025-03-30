@@ -1,4 +1,4 @@
-import core/math::Int;
+import self/math::Int;
 
 data String {
   length: Int,
