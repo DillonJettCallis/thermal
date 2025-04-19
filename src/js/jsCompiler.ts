@@ -156,13 +156,13 @@ const nativeOperators = Map<Symbol, (left: JsExpression, right: JsExpression) =>
       left: new JsBinaryOp({
         left,
         op: '/',
-        right,
+        right
       }),
       op: '|',
       right: new JsNumberLiteralEx({
-        value: 0,
+        value: 0
       })
-    })
+    });
   })
   .set(coreSymbol.child('math').child('Float').child('DivOp').child('divideOp'), (left, right) => {
     return new JsBinaryOp({
@@ -171,7 +171,19 @@ const nativeOperators = Map<Symbol, (left: JsExpression, right: JsExpression) =>
       right
     });
   })
-  ;
+  .set(coreSymbol.child('math').child('Int').child('NegateOp').child('negateOp'), (base) => {
+    return new JsUnaryOp({
+      base,
+      op: '-'
+    });
+  })
+  .set(coreSymbol.child('math').child('Float').child('NegateOp').child('negateOp'), (base) => {
+    return new JsUnaryOp({
+      base,
+      op: '-'
+    });
+  })
+;
 
 export class JsCompiler {
 
@@ -594,18 +606,21 @@ export class JsCompiler {
       if (ex.func instanceof CheckedStaticReferenceEx && nativeOperators.has(ex.func.symbol)) {
         const handler = nativeOperators.get(ex.func.symbol)!;
 
+        // one last special case for negation which has only one argument
+        if (ex.func.symbol.name == 'negateOp') {
+          return this.#handleAction(phase, 'fun', List.of(undefined), List.of(ex.args.first()!), args => {
+            return handler(args.first()!, new JsUndefined({}));
+          });
+        }
+
         return this.#handleAction(phase, 'fun', List.of(undefined, undefined), List.of(ex.args.get(0)!, ex.args.get(1)!), args => {
           return handler(args.first()!, args.last()!);
         });
       }
 
       // todo: implement these as operator protocols
-      if (ex.func instanceof CheckedIdentifierEx && ['-', '==', '!=', '<', '<=', '>', '>='].includes(ex.func.name)) {
-        if (ex.func.name === '-' && ex.args.size === 1) {
-          return this.#handleUnaryOp('-', phase, ex.args.first()!);
-        } else {
-          return this.#handleBinaryOp(ex.func.name, phase, ex.args.get(0)!, ex.args.get(1)!);
-        }
+      if (ex.func instanceof CheckedIdentifierEx && ['==', '!=', '<', '<=', '>', '>='].includes(ex.func.name)) {
+        return this.#handleBinaryOp(ex.func.name, phase, ex.args.get(0)!, ex.args.get(1)!);
       }
 
       // todo: we're special casing this until we have methods that can handle it

@@ -1010,25 +1010,17 @@ export class Parser {
 
       return new ParserCallEx({
         pos: next.pos,
-        func: new ParserStaticAccessEx({
+        func: new ParserAccessEx({
           pos: next.pos,
-          path: List.of(
-            new ParserIdentifierEx({
-              pos: next.pos,
-              name: 'core',
-            }), new ParserIdentifierEx({
-              pos: next.pos,
-              name: 'math',
-            }), new ParserIdentifierEx({
-              pos: next.pos,
-              name: 'negate',
-            }),
-          ),
+          base: this.#parseExpression(),
+          field: new ParserIdentifierEx({
+            pos: next.pos,
+            // special name, otherwise it would conflict with subtraction
+            name: '--',
+          }),
         }),
         typeArgs: List(),
-        args: List.of(
-          this.#parseExpression(),
-        ),
+        args: List(),
       });
     } else {
       return this.#parseStaticAccessExpression();

@@ -1,13 +1,4 @@
-import {
-  DependencyManager,
-  Extern,
-  type FunctionPhase, type Package,
-  PackageName,
-  Position,
-  Symbol,
-  TypeDictionary,
-  Version
-} from './ast.ts';
+import { Extern, type FunctionPhase, PackageName, Position, Symbol, Version } from './ast.ts';
 import { List, Map } from 'immutable';
 import {
   CheckedAccessRecord,
@@ -19,7 +10,6 @@ import {
   CheckedModuleType,
   CheckedNominalType,
   CheckedOverloadFunctionType,
-  CheckedPackage,
   CheckedParameterizedType,
   CheckedStructType,
   CheckedTupleType,
@@ -27,17 +17,16 @@ import {
   CheckedTypeParameterType
 } from './checker/checkerAst.ts';
 import { Parser } from './parser/parser.ts';
-import { collectSymbols } from './checker/collector.ts';
-import { verifyImports } from './checker/verifier.ts';
-import { Checker } from './checker/checker.ts';
 import {
   type ParserConcreteType,
   ParserConstantDeclare,
   ParserDataDeclare,
   type ParserDeclaration,
-  ParserEnumDeclare, ParserFile,
+  ParserEnumDeclare,
   ParserFunctionDeclare,
-  ParserImplDeclare, ParserNominalType, ParserPackage
+  ParserImplDeclare,
+  ParserNominalType,
+  ParserPackage
 } from './parser/parserAst.ts';
 
 const coreVersion = new Version(0, 1, 0);
@@ -51,6 +40,7 @@ export const specialOps = Map<Symbol, Map<string, string>>()
   .set(coreSymbol.child('math').child('SubOp'), Map<string, string>().set('subtractOp', '-'))
   .set(coreSymbol.child('math').child('MulOp'), Map<string, string>().set('multiplyOp', '*'))
   .set(coreSymbol.child('math').child('DivOp'), Map<string, string>().set('divideOp', '/'))
+  .set(coreSymbol.child('math').child('NegateOp'), Map<string, string>().set('negateOp', '--')) // special name to not conflict with subtraction
 ;
 
 export function domLib(workingDir: string): ParserPackage {
@@ -130,6 +120,7 @@ export function coreLib(workingDir: string): { package: ParserPackage, coreTypes
   preamble.set('SubOp', coreSymbol.child('math').child('SubOp'));
   preamble.set('MulOp', coreSymbol.child('math').child('MulOp'));
   preamble.set('DivOp', coreSymbol.child('math').child('DivOp'));
+  preamble.set('NegateOp', coreSymbol.child('math').child('NegateOp'));
 
   const externals = Map<Symbol, Extern>().asMutable();
 

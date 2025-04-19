@@ -20,6 +20,10 @@ export function divideOp_Int(self: number, other: number): number {
   return (self / other) | 0;
 }
 
+export function negateOp_Int(self: number): number {
+  return -self;
+}
+
 
 // Float
 export function toString_Float(self: number): string {
@@ -40,4 +44,8 @@ export function multiplyOp_Float(self: number, other: number): number {
 
 export function divideOp_Float(self: number, other: number): number {
   return self / other;
+}
+
+export function negateOp_Float(self: number): number {
+  return -self;
 }

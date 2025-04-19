@@ -17,6 +17,10 @@ public protocol DivOp<Out> {
   public fun divideOp(self, other: Self): Out;
 }
 
+public protocol NegateOp {
+  public fun negateOp(self): Self;
+}
+
 // Int
 public data Int {}
 
@@ -40,6 +44,10 @@ implement DivOp<Int> for Int {
   external public fun divideOp(self, other: Self): Int;
 }
 
+implement NegateOp for Int {
+  external public fun negateOp(self): Int;
+}
+
 // Float
 public data Float {}
 
@@ -61,4 +69,8 @@ implement MulOp<Float> for Float {
 
 implement DivOp<Float> for Float {
   external public fun divideOp(self, other: Self): Float;
+}
+
+implement NegateOp for Float {
+  external public fun negateOp(self): Float;
 }

@@ -36,6 +36,8 @@ implement Shape for Rectangle {
 }
 
 def main(): Html {
+  const test = -2;
+  const test2 = -test;
   var title = 'Proto'
   val square = Rectangle { height: 8, width: 8 };
 
