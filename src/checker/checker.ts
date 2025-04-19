@@ -7,8 +7,7 @@ import {
   type Symbol,
   TypeDictionary
 } from '../ast.ts';
-import { Set } from 'immutable';
-import { List, Map, Seq } from 'immutable';
+import { List, Map, Seq, Set } from 'immutable';
 import { collectDeclarations, Qualifier } from './collector.ts';
 import type { CoreTypes } from '../lib.ts';
 import {
@@ -57,7 +56,9 @@ import {
   CheckedOrEx,
   CheckedOverloadFunctionType,
   CheckedParameter,
-  CheckedParameterizedType, CheckedProtocolDeclare, CheckedProtocolType,
+  CheckedParameterizedType,
+  CheckedProtocolDeclare,
+  CheckedProtocolType,
   CheckedReassignmentStatement,
   CheckedReturnEx,
   type CheckedSetLiteralEx,
@@ -105,12 +106,14 @@ import {
   ParserNoOpEx,
   ParserNotEx,
   ParserOrEx,
-  type ParserParameter, ParserProtocolDeclare,
+  type ParserParameter,
+  ParserProtocolDeclare,
   ParserReassignmentStatement,
   ParserReturnEx,
   ParserSetLiteralEx,
   type ParserStatement,
   ParserStaticAccessEx,
+  ParserStaticReferenceEx,
   ParserStringLiteralEx,
   ParserStruct,
   ParserTuple,
@@ -192,21 +195,25 @@ export class Checker {
           variants,
         });
       } else if (dec instanceof ParserProtocolDeclare) {
+        const protoScope = fileScope.childSelf(dec.symbol, dec.typeParams);
+
         return new CheckedProtocolDeclare({
           pos: dec.pos,
           name: dec.name,
           symbol: dec.symbol,
-          typeParams: dec.typeParams.map(it => fileScope.qualifier.checkTypeParamType(dec.symbol, it)),
-          methods: dec.methods.map(it => this.#checkFuncDeclare(it, fileScope, file.module)),
+          typeParams: dec.typeParams.map(it => protoScope.qualifier.checkTypeParamType(dec.symbol, it)),
+          methods: dec.methods.map(it => this.#checkFuncDeclare(it, protoScope, file.module)),
         });
       } else {
+        const implScope = fileScope.childSelf(dec.symbol, dec.typeParams);
+
         return new CheckedImplDeclare({
           pos: dec.pos,
           symbol: dec.symbol,
-          base: fileScope.qualifier.includeTypeParams(dec.symbol, dec.typeParams).checkConcreteTypeExpression(dec.base),
-          protocol: dec.protocol === undefined ? undefined : fileScope.qualifier.includeTypeParams(dec.symbol, dec.typeParams).checkConcreteTypeExpression(dec.protocol),
-          typeParams: dec.typeParams.map(it => fileScope.qualifier.checkTypeParamType(dec.symbol, it)),
-          methods: dec.methods.map(it => this.#checkFuncDeclare(it, fileScope, file.module)),
+          base: implScope.qualifier.includeTypeParams(dec.symbol, dec.typeParams).checkConcreteTypeExpression(dec.base),
+          protocol: dec.protocol === undefined ? undefined : implScope.qualifier.includeTypeParams(dec.symbol, dec.typeParams).checkConcreteTypeExpression(dec.protocol),
+          typeParams: dec.typeParams.map(it => implScope.qualifier.checkTypeParamType(dec.symbol, it)),
+          methods: dec.methods.map(it => this.#checkFuncDeclare(it, implScope, file.module)),
         })
       }
     });
@@ -322,6 +329,8 @@ export class Checker {
       return this.checkAccess(ex, scope);
     } else if (ex instanceof ParserStaticAccessEx) {
       return this.checkStaticAccess(ex, scope);
+    } else if (ex instanceof ParserStaticReferenceEx) {
+      return this.checkStaticReference(ex, scope);
     } else if (ex instanceof ParserConstructEx) {
       return this.checkConstruct(ex, scope, expected);
     } else if (ex instanceof ParserCallEx) {
@@ -460,7 +469,18 @@ export class Checker {
         prev = variant;
         prevName = variant.name;
       } else if (prev instanceof CheckedStructType) {
-        // TODO: actual method syntax, not this work around
+        const childName = prev.name.child(next.name);
+
+        const child = this.#typeDict.lookupSymbol(childName) ?? next.pos.fail(`No such import found ${childName}`);
+        path.push(new CheckedIdentifierEx({
+          pos: next.pos,
+          name: next.name,
+          type: child.type,
+          phase: 'const',
+        }));
+        prev = child.type;
+        prevName = childName;
+      } else if (prev instanceof CheckedProtocolType) {
         const childName = prev.name.child(next.name);
 
         const child = this.#typeDict.lookupSymbol(childName) ?? next.pos.fail(`No such import found ${childName}`);
@@ -494,6 +514,18 @@ export class Checker {
       symbol: prevName,
       module,
     });
+  }
+
+  checkStaticReference(ex: ParserStaticReferenceEx, scope: Scope): CheckedStaticReferenceEx {
+    const access = this.#typeDict.lookupSymbol(ex.symbol) ?? ex.pos.fail('Unable to find a static symbol.');
+
+    return new CheckedStaticReferenceEx({
+      pos: ex.pos,
+      symbol: ex.symbol,
+      module: access.module,
+      type: access.type,
+      phase: 'const',
+    })
   }
 
   checkConstruct(ex: ParserConstructEx, scope: Scope, expected: CheckedTypeExpression | undefined): CheckedConstructEx {
@@ -1766,6 +1798,10 @@ export class Scope {
 
   static init(declared: Map<string, PhaseType>, protocols: Set<Symbol>, qualifier: Qualifier, module: Symbol, resultType: CheckedTypeExpression): Scope {
     return new Scope(undefined, declared, qualifier, new FunctionScope(module, module, resultType, 'fun'), protocols);
+  }
+
+  childSelf(selfType: Symbol, typeParams: List<ParserTypeParameterType>): Scope {
+    return new Scope(this, undefined, this.qualifier.includeSelf(selfType).includeTypeParams(selfType, typeParams), this.functionScope, this.#protocols);
   }
 
   child(): Scope {

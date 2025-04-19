@@ -1,5 +1,5 @@
 import { Map, List, Set, Record,  } from 'immutable';
-import { Position, type ExpressionPhase, type FunctionPhase, type Access, Symbol, PackageName, Extern,  } from '../ast.ts';
+import { Position, type ExpressionPhase, type FunctionPhase, Symbol, type Access, PackageName, Extern,  } from '../ast.ts';
 
 export type ParserTypeExpression
   = ParserConcreteType
@@ -23,6 +23,7 @@ export type ParserExpression
   | ParserAndEx
   | ParserAccessEx
   | ParserStaticAccessEx
+  | ParserStaticReferenceEx
   | ParserConstructEx
   | ParserLambdaEx
   | ParserBlockEx
@@ -346,6 +347,19 @@ export class ParserStaticAccessEx extends Record<MutableParserStaticAccessEx>({
   path: undefined as unknown as List<ParserIdentifierEx>,
 }) {
   constructor(props: MutableParserStaticAccessEx) {
+    super(props);
+  }
+}
+
+interface MutableParserStaticReferenceEx {
+  pos: Position;
+  symbol: Symbol;
+}
+export class ParserStaticReferenceEx extends Record<MutableParserStaticReferenceEx>({
+  pos: undefined as unknown as Position,
+  symbol: undefined as unknown as Symbol,
+}) {
+  constructor(props: MutableParserStaticReferenceEx) {
     super(props);
   }
 }

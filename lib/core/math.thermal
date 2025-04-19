@@ -1,13 +1,64 @@
 import self/string::String;
 
 
+public protocol AddOp<Out> {
+  public fun addOp(self, other: Self): Out;
+}
+
+public protocol SubOp<Out> {
+  public fun subtractOp(self, other: Self): Out;
+}
+
+public protocol MulOp<Out> {
+  public fun multiplyOp(self, other: Self): Out;
+}
+
+public protocol DivOp<Out> {
+  public fun divideOp(self, other: Self): Out;
+}
+
+// Int
 public data Int {}
-public data Float {}
 
 implement Int {
   external public fun toString(self): String;
 }
 
+implement AddOp<Int> for Int {
+  external public fun addOp(self, other: Self): Int;
+}
+
+implement SubOp<Int> for Int {
+  external public fun subtractOp(self, other: Self): Int;
+}
+
+implement MulOp<Int> for Int {
+  external public fun multiplyOp(self, other: Self): Int;
+}
+
+implement DivOp<Int> for Int {
+  external public fun divideOp(self, other: Self): Int;
+}
+
+// Float
+public data Float {}
+
 implement Float {
   external public fun toString(self): String;
+}
+
+implement AddOp<Float> for Float {
+  external public fun addOp(self, other: Self): Float;
+}
+
+implement SubOp<Float> for Float {
+  external public fun subtractOp(self, other: Self): Float;
+}
+
+implement MulOp<Float> for Float {
+  external public fun multiplyOp(self, other: Self): Float;
+}
+
+implement DivOp<Float> for Float {
+  external public fun divideOp(self, other: Self): Float;
 }

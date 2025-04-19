@@ -301,6 +301,11 @@ function parser(): Generator {
     path: list(identifierEx),
   }, expression);
 
+  gen.add('StaticReferenceEx', {
+    pos,
+    symbol,
+  }, expression);
+
   const constructEntry = gen.add('ConstructEntry', {
     pos,
     name: native('string'),

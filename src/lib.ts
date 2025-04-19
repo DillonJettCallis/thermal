@@ -31,19 +31,27 @@ import { collectSymbols } from './checker/collector.ts';
 import { verifyImports } from './checker/verifier.ts';
 import { Checker } from './checker/checker.ts';
 import {
+  type ParserConcreteType,
   ParserConstantDeclare,
   ParserDataDeclare,
   type ParserDeclaration,
   ParserEnumDeclare, ParserFile,
   ParserFunctionDeclare,
-  ParserImplDeclare, ParserPackage
+  ParserImplDeclare, ParserNominalType, ParserPackage
 } from './parser/parserAst.ts';
 
 const coreVersion = new Version(0, 1, 0);
 const corePackageName = new PackageName('core', 'core', coreVersion);
-const coreSymbol = new Symbol(corePackageName);
+export const coreSymbol = new Symbol(corePackageName);
 
 const pos = new Position('<native>', 0, 0);
+
+export const specialOps = Map<Symbol, Map<string, string>>()
+  .set(coreSymbol.child('math').child('AddOp'), Map<string, string>().set('addOp', '+'))
+  .set(coreSymbol.child('math').child('SubOp'), Map<string, string>().set('subtractOp', '-'))
+  .set(coreSymbol.child('math').child('MulOp'), Map<string, string>().set('multiplyOp', '*'))
+  .set(coreSymbol.child('math').child('DivOp'), Map<string, string>().set('divideOp', '/'))
+;
 
 export function domLib(workingDir: string): ParserPackage {
   // TODO: dom lib needs to be prebuild, not checked per use case
@@ -118,16 +126,19 @@ export function coreLib(workingDir: string): { package: ParserPackage, coreTypes
   preamble.set('Array', coreSymbol.child('array').child('Array'));
   preamble.set('List', coreSymbol.child('vector').child('Vec'));
   preamble.set('Map', coreSymbol.child('map').child('Map'));
+  preamble.set('AddOp', coreSymbol.child('math').child('AddOp'));
+  preamble.set('SubOp', coreSymbol.child('math').child('SubOp'));
+  preamble.set('MulOp', coreSymbol.child('math').child('MulOp'));
+  preamble.set('DivOp', coreSymbol.child('math').child('DivOp'));
 
   const externals = Map<Symbol, Extern>().asMutable();
 
-  // TODO: this is a huge mess. Make core libs use explicit imports and not rely on the preamble, that will help solve the preamble bootstrap problem
   // TODO: core library needs to be pre-checked so we don't have to recheck when we're just trying to use it.
   const files = List.of('array', 'map', 'set', 'vector', 'bool', 'base', 'math', 'string')
     .map(key => {
       const parsed = Parser.parseFile(`${workingDir}/lib/core/${key}.thermal`, coreSymbol.child(key));
 
-      handleNativeImpls(parsed.declarations, `../lib/core/${key}.ts`, externals);
+      handleNativeImpls(parsed.declarations, `../lib/core/${key}.ts`, key === 'math', externals);
 
       return parsed;
     });
@@ -144,7 +155,19 @@ export function coreLib(workingDir: string): { package: ParserPackage, coreTypes
   };
 }
 
-function handleNativeImpls(content: List<ParserDeclaration>, srcFile: string, externs: Map<Symbol, Extern>): void {
+function mapNativeName(base: string, impl?: ParserConcreteType, suffix?: boolean): string {
+  if (base === 'new') {
+    base = '_new';
+  }
+
+  if (impl !== undefined && suffix === true) {
+    return base + '_' + (impl instanceof ParserNominalType ? impl.name.last()!.name : impl.base.name.last()!.name);
+  } else {
+    return base;
+  }
+}
+
+function handleNativeImpls(content: List<ParserDeclaration>, srcFile: string, suffix: boolean, externs: Map<Symbol, Extern>): void {
   content.forEach(dec => {
     if (dec instanceof ParserImplDeclare) {
       dec.methods.forEach(method => {
@@ -152,7 +175,7 @@ function handleNativeImpls(content: List<ParserDeclaration>, srcFile: string, ex
           externs.set(method.symbol, new Extern({
             symbol: method.symbol,
             srcFile,
-            import: method.name === 'new' ? '_new' : method.name,
+            import: mapNativeName(method.name, dec.base, suffix),
           }));
         }
       });
@@ -162,7 +185,7 @@ function handleNativeImpls(content: List<ParserDeclaration>, srcFile: string, ex
       externs.set(dec.symbol, new Extern({
         symbol: dec.symbol,
         srcFile,
-        import: dec.name === 'new' ? '_new' : dec.name,
+        import: mapNativeName(dec.name),
       }));
     }
 
@@ -170,7 +193,7 @@ function handleNativeImpls(content: List<ParserDeclaration>, srcFile: string, ex
       externs.set(dec.symbol, new Extern({
         symbol: dec.symbol,
         srcFile,
-        import: dec.name === 'new' ? '_new' : dec.name,
+        import: mapNativeName(dec.name),
       }));
     }
 
@@ -178,7 +201,7 @@ function handleNativeImpls(content: List<ParserDeclaration>, srcFile: string, ex
       externs.set(dec.symbol, new Extern({
         symbol: dec.symbol,
         srcFile,
-        import: dec.name === 'new' ? '_new' : dec.name,
+        import: mapNativeName(dec.name),
       }));
     }
 
@@ -186,14 +209,14 @@ function handleNativeImpls(content: List<ParserDeclaration>, srcFile: string, ex
       externs.set(dec.symbol, new Extern({
         symbol: dec.symbol,
         srcFile,
-        import: dec.name === 'new' ? '_new' : dec.name,
+        import: mapNativeName(dec.name),
       }));
 
       for (const [name, layout] of dec.variants) {
         externs.set(layout.symbol, new Extern({
           symbol: layout.symbol,
           srcFile,
-          import: name === 'new' ? '_new' : name,
+          import: mapNativeName(name),
         }));
       }
     }
@@ -251,30 +274,6 @@ function boolLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: Core
       name: boolSymbol,
     }),
   }));
-
-  declarations.set(boolSymbol.child('&&'), new CheckedAccessRecord({
-    access: 'public',
-    name: boolSymbol.child('&&'),
-    module: boolSymbol,
-    type: unphasedFunction([coreTypes.boolean, coreTypes.boolean], coreTypes.boolean),
-  }));
-  preamble.set('&&', boolSymbol.child('&&'));
-
-  declarations.set(boolSymbol.child('||'), new CheckedAccessRecord({
-    access: 'public',
-    name: boolSymbol.child('||'),
-    module: boolSymbol,
-    type: unphasedFunction([coreTypes.boolean, coreTypes.boolean], coreTypes.boolean),
-  }));
-  preamble.set('||', boolSymbol.child('||'));
-
-  declarations.set(boolSymbol.child('!'), new CheckedAccessRecord({
-    access: 'public',
-    name: boolSymbol.child('!'),
-    module: boolSymbol,
-    type: unphasedFunction([coreTypes.boolean], coreTypes.boolean),
-  }));
-  preamble.set('!', boolSymbol.child('!'));
 
   declarations.set(boolSymbol.child('=='), new CheckedAccessRecord({
     access: 'public',

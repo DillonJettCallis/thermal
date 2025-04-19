@@ -16,7 +16,8 @@ import {
   ParserAtom,
   ParserBlockEx,
   ParserBooleanLiteralEx,
-  ParserCallEx, type ParserConcreteType,
+  ParserCallEx,
+  type ParserConcreteType,
   ParserConstantDeclare,
   ParserConstructEntry,
   ParserConstructEx,
@@ -50,12 +51,14 @@ import {
   ParserNotEx,
   ParserOrEx,
   ParserParameter,
-  ParserParameterizedType, ParserProtocolDeclare,
+  ParserParameterizedType,
+  ParserProtocolDeclare,
   ParserReassignmentStatement,
   ParserReturnEx,
   ParserSetLiteralEx,
   type ParserStatement,
   ParserStaticAccessEx,
+  ParserStaticReferenceEx,
   ParserStringLiteralEx,
   ParserStruct,
   ParserStructField,
@@ -63,6 +66,17 @@ import {
   type ParserTypeExpression,
   ParserTypeParameterType
 } from './parserAst.ts';
+import { coreSymbol } from '../lib.ts';
+
+const mathSymbol = coreSymbol.child('math');
+
+const opMap = Map<string, Symbol>([
+  ['+', mathSymbol.child('AddOp').child('addOp')],
+  ['-', mathSymbol.child('SubOp').child('subtractOp')],
+
+  ['*', mathSymbol.child('MulOp').child('multiplyOp')],
+  ['/', mathSymbol.child('DivOp').child('divideOp')],
+]);
 
 export class Parser {
 
@@ -744,18 +758,64 @@ export class Parser {
           return handler(next.pos, left, right);
         }
 
-        return new ParserCallEx({
-          pos: next.pos,
-          func: new ParserIdentifierEx({
+        const opMapper = opMap.get(next.value);
+
+        if (opMapper === undefined) {
+          return new ParserCallEx({
             pos: next.pos,
-            name: next.value,
-          }),
-          typeArgs: List(),
-          args: List.of(
-            left,
-            right,
-          ),
-        });
+            func: new ParserIdentifierEx({
+              pos: next.pos,
+              name: next.value,
+            }),
+            typeArgs: List(),
+            args: List.of(
+              left,
+              right,
+            ),
+          });
+        } else {
+          return new ParserCallEx({
+            pos: next.pos,
+            func: new ParserAccessEx({
+              pos: next.pos,
+              base: left,
+              field: new ParserIdentifierEx({
+                pos: next.pos,
+                name: next.value,
+              })
+            }),
+            typeArgs: List(),
+            args: List.of(
+              right,
+            )
+          });
+
+          // return new ParserCallEx({
+          //   pos: next.pos,
+          //   func: new ParserStaticReferenceEx({
+          //     pos: next.pos,
+          //     symbol: opMapper
+          //   }),
+          //   typeArgs: List(),
+          //   args: List.of(
+          //     left,
+          //     right,
+          //   )
+          // });
+        }
+
+        // return new ParserCallEx({
+        //   pos: next.pos,
+        //   func: new ParserIdentifierEx({
+        //     pos: next.pos,
+        //     name: next.value,
+        //   }),
+        //   typeArgs: List(),
+        //   args: List.of(
+        //     left,
+        //     right,
+        //   ),
+        // });
       } else {
         return left;
       }

@@ -36,6 +36,7 @@ import {
   type CheckedTypeExpression,
   CheckedTypeParameterType
 } from './checkerAst.ts';
+import { specialOps } from '../lib.ts';
 
 /**
  * Given this file of parsed things, return a map of all symbols with their access level and type
@@ -125,9 +126,11 @@ export function collectSymbols(packageName: PackageName, files: List<ParserFile>
           }));
         });
       } else if (dec instanceof ParserProtocolDeclare) {
+        const selfQualifier = qualifier.includeTypeParams(dec.symbol, dec.typeParams).includeSelf(dec.symbol);
+
         const methods = dec.methods.map(parserFunc => {
           const name = dec.symbol.child(parserFunc.name);
-          const type = qualifier.checkFunctionDeclare(parserFunc);
+          const type = selfQualifier.checkFunctionDeclare(parserFunc);
 
           const record = new CheckedAccessRecord({
             access: parserFunc.access,
@@ -177,6 +180,8 @@ export function collectSymbols(packageName: PackageName, files: List<ParserFile>
           dec.pos.fail(`Impl can only be declared within the same file as it's base type!`);
         }
 
+        const selfQualifier = qualifier.includeSelf(base);
+
         for (const [key, parserFunc] of dec.methods) {
           const name = dec.symbol.child(parserFunc.name);
 
@@ -184,7 +189,7 @@ export function collectSymbols(packageName: PackageName, files: List<ParserFile>
             access: parserFunc.access,
             name,
             module: file.module,
-            type: qualifier.checkFunctionDeclare(parserFunc),
+            type: selfQualifier.checkFunctionDeclare(parserFunc),
           });
 
           parserFunc.typeParams.forEach(param => {
@@ -201,7 +206,18 @@ export function collectSymbols(packageName: PackageName, files: List<ParserFile>
           });
 
           if (dec.protocol !== undefined) {
-            const proto = qualifier.checkNominalType(dec.protocol instanceof ParserNominalType ? dec.protocol : dec.protocol.base).name;
+            const proto = selfQualifier.checkNominalType(dec.protocol instanceof ParserNominalType ? dec.protocol : dec.protocol.base).name;
+
+            const maybeSpecial = specialOps.get(proto);
+
+            if (maybeSpecial !== undefined) {
+              // put a duplicate version of this method with it's symbolic name
+              const symbolicName = maybeSpecial.get(key);
+              if (symbolicName !== undefined) {
+                // special symbolic double-name
+                pack.protocolImpl(dec.symbol, base, proto, symbolicName, record);
+              }
+            }
 
             // protocol impls go here
             pack.protocolImpl(dec.symbol, base, proto, key, record);
@@ -253,12 +269,16 @@ export class Qualifier {
     this.#typeParams = typeParams;
   }
 
+  includeSelf(selfType: Symbol): Qualifier {
+    return new Qualifier(this.#dict.set('Self', selfType), this.#typeParams);
+  }
+
   includeTypeParams(parent: Symbol, typeParams: List<ParserTypeParameterType>): Qualifier {
     if (typeParams.isEmpty()) {
       return this;
     }
 
-    return new Qualifier(this.#dict, typeParams.reduce((dict, next) => dict.set(next.name, parent.child(next.name)), Map()));
+    return new Qualifier(this.#dict, typeParams.reduce((dict, next) => dict.set(next.name, parent.child(next.name)), this.#typeParams));
   }
 
   qualifyData(module: Symbol, dec: ParserDataDeclare): CheckedDataLayoutType {
