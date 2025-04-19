@@ -1150,13 +1150,16 @@ export class Parser {
               name,
               expression: new ParserCallEx({
                 pos: possibleAssignment.pos,
-                func: new ParserIdentifierEx({
+                func: new ParserAccessEx({
                   pos: possibleAssignment.pos,
-                  name: possibleAssignment.value[0]!,
+                  base: expression,
+                  field: new ParserIdentifierEx({
+                    pos: possibleAssignment.pos,
+                    name: possibleAssignment.value[0]!,
+                  })
                 }),
                 typeArgs: List(),
                 args: List.of(
-                  expression,
                   content,
                 ),
               }),

@@ -31,7 +31,8 @@ import {
   CheckedNominalType,
   CheckedNoOpEx,
   CheckedNotEx,
-  CheckedOrEx, CheckedProtocolDeclare,
+  CheckedOrEx,
+  CheckedProtocolDeclare,
   CheckedReassignmentStatement,
   CheckedReturnEx,
   CheckedSetLiteralEx,
@@ -63,7 +64,8 @@ import {
   JsExport,
   type JsExpression,
   JsExpressionStatement,
-  JsFile, JsFlow,
+  JsFile,
+  JsFlow,
   JsFlowGet,
   JsFunctionDeclare,
   JsFunctionStatement,
@@ -84,9 +86,92 @@ import {
   JsUndefined
 } from './jsIr.ts';
 import { List, Map, Seq } from 'immutable';
-import { type ExpressionPhase, type FunctionPhase, Position, type Symbol } from '../ast.ts';
-import { Extern } from '../ast.ts';
+import { type ExpressionPhase, Extern, type FunctionPhase, Position, type Symbol } from '../ast.ts';
 import { substringAfterLast } from '../utils.ts';
+import { coreSymbol } from '../lib.ts';
+
+const nativeOperators = Map<Symbol, (left: JsExpression, right: JsExpression) => JsExpression>()
+  .set(coreSymbol.child('math').child('Int').child('AddOp').child('addOp'), (left, right) => {
+    return new JsBinaryOp({
+      left: new JsBinaryOp({
+        left,
+        op: '+',
+        right,
+      }),
+      op: '|',
+      right: new JsNumberLiteralEx({
+        value: 0,
+      })
+    })
+  })
+  .set(coreSymbol.child('math').child('Float').child('AddOp').child('addOp'), (left, right) => {
+    return new JsBinaryOp({
+      left,
+      op: '+',
+      right
+    });
+  })
+  .set(coreSymbol.child('math').child('Int').child('SubOp').child('subtractOp'), (left, right) => {
+    return new JsBinaryOp({
+      left: new JsBinaryOp({
+        left,
+        op: '-',
+        right,
+      }),
+      op: '|',
+      right: new JsNumberLiteralEx({
+        value: 0,
+      })
+    })
+  })
+  .set(coreSymbol.child('math').child('Float').child('SubOp').child('subtractOp'), (left, right) => {
+    return new JsBinaryOp({
+      left,
+      op: '-',
+      right
+    });
+  })
+  .set(coreSymbol.child('math').child('Int').child('MulOp').child('multiplyOp'), (left, right) => {
+    return new JsBinaryOp({
+      left: new JsBinaryOp({
+        left,
+        op: '*',
+        right,
+      }),
+      op: '|',
+      right: new JsNumberLiteralEx({
+        value: 0,
+      })
+    })
+  })
+  .set(coreSymbol.child('math').child('Float').child('MulOp').child('multiplyOp'), (left, right) => {
+    return new JsBinaryOp({
+      left,
+      op: '*',
+      right
+    });
+  })
+  .set(coreSymbol.child('math').child('Int').child('DivOp').child('divideOp'), (left, right) => {
+    return new JsBinaryOp({
+      left: new JsBinaryOp({
+        left,
+        op: '/',
+        right,
+      }),
+      op: '|',
+      right: new JsNumberLiteralEx({
+        value: 0,
+      })
+    })
+  })
+  .set(coreSymbol.child('math').child('Float').child('DivOp').child('divideOp'), (left, right) => {
+    return new JsBinaryOp({
+      left,
+      op: '/',
+      right
+    });
+  })
+  ;
 
 export class JsCompiler {
 
@@ -506,8 +591,16 @@ export class JsCompiler {
       return this.#handleClosure(ex);
     } else if (ex instanceof CheckedCallEx) {
       // handle operators here
-      // todo: find a better way to extract operators than this
-      if (ex.func instanceof CheckedIdentifierEx && ['+', '-', '*', '/', '==', '!=', '<', '<=', '>', '>='].includes(ex.func.name)) {
+      if (ex.func instanceof CheckedStaticReferenceEx && nativeOperators.has(ex.func.symbol)) {
+        const handler = nativeOperators.get(ex.func.symbol)!;
+
+        return this.#handleAction(phase, 'fun', List.of(undefined, undefined), List.of(ex.args.get(0)!, ex.args.get(1)!), args => {
+          return handler(args.first()!, args.last()!);
+        });
+      }
+
+      // todo: implement these as operator protocols
+      if (ex.func instanceof CheckedIdentifierEx && ['-', '==', '!=', '<', '<=', '>', '>='].includes(ex.func.name)) {
         if (ex.func.name === '-' && ex.args.size === 1) {
           return this.#handleUnaryOp('-', phase, ex.args.first()!);
         } else {
