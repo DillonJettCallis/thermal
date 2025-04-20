@@ -41,6 +41,9 @@ export const specialOps = Map<Symbol, Map<string, string>>()
   .set(coreSymbol.child('math').child('MulOp'), Map<string, string>().set('multiplyOp', '*'))
   .set(coreSymbol.child('math').child('DivOp'), Map<string, string>().set('divideOp', '/'))
   .set(coreSymbol.child('math').child('NegateOp'), Map<string, string>().set('negateOp', '--')) // special name to not conflict with subtraction
+  .set(coreSymbol.child('base').child('DivOp'), Map<string, string>().set('divideOp', '/'))
+  .set(coreSymbol.child('base').child('Equal'), Map<string, string>().set('equal', '==').set('notEqual', '!='))
+  .set(coreSymbol.child('base').child('Ordered'), Map<string, string>().set('compare', '<=>').set('greaterThan', '>').set('greaterThanOrEqualTo', '>=').set('lessThan', '<').set('lessThanOrEqualTo', '<='))
 ;
 
 export function domLib(workingDir: string): ParserPackage {
@@ -121,6 +124,9 @@ export function coreLib(workingDir: string): { package: ParserPackage, coreTypes
   preamble.set('MulOp', coreSymbol.child('math').child('MulOp'));
   preamble.set('DivOp', coreSymbol.child('math').child('DivOp'));
   preamble.set('NegateOp', coreSymbol.child('math').child('NegateOp'));
+  preamble.set('Equal', coreSymbol.child('base').child('Equal'));
+  preamble.set('Ordering', coreSymbol.child('base').child('Ordering'));
+  preamble.set('Ordered', coreSymbol.child('base').child('Ordered'));
 
   const externals = Map<Symbol, Extern>().asMutable();
 

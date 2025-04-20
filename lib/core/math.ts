@@ -24,6 +24,23 @@ export function negateOp_Int(self: number): number {
   return -self;
 }
 
+export function equal_Int(self: number, other: number): boolean {
+  return self === other;
+}
+
+export function notEqual_Int(self: number, other: number): boolean {
+  return self !== other;
+}
+
+export function compareInt(left: number, right: number): number {
+  if (left > right) {
+    return 1;
+  } else if (left < right) {
+    return -1;
+  } else {
+    return 0;
+  }
+}
 
 // Float
 export function toString_Float(self: number): string {
@@ -48,4 +65,22 @@ export function divideOp_Float(self: number, other: number): number {
 
 export function negateOp_Float(self: number): number {
   return -self;
+}
+
+export function equal_Float(self: number, other: number): boolean {
+  return self === other;
+}
+
+export function notEqual_Float(self: number, other: number): boolean {
+  return self !== other;
+}
+
+export function compareFloat(left: number, right: number): number {
+  if (left > right) {
+    return 1;
+  } else if (left < right) {
+    return -1;
+  } else {
+    return 0;
+  }
 }

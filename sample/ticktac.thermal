@@ -18,6 +18,16 @@ implement Mark {
   }
 }
 
+implement Equal for Mark {
+  public fun equal(self, other: Self): Boolean {
+    // TODO: operator precedence is bad here, we should not need this many clarifying parens (none actually)
+    return { { self is Mark::X } && { other is Mark::X } } || { { self is Mark::O } && { other is Mark::O } } || { { self is Mark::Empty } && { other is Mark::Empty}  };
+  }
+  public fun notEqual(self, other: Self): Boolean {
+    return !self.equal(other);
+  }
+}
+
 data Board {
   cells: List<Mark>,
 }
@@ -33,7 +43,7 @@ const lines: List<List<Int>> = rows.concat([
   [1, 4, 7],
   [2, 5, 8],
 
-  [1, 4, 8],
+  [0, 4, 8],
   [2, 4, 6],
 ]);
 

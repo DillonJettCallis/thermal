@@ -8,3 +8,8 @@ implement String {
   external public fun concat(self, other: String): String;
 }
 
+implement Equal for String {
+  external public fun equal(self, other: Self): Boolean;
+  external public fun notEqual(self, other: Self): Boolean;
+}
+

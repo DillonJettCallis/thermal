@@ -1,0 +1,88 @@
+import dom/dom::{ Html, head, tag, text, content, Element, style, onClick };
+
+data OpPair {
+  action: fun { Int, Int -> String } ,
+  name: String,
+}
+
+fun booleanToString(bool: Boolean): String {
+  if (bool) "true" else "false"
+}
+
+fun orderingToString(ord: Ordering): String {
+  if (ord is Ordering::EqualTo) {
+    "equals"
+  } else if (ord is Ordering::GreaterThan) {
+    "greater than"
+  } else {
+    "less than"
+  }
+}
+
+def main(): Html {
+  // testing large vectors while we're at it
+  const nums = [
+     1,  2,  3,  4,  5,  6,  7,  8,  9, 10,
+    11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+    21, 22, 23, 24, 25, 26, 27, 28, 29, 30,
+    31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
+    41, 42, 43, 44, 45, 46, 47, 48, 49, 50,
+  ];
+
+  const ops = [
+    OpPair {
+      name: '==',
+      action: fun { l, r => booleanToString(l == r) },
+    },
+    OpPair {
+      name: '!=',
+      action: fun { l, r => booleanToString(l != r) },
+    },
+    OpPair {
+      name: '<=>',
+      action: fun { l, r => orderingToString(l <=> r) },
+    },
+    OpPair {
+      name: '>',
+      action: fun { l, r => booleanToString(l > r) },
+    },
+    OpPair {
+      name: '>=',
+      action: fun { l, r => booleanToString(l >= r) },
+    },
+    OpPair {
+      name: '<',
+      action: fun { l, r => booleanToString(l < r) },
+    },
+    OpPair {
+      name: '<=',
+      action: fun { l, r => booleanToString(l <= r) },
+    },
+  ]
+
+  val pairs = nums.flatMap(fun { left =>
+    nums.flatMap(fun { right =>
+      ops.map(fun { op =>
+        row(left, right, op.name, op.action(left, right))
+      })
+    })
+  });
+
+  var title = 'Compare';
+  Html {
+    head: head(title),
+    body: tag('body', [content([
+      tag('ul', [content(pairs)])
+    ])]),
+  }
+}
+
+fun row(left: Int, right: Int, op: String, result: String): Element {
+  tag('li', [content([
+    text(left.toString()),
+    text(' '.concat(op).concat(' ')),
+    text(right.toString()),
+    text(' => '),
+    text(result),
+  ])])
+}

@@ -1,6 +1,7 @@
 import {
   JsAccess,
   JsArray,
+  JsArrayAccess,
   JsAssign,
   JsAtomLayout,
   JsBinaryOp,
@@ -321,6 +322,11 @@ class Output {
       this.#writeExpression(ex.base)
       this.#write('.');
       this.#write(ex.field);
+    } else if (ex instanceof JsArrayAccess) {
+      this.#writeExpression(ex.base);
+      this.#write('[');
+      this.#writeExpression(ex.field);
+      this.#write(']');
     } else if (ex instanceof JsCall) {
       this.#writeExpression(ex.func);
       this.#write('(');

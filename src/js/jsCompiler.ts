@@ -28,7 +28,6 @@ import {
   CheckedMapLiteralEntry,
   CheckedMapLiteralEx,
   CheckedNominalImportExpression,
-  CheckedNominalType,
   CheckedNoOpEx,
   CheckedNotEx,
   CheckedOrEx,
@@ -88,107 +87,12 @@ import {
 import { List, Map, Seq } from 'immutable';
 import { type ExpressionPhase, Extern, type FunctionPhase, Position, type Symbol } from '../ast.ts';
 import { substringAfterLast } from '../utils.ts';
-import { coreSymbol } from '../lib.ts';
-
-const nativeOperators = Map<Symbol, (left: JsExpression, right: JsExpression) => JsExpression>()
-  .set(coreSymbol.child('math').child('Int').child('AddOp').child('addOp'), (left, right) => {
-    return new JsBinaryOp({
-      left: new JsBinaryOp({
-        left,
-        op: '+',
-        right,
-      }),
-      op: '|',
-      right: new JsNumberLiteralEx({
-        value: 0,
-      })
-    })
-  })
-  .set(coreSymbol.child('math').child('Float').child('AddOp').child('addOp'), (left, right) => {
-    return new JsBinaryOp({
-      left,
-      op: '+',
-      right
-    });
-  })
-  .set(coreSymbol.child('math').child('Int').child('SubOp').child('subtractOp'), (left, right) => {
-    return new JsBinaryOp({
-      left: new JsBinaryOp({
-        left,
-        op: '-',
-        right,
-      }),
-      op: '|',
-      right: new JsNumberLiteralEx({
-        value: 0,
-      })
-    })
-  })
-  .set(coreSymbol.child('math').child('Float').child('SubOp').child('subtractOp'), (left, right) => {
-    return new JsBinaryOp({
-      left,
-      op: '-',
-      right
-    });
-  })
-  .set(coreSymbol.child('math').child('Int').child('MulOp').child('multiplyOp'), (left, right) => {
-    return new JsBinaryOp({
-      left: new JsBinaryOp({
-        left,
-        op: '*',
-        right,
-      }),
-      op: '|',
-      right: new JsNumberLiteralEx({
-        value: 0,
-      })
-    })
-  })
-  .set(coreSymbol.child('math').child('Float').child('MulOp').child('multiplyOp'), (left, right) => {
-    return new JsBinaryOp({
-      left,
-      op: '*',
-      right
-    });
-  })
-  .set(coreSymbol.child('math').child('Int').child('DivOp').child('divideOp'), (left, right) => {
-    return new JsBinaryOp({
-      left: new JsBinaryOp({
-        left,
-        op: '/',
-        right
-      }),
-      op: '|',
-      right: new JsNumberLiteralEx({
-        value: 0
-      })
-    });
-  })
-  .set(coreSymbol.child('math').child('Float').child('DivOp').child('divideOp'), (left, right) => {
-    return new JsBinaryOp({
-      left,
-      op: '/',
-      right
-    });
-  })
-  .set(coreSymbol.child('math').child('Int').child('NegateOp').child('negateOp'), (base) => {
-    return new JsUnaryOp({
-      base,
-      op: '-'
-    });
-  })
-  .set(coreSymbol.child('math').child('Float').child('NegateOp').child('negateOp'), (base) => {
-    return new JsUnaryOp({
-      base,
-      op: '-'
-    });
-  })
-;
+import { intrinsics } from './jsIntrinsics.ts';
 
 export class JsCompiler {
 
   readonly #externals: Map<Symbol, Extern>;
-  readonly #defaultImports = List.of('thermalClass', 'thermalClassMarker', 'is', 'equals', 'hashCode').map(take => {
+  readonly #defaultImports = List.of('thermalClass', 'thermalClassMarker', 'is', 'hashCode').map(take => {
     return new JsImport({
       from: '../runtime/reflect.ts',
       take,
@@ -204,11 +108,6 @@ export class JsCompiler {
       from: '../lib/core/map.ts',
       take: 'from',
       as: '_Map_from',
-    }),
-    new JsImport({
-      from: '../runtime/reflect.ts',
-      take: 'stringConcat',
-      as: undefined,
     }),
   )).concat(List.of('singleton', 'variable', 'projection', 'flow', 'def', 'main').map(take => {
     return new JsImport({
@@ -378,7 +277,7 @@ export class JsCompiler {
   }
 
   #importExternal(pos: Position, symbol: Symbol, isPrivate: boolean): Seq.Indexed<JsDeclaration> {
-    const name = symbol.serializedName();
+    const name = symbol.name;
     const ex = this.#externals.get(symbol);
 
     if (ex === undefined) {
@@ -427,7 +326,7 @@ export class JsCompiler {
           .flatMap(it => this.#seekStaticReferences(it));
       });
     } else if (ex instanceof CheckedIsEx) {
-      return this.#seekStaticReferences(ex.base);
+      return Seq.Indexed.of(ex.base, ex.check).flatMap(it => this.#seekStaticReferences(it));
     } else if (ex instanceof CheckedNotEx) {
       return this.#seekStaticReferences(ex.base);
     } else if (ex instanceof CheckedOrEx) {
@@ -540,18 +439,12 @@ export class JsCompiler {
     } else if (ex instanceof CheckedMapLiteralEx) {
       return this.#handleMapLiteral(new JsIdentifierEx({ name: '_Map_from' }), phase, ex.values);
     } else if (ex instanceof CheckedIsEx) {
-      if (ex.type instanceof CheckedNominalType) {
-        const typeEx = new CheckedIdentifierEx({ pos: ex.pos, name: ex.type.name.name, type: ex.type, phase: 'const' });
-
-        return this.#handleAction(phase, 'fun', List.of(undefined, undefined), List.of(ex.base, typeEx), args => {
-          return new JsCall({
-            func: new JsIdentifierEx({name: 'is'}),
-            args,
-          });
+      return this.#handleAction(phase, 'fun', List.of(undefined, undefined), List.of(ex.base, ex.check), args => {
+        return new JsCall({
+          func: new JsIdentifierEx({name: '_is'}),
+          args,
         });
-      } else {
-        return ex.pos.fail('Can only handle basic type checks right now');
-      }
+      });
     } else if (ex instanceof CheckedNotEx) {
       return this.#handleUnaryOp('!', phase, ex.base);
     } else if (ex instanceof CheckedOrEx) {
@@ -603,24 +496,13 @@ export class JsCompiler {
       return this.#handleClosure(ex);
     } else if (ex instanceof CheckedCallEx) {
       // handle operators here
-      if (ex.func instanceof CheckedStaticReferenceEx && nativeOperators.has(ex.func.symbol)) {
-        const handler = nativeOperators.get(ex.func.symbol)!;
+      if (ex.func instanceof CheckedStaticReferenceEx && intrinsics.has(ex.func.symbol)) {
+        const handler = intrinsics.get(ex.func.symbol)!;
+        const phases = ex.args.map(it => undefined);
 
-        // one last special case for negation which has only one argument
-        if (ex.func.symbol.name == 'negateOp') {
-          return this.#handleAction(phase, 'fun', List.of(undefined), List.of(ex.args.first()!), args => {
-            return handler(args.first()!, new JsUndefined({}));
-          });
-        }
-
-        return this.#handleAction(phase, 'fun', List.of(undefined, undefined), List.of(ex.args.get(0)!, ex.args.get(1)!), args => {
-          return handler(args.first()!, args.last()!);
+        return this.#handleAction(phase, 'fun', phases, ex.args, args => {
+          return handler(...args.toArray());
         });
-      }
-
-      // todo: implement these as operator protocols
-      if (ex.func instanceof CheckedIdentifierEx && ['==', '!=', '<', '<=', '>', '>='].includes(ex.func.name)) {
-        return this.#handleBinaryOp(ex.func.name, phase, ex.args.get(0)!, ex.args.get(1)!);
       }
 
       // todo: we're special casing this until we have methods that can handle it

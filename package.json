@@ -25,6 +25,7 @@
     "simple": "yarn node src/main.ts simple.thermal && yarn run esbuild dist/simple.js --bundle --outfile=build/simple.js",
     "ticktac": "yarn node src/main.ts ticktac.thermal && yarn run esbuild dist/ticktac.js --bundle --outfile=build/simple.js --minify",
     "proto": "yarn node src/main.ts proto.thermal && yarn run esbuild dist/proto.js --bundle --outfile=build/simple.js",
+    "compare": "yarn node src/main.ts compare.thermal && yarn run esbuild dist/compare.js --bundle --outfile=build/simple.js --minify",
     "codegen": "yarn node codegen/codegen.ts"
   }
 }

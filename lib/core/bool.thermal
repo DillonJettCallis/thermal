@@ -1,2 +1,7 @@
 
 public data Boolean {}
+
+implement Equal for Boolean {
+  external public fun equal(self, other: Self): Boolean;
+  external public fun notEqual(self, other: Self): Boolean;
+}

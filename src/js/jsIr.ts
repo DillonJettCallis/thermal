@@ -17,6 +17,7 @@ export type JsExpression
   | JsArray
   | JsConstruct
   | JsAccess
+  | JsArrayAccess
   | JsCall
   | JsBinaryOp
   | JsUnaryOp
@@ -244,6 +245,19 @@ export class JsAccess extends Record<MutableJsAccess>({
   field: undefined as unknown as string,
 }) {
   constructor(props: MutableJsAccess) {
+    super(props);
+  }
+}
+
+interface MutableJsArrayAccess {
+  base: JsExpression;
+  field: JsExpression;
+}
+export class JsArrayAccess extends Record<MutableJsArrayAccess>({
+  base: undefined as unknown as JsExpression,
+  field: undefined as unknown as JsExpression,
+}) {
+  constructor(props: MutableJsArrayAccess) {
     super(props);
   }
 }

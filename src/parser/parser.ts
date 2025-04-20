@@ -58,7 +58,6 @@ import {
   ParserSetLiteralEx,
   type ParserStatement,
   ParserStaticAccessEx,
-  ParserStaticReferenceEx,
   ParserStringLiteralEx,
   ParserStruct,
   ParserStructField,
@@ -66,17 +65,6 @@ import {
   type ParserTypeExpression,
   ParserTypeParameterType
 } from './parserAst.ts';
-import { coreSymbol } from '../lib.ts';
-
-const mathSymbol = coreSymbol.child('math');
-
-const opMap = Map<string, Symbol>([
-  ['+', mathSymbol.child('AddOp').child('addOp')],
-  ['-', mathSymbol.child('SubOp').child('subtractOp')],
-
-  ['*', mathSymbol.child('MulOp').child('multiplyOp')],
-  ['/', mathSymbol.child('DivOp').child('divideOp')],
-]);
 
 export class Parser {
 
@@ -721,7 +709,7 @@ export class Parser {
     const start = this.#parseIsExpression.bind(this);
     const prod = this.#parseBinaryExpSet(Set.of('*', '/'), start);
     const sum = this.#parseBinaryExpSet(Set.of('+', '-'), prod);
-    const compare = this.#parseBinaryExpSet(Set.of('>', '>=', '<', '<='), sum);
+    const compare = this.#parseBinaryExpSet(Set.of('>', '>=', '<', '<=', '<=>'), sum);
     const equal = this.#parseBinaryExpSet(Set.of('==', '!='), compare);
     const and = this.#parseBinaryExpSet(Set.of('&&'), equal, (pos, left, right) => {
       return new ParserAndEx({
@@ -758,64 +746,21 @@ export class Parser {
           return handler(next.pos, left, right);
         }
 
-        const opMapper = opMap.get(next.value);
-
-        if (opMapper === undefined) {
-          return new ParserCallEx({
+        return new ParserCallEx({
+          pos: next.pos,
+          func: new ParserAccessEx({
             pos: next.pos,
-            func: new ParserIdentifierEx({
+            base: left,
+            field: new ParserIdentifierEx({
               pos: next.pos,
               name: next.value,
-            }),
-            typeArgs: List(),
-            args: List.of(
-              left,
-              right,
-            ),
-          });
-        } else {
-          return new ParserCallEx({
-            pos: next.pos,
-            func: new ParserAccessEx({
-              pos: next.pos,
-              base: left,
-              field: new ParserIdentifierEx({
-                pos: next.pos,
-                name: next.value,
-              })
-            }),
-            typeArgs: List(),
-            args: List.of(
-              right,
-            )
-          });
-
-          // return new ParserCallEx({
-          //   pos: next.pos,
-          //   func: new ParserStaticReferenceEx({
-          //     pos: next.pos,
-          //     symbol: opMapper
-          //   }),
-          //   typeArgs: List(),
-          //   args: List.of(
-          //     left,
-          //     right,
-          //   )
-          // });
-        }
-
-        // return new ParserCallEx({
-        //   pos: next.pos,
-        //   func: new ParserIdentifierEx({
-        //     pos: next.pos,
-        //     name: next.value,
-        //   }),
-        //   typeArgs: List(),
-        //   args: List.of(
-        //     left,
-        //     right,
-        //   ),
-        // });
+            })
+          }),
+          typeArgs: List(),
+          args: List.of(
+            right,
+          )
+        });
       } else {
         return left;
       }
@@ -834,12 +779,13 @@ export class Parser {
     const next = this.#peek();
 
     if (next.value === 'is' || next.value === '!is') {
+      this.#skip();
 
       return new ParserIsEx({
         pos: next.pos,
         not: next.value === '!is',
         base,
-        check: this.#parseTypeExpression(),
+        check: this.#parseExpression(),
       });
     } else {
       return base;

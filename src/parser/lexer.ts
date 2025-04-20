@@ -40,7 +40,7 @@ const keywords = Set.of(
 
   // operators
   'is',
-  'isNot',
+  '!is',
 
   // namespacing
   'import',
@@ -165,28 +165,29 @@ export class Lexer {
   }
 
   #skipComment(): boolean {
-    const next = this.#content[this.#index]!;
-    const nextNext = this.#content[this.#index + 1]!;
+    // loop so that any comments directly following comments are skipped
+    while (true) {
+      const next = this.#content[this.#index]!;
+      const nextNext = this.#content[this.#index + 1]!;
 
-    if (next === '/' && nextNext === '/') {
-      // skip line comment
-      while (!this.#endOfFile() && this.#peek() !== '\n') {
+      if (next === '/' && nextNext === '/') {
+        // skip line comment
+        while (!this.#endOfFile() && this.#peek() !== '\n') {
+          this.#skip();
+        }
         this.#skip();
-      }
-      this.#skip();
-      return true;
-    } else if (next === '/' && nextNext === '*') {
-      // skip block comment
-      this.#skip();
-      this.#skip();
-      while (!this.#endOfFile() && this.#content[this.#index] !== '*' && this.#content[this.#index + 1] !== '/') {
+      } else if (next === '/' && nextNext === '*') {
+        // skip block comment
         this.#skip();
+        this.#skip();
+        while (!this.#endOfFile() && this.#content[this.#index] !== '*' && this.#content[this.#index + 1] !== '/') {
+          this.#skip();
+        }
+        this.#skip();
+        this.#skip();
+      } else {
+        return !this.#endOfFile();
       }
-      this.#skip();
-      this.#skip();
-      return true;
-    } else {
-      return !this.#endOfFile();
     }
   }
 
@@ -214,6 +215,16 @@ export class Lexer {
     const first = this.#next();
 
     if (operatorSymbols.has(first)) {
+      if (first === '!' && this.#peek() === 'i' && this.#content[this.#index + 1] == 's' && !identifierTest.test(this.#content[this.#index + 2] ?? '/')) {
+        this.#skip();
+        this.#skip();
+        return {
+          pos,
+          kind: 'keyword',
+          value: '!is',
+        };
+      }
+
       return {
         pos,
         kind: 'symbol',

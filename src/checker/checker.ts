@@ -407,12 +407,13 @@ export class Checker {
 
   checkIs(ex: ParserIsEx, scope: Scope): CheckedIsEx {
     const base = this.#checkExpression(ex.base, scope, undefined);
+    const check = this.#checkExpression(ex.check, scope, undefined);
 
     return new CheckedIsEx({
       pos: ex.pos,
       not: ex.not,
       base,
-      check: scope.qualifier.checkTypeExpression(ex.check),
+      check,
       type: this.#coreTypes.boolean,
       phase: base.phase,
     });

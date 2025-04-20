@@ -32,32 +32,42 @@ function isThermalClass(obj: any): obj is ThermalClass {
   return obj != null && typeof obj === 'object' && thermalClassMarker in obj;
 }
 
-export function stringConcat(left: string, right: string): string {
-  return left + right;
-}
-
 export function is(obj: any, type: any): boolean {
   if (obj == null) {
     return false;
   }
 
-  if (typeof obj === 'object' && isThermalClass(type) && thermalClass in obj) {
-    const clazz = obj[thermalClass] as ThermalClass;
+  if (isThermalClass(type)) {
+    switch (type.name) {
+      case 'core_string_String':
+        return typeof obj === 'string';
+      case 'core_math_Int':
+        return typeof obj === 'number' && Number.isInteger(obj);
+      case 'core_math_Float':
+        return typeof obj === 'number';
+      case 'core_bool_Boolean':
+        return typeof obj === 'boolean';
+      case 'core_array_Array':
+        return obj instanceof Array;
+      default:
+        if (isThermalObject(obj)) {
+          const clazz = obj[thermalClass] as ThermalClass;
 
-    // either object is of type, or type is an enum and obj is a variant of type
-    return clazz === type || (type.type === 'enum' && clazz.enum === type);
-  } else if (type === String) { // TODO: primitive checks need a better solution (how does Integer vs Float work? Can it work?)
-    return typeof obj === 'string';
-  } else if (type === Number) {
-    return typeof obj === 'number';
-  } else if (type === Boolean) {
-    return typeof obj === 'boolean';
+          // either object is of type, or type is an enum and obj is a variant of type
+          return clazz === type || (type.type === 'enum' && clazz.enum === type);
+        } else if (isThermalClass(obj)) {
+          // either object is of type, or type is an enum and obj is a variant of type
+          return obj === type || (type.type === 'enum' && obj.enum === type);
+        } else {
+          // this must be some random non-Thermal type. It's not something we know about so it must be false
+          return false;
+        }
+    }
   } else {
-    return false;
+    throw new Error('Cannot check the type of a non-type!');
   }
 }
 
-// TODO: implement equality protocol
 export function equals(left: any, right: any): boolean {
   if (left === right ) {
     return true;

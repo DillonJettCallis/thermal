@@ -120,7 +120,7 @@ export class Symbol extends Record({
   }
 
   serializedName(): string {
-    return this.path.filter(it => it.match(/^\w+$/))
+    return (this.package.alias ?? this.package.name) + '_' + this.path.filter(it => it.match(/^\w+$/))
       .join('_');
   }
 

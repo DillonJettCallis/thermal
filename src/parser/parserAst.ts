@@ -267,13 +267,13 @@ interface MutableParserIsEx {
   pos: Position;
   not: boolean;
   base: ParserExpression;
-  check: ParserTypeExpression;
+  check: ParserExpression;
 }
 export class ParserIsEx extends Record<MutableParserIsEx>({
   pos: undefined as unknown as Position,
   not: undefined as unknown as boolean,
   base: undefined as unknown as ParserExpression,
-  check: undefined as unknown as ParserTypeExpression,
+  check: undefined as unknown as ParserExpression,
 }) {
   constructor(props: MutableParserIsEx) {
     super(props);

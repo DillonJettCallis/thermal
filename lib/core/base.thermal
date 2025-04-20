@@ -6,3 +6,31 @@ public enum Option<Item> {
   Some { item: Item },
   None,
 }
+
+// Todo: PartialEqual maybe?
+public protocol Equal {
+  public fun equal(self, other: Self): Boolean;
+  // todo: give this a default of calling equals
+  public fun notEqual(self, other: Self): Boolean;
+}
+
+public enum Ordering {
+  LessThan,
+  EqualTo,
+  GreaterThan,
+}
+
+// todo: PartialOrdered maybe?
+// todo: maybe make this extend Equal once we have the ability to do that?
+
+public protocol Ordered {
+  public fun compare(self, other: Self): Ordering;
+
+  // todo: give these defaults that call compare
+  public fun greaterThan(self, other: Self): Boolean;
+  public fun greaterThanOrEqualTo(self, other: Self): Boolean;
+
+  public fun lessThan(self, other: Self): Boolean;
+  public fun lessThanOrEqualTo(self, other: Self): Boolean;
+}
+

@@ -35,14 +35,12 @@ export function from<Item>(src: Iterable<Item>): Vec<Item> {
 
     // if we are at capacity, we need to grow
     if (size > pageSize) {
-      const newRoot = [content];
+      content = [content];
       scale++;
       pageSize = Math.pow(factor, scale + 1);
-      pushMutable(newRoot, scale, size, item);
-    } else {
-      // we can fit into the current scale
-      pushMutable(content, scale, size, item);
     }
+
+    pushMutable(content, scale, size, item);
   }
 
   return new Vec(content, size, scale);
@@ -243,7 +241,7 @@ function* internalIterator<Item>(content: Array<any>, scale: number): IterableIt
     return yield* (content as Array<Item>);
   } else {
     for (const page of content) {
-      yield* internalIterator(page as Array<any>, scale);
+      yield* internalIterator(page as Array<any>, scale - 1);
     }
   }
 }

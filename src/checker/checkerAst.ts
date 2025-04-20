@@ -409,7 +409,7 @@ interface MutableCheckedIsEx {
   pos: Position;
   not: boolean;
   base: CheckedExpression;
-  check: CheckedTypeExpression;
+  check: CheckedExpression;
   type: CheckedTypeExpression;
   phase: ExpressionPhase;
 }
@@ -417,7 +417,7 @@ export class CheckedIsEx extends Record<MutableCheckedIsEx>({
   pos: undefined as unknown as Position,
   not: undefined as unknown as boolean,
   base: undefined as unknown as CheckedExpression,
-  check: undefined as unknown as CheckedTypeExpression,
+  check: undefined as unknown as CheckedExpression,
   type: undefined as unknown as CheckedTypeExpression,
   phase: undefined as unknown as ExpressionPhase,
 }) {

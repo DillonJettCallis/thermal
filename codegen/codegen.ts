@@ -270,7 +270,7 @@ function parser(): Generator {
     pos,
     not: native('boolean'),
     base: expression,
-    check: typeExpression,
+    check: expression,
   }, expression);
 
   gen.add('NotEx', {
@@ -649,7 +649,7 @@ function checker(): Generator {
     pos,
     not: native('boolean'),
     base: expression,
-    check: typeExpression,
+    check: expression,
     type: typeExpression,
     phase: expressionPhase,
   }, expression);
@@ -1016,6 +1016,11 @@ function jsIr(): Generator {
   const access = gen.add('Access', {
     base: expression,
     field: native('string'),
+  }, expression);
+
+  gen.add('ArrayAccess', {
+    base: expression,
+    field: expression,
   }, expression);
 
   const call = gen.add('Call', {

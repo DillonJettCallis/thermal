@@ -48,6 +48,33 @@ implement NegateOp for Int {
   external public fun negateOp(self): Int;
 }
 
+implement Equal for Int {
+  external public fun equal(self, other: Self): Boolean;
+  external public fun notEqual(self, other: Self): Boolean;
+}
+
+implement Ordered for Int {
+  public fun compare(self, other: Self): Ordering {
+    return doCompare(compareInt(self, other));
+  }
+
+  public fun greaterThan(self, other: Self): Boolean {
+    return compareInt(self, other) == 1;
+  }
+  public fun greaterThanOrEqualTo(self, other: Self): Boolean {
+    return compareInt(self, other) != -1;
+  }
+
+  public fun lessThan(self, other: Self): Boolean {
+    return compareInt(self, other) == -1;
+  }
+  public fun lessThanOrEqualTo(self, other: Self): Boolean {
+    return compareInt(self, other) != 1;
+  }
+}
+
+external fun compareInt(left: Int, right: Int): Int;
+
 // Float
 public data Float {}
 
@@ -73,4 +100,43 @@ implement DivOp<Float> for Float {
 
 implement NegateOp for Float {
   external public fun negateOp(self): Float;
+}
+
+implement Equal for Float {
+  external public fun equal(self, other: Self): Boolean;
+  external public fun notEqual(self, other: Self): Boolean;
+}
+
+implement Ordered for Float {
+  public fun compare(self, other: Self): Ordering {
+    return doCompare(compareFloat(self, other));
+  }
+
+  public fun greaterThan(self, other: Self): Boolean {
+    return compareFloat(self, other) == 1;
+  }
+  public fun greaterThanOrEqualTo(self, other: Self): Boolean {
+    return compareFloat(self, other) != -1;
+  }
+
+  public fun lessThan(self, other: Self): Boolean {
+    return compareFloat(self, other) == -1;
+  }
+  public fun lessThanOrEqualTo(self, other: Self): Boolean {
+    return compareFloat(self, other) != 1;
+  }
+}
+
+external fun compareFloat(left: Float, right: Float): Int;
+
+fun doCompare(comp: Int): Ordering {
+  if (comp == 0) {
+    return Ordering::EqualTo
+  } else {
+    if (comp == 1) {
+      return Ordering::GreaterThan
+    } else {
+      return Ordering::LessThan
+    }
+  }
 }
