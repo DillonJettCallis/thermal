@@ -1042,6 +1042,11 @@ function jsIr(): Generator {
     body: expression,
   }, statement);
 
+  gen.add('VarSet', {
+    base: expression,
+    body: expression,
+  }, statement);
+
   const func = gen.add('FunctionStatement', {
     name: native('string'),
     args: list(native('string')),

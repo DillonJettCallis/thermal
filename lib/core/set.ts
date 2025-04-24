@@ -1,14 +1,14 @@
 import { type HashMap, from as hashMapFrom, emptyMap as emptyHashMap, set as mapSet, remove as mapRemove, has as mapHas, merge as mapMerge } from './map.js';
 
 export class HashSet<Item> {
-  readonly map: HashMap<Item, boolean>;
+  readonly map_: HashMap<Item, boolean>;
 
   constructor(map: HashMap<Item, boolean>) {
-    this.map = map;
+    this.map_ = map;
   }
 
   get size(): number {
-    return this.map.size;
+    return this.map_.size_;
   }
 }
 
@@ -27,17 +27,17 @@ function* mapKeyToEntryPair<Key>(items: Iterable<Key>): IterableIterator<readonl
 }
 
 export function add<Item>(self: HashSet<Item>, item: Item): HashSet<Item> {
-  return new HashSet(mapSet(self.map, item, true));
+  return new HashSet(mapSet(self.map_, item, true));
 }
 
 export function remove<Item>(self: HashSet<Item>, item: Item): HashSet<Item> {
-  return new HashSet(mapRemove(self.map, item));
+  return new HashSet(mapRemove(self.map_, item));
 }
 
 export function has<Item>(self: HashSet<Item>, item: Item): boolean {
-  return mapHas(self.map, item);
+  return mapHas(self.map_, item);
 }
 
 export function merge<Item>(self: HashSet<Item>, other: HashSet<Item>): HashSet<Item> {
-  return new HashSet(mapMerge(self.map, other.map));
+  return new HashSet(mapMerge(self.map_, other.map_));
 }

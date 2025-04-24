@@ -1,15 +1,15 @@
 import { equals, hashCode } from '../../runtime/reflect.js';
 
-type Entry<Key, Value> = { hash: number, key: Key, value: Value };
+type Entry<Key, Value> = { hash_: number, key_: Key, value_: Value };
 type Bucket<Key, Value> = undefined | Entry<Key, Value> | Array<Entry<Key, Value>>;
 
 export class HashMap<Key, Value> {
-  readonly size: number;
-  readonly buckets: Array<Bucket<Key, Value>>;
+  readonly size_: number;
+  readonly buckets_: Array<Bucket<Key, Value>>;
 
   constructor(buckets: Array<Bucket<Key, Value>>, size: number) {
-    this.buckets = buckets;
-    this.size = size;
+    this.buckets_ = buckets;
+    this.size_ = size;
   }
 }
 
@@ -21,7 +21,7 @@ export function from<Key, Value>(pairs: Iterable<readonly [Key, Value]>): HashMa
 
   for (const [key, value] of pairs) {
     const hash = hashCode(key);
-    const newEntry = {hash, key, value};
+    const newEntry = {hash_: hash, key_: key, value_: value};
     const bucketIndex = hash % bucketsCopy.length;
 
     const bucket = bucketsCopy[bucketIndex];
@@ -31,7 +31,7 @@ export function from<Key, Value>(pairs: Iterable<readonly [Key, Value]>): HashMa
       bucketsCopy[bucketIndex] = newEntry;
       size++;
     } else if (bucket instanceof Array) {
-      const entryIndex = bucket.findIndex(entry => entry.hash === hash && equals(entry.key, key));
+      const entryIndex = bucket.findIndex(entry => entry.hash_ === hash && equals(entry.key_, key));
 
       if (entryIndex === -1) {
         // item not found, add new entry to this bucket
@@ -45,7 +45,7 @@ export function from<Key, Value>(pairs: Iterable<readonly [Key, Value]>): HashMa
               // do nothing
             } else if (bucket instanceof Array) {
               for (const entry of bucket) {
-                const index = entry.hash % bucketsCopy.length;
+                const index = entry.hash_ % bucketsCopy.length;
                 const existing = bucketsCopy[index];
 
                 if (existing === undefined) {
@@ -57,7 +57,7 @@ export function from<Key, Value>(pairs: Iterable<readonly [Key, Value]>): HashMa
                 }
               }
             } else {
-              const index = bucket.hash % bucketsCopy.length;
+              const index = bucket.hash_ % bucketsCopy.length;
               const existing = bucketsCopy[index];
 
               if (existing === undefined) {
@@ -86,7 +86,7 @@ export function from<Key, Value>(pairs: Iterable<readonly [Key, Value]>): HashMa
         bucketsCopy[bucketIndex] = bucketCopy;
       }
     } else {
-      if (bucket.hash === hash && equals(bucket.key, key)) {
+      if (bucket.hash_ === hash && equals(bucket.key_, key)) {
         // item found, replace it in place
         bucketsCopy[bucketIndex] = newEntry;
       } else {
@@ -104,37 +104,37 @@ export function from<Key, Value>(pairs: Iterable<readonly [Key, Value]>): HashMa
 export function has<Key, Value>(self: HashMap<Key, Value>, key: Key): boolean {
   const hash = hashCode(key);
 
-  const bucket = self.buckets[hash % self.buckets.length];
+  const bucket = self.buckets_[hash % self.buckets_.length];
 
   if (bucket === undefined) {
     return false;
   } else if (bucket instanceof Array) {
-    const entry = bucket.find(entry => entry.hash === hash && equals(entry.key, key));
+    const entry = bucket.find(entry => entry.hash_ === hash && equals(entry.key_, key));
 
     return entry !== undefined;
   } else {
-    return bucket.hash === hash && equals(bucket.key, key);
+    return bucket.hash_ === hash && equals(bucket.key_, key);
   }
 }
 
 export function get<Key, Value>(self: HashMap<Key, Value>, key: Key): Value | undefined {
   const hash = hashCode(key);
 
-  const bucket = self.buckets[hash % self.buckets.length];
+  const bucket = self.buckets_[hash % self.buckets_.length];
 
   if (bucket === undefined) {
     return undefined;
   } else if (bucket instanceof Array) {
-    const entry = bucket.find(entry => entry.hash === hash && equals(entry.key, key));
+    const entry = bucket.find(entry => entry.hash_ === hash && equals(entry.key_, key));
 
     if (entry === undefined) {
       return undefined;
     } else {
-      return entry.value;
+      return entry.value_;
     }
   } else {
-    if (bucket.hash === hash && equals(bucket.key, key)) {
-      return bucket.value;
+    if (bucket.hash_ === hash && equals(bucket.key_, key)) {
+      return bucket.value_;
     } else {
       return undefined;
     }
@@ -143,32 +143,32 @@ export function get<Key, Value>(self: HashMap<Key, Value>, key: Key): Value | un
 
 export function set<Key, Value>(self: HashMap<Key, Value>, key: Key, value: Value): HashMap<Key, Value> {
   const hash = hashCode(key);
-  const newEntry: Entry<Key, Value> = {hash, key, value};
-  const bucketIndex = hash % self.buckets.length;
+  const newEntry: Entry<Key, Value> = {hash_: hash, key_: key, value_: value};
+  const bucketIndex = hash % self.buckets_.length;
 
-  const bucket = self.buckets[bucketIndex];
+  const bucket = self.buckets_[bucketIndex];
 
   if (bucket === undefined) {
     // item not found, replace no bucket with bucket of one
-    const bucketsCopy = self.buckets.slice();
+    const bucketsCopy = self.buckets_.slice();
     bucketsCopy[bucketIndex] = newEntry;
 
-    return new HashMap(bucketsCopy, self.size + 1);
+    return new HashMap(bucketsCopy, self.size_ + 1);
   } else if (bucket instanceof Array) {
-    const entryIndex = bucket.findIndex(entry => entry.hash === hash && equals(entry.key, key));
+    const entryIndex = bucket.findIndex(entry => entry.hash_ === hash && equals(entry.key_, key));
 
     if (entryIndex === -1) {
       // item not found, add new entry to this bucket
-      if (self.size + 1 > self.buckets.length / 4) {
+      if (self.size_ + 1 > self.buckets_.length / 4) {
         // if there are an average of more than 4 items per bucket, increase the number of buckets
-        const newBuckets = new Array(self.buckets.length * 2);
+        const newBuckets = new Array(self.buckets_.length * 2);
 
-        for (const bucket of self.buckets) {
+        for (const bucket of self.buckets_) {
           if (bucket === undefined) {
             // do nothing
           } else if (bucket instanceof Array) {
             for (const entry of bucket) {
-              const index = entry.hash % newBuckets.length;
+              const index = entry.hash_ % newBuckets.length;
               const existing = newBuckets[index];
 
               if (existing === undefined) {
@@ -180,7 +180,7 @@ export function set<Key, Value>(self: HashMap<Key, Value>, key: Key, value: Valu
               }
             }
           } else {
-            const index = bucket.hash % newBuckets.length;
+            const index = bucket.hash_ % newBuckets.length;
             const existing = newBuckets[index];
 
             if (existing === undefined) {
@@ -205,52 +205,52 @@ export function set<Key, Value>(self: HashMap<Key, Value>, key: Key, value: Valu
           newBuckets[index] = [existing, newEntry];
         }
 
-        return new HashMap(newBuckets, self.size + 1);
+        return new HashMap(newBuckets, self.size_ + 1);
       } else {
         // fit within the same number of buckets
-        const bucketsCopy = self.buckets.slice();
+        const bucketsCopy = self.buckets_.slice();
         const bucketCopy = bucket.slice();
         bucketCopy.push(newEntry);
         bucketsCopy[bucketIndex] = bucketCopy;
 
-        return new HashMap(bucketsCopy, self.size + 1);
+        return new HashMap(bucketsCopy, self.size_ + 1);
       }
     } else {
       // item found, replace it in this bucket
-      const bucketsCopy = self.buckets.slice();
+      const bucketsCopy = self.buckets_.slice();
       const bucketCopy = bucket.slice();
       bucketCopy[entryIndex] = newEntry;
       bucketsCopy[bucketIndex] = bucketCopy;
 
-      return new HashMap(bucketsCopy, self.size);
+      return new HashMap(bucketsCopy, self.size_);
     }
   } else {
-    if (bucket.hash === hash && equals(bucket.key, key)) {
+    if (bucket.hash_ === hash && equals(bucket.key_, key)) {
       // item found, replace it in place
 
-      const bucketsCopy = self.buckets.slice();
+      const bucketsCopy = self.buckets_.slice();
       bucketsCopy[bucketIndex] = newEntry;
 
-      return new HashMap(bucketsCopy, self.size);
+      return new HashMap(bucketsCopy, self.size_);
     } else {
       // item not found, turn this single item into an array of two items
-      const bucketsCopy = self.buckets.slice();
+      const bucketsCopy = self.buckets_.slice();
       bucketsCopy[bucketIndex] = [bucket, newEntry];
 
-      return new HashMap(bucketsCopy, self.size + 1);
+      return new HashMap(bucketsCopy, self.size_ + 1);
     }
   }
 }
 
 export function update<Key, Value>(self: HashMap<Key, Value>, key: Key, updater: (old: Value | undefined) => Value | undefined): HashMap<Key, Value> {
   const hash = hashCode(key);
-  const bucketIndex = hash % self.buckets.length;
+  const bucketIndex = hash % self.buckets_.length;
 
-  const bucket = self.buckets[bucketIndex];
+  const bucket = self.buckets_[bucketIndex];
 
   if (bucket === undefined) {
     // item not found, replace no bucket with bucket of one
-    const bucketsCopy = self.buckets.slice();
+    const bucketsCopy = self.buckets_.slice();
     const value = updater(undefined);
 
     if (value === undefined) {
@@ -259,11 +259,11 @@ export function update<Key, Value>(self: HashMap<Key, Value>, key: Key, updater:
     }
 
     // set this item into the bucket and leave
-    bucketsCopy[bucketIndex] = {hash, key, value};
+    bucketsCopy[bucketIndex] = {hash_: hash, key_: key, value_: value};
 
-    return new HashMap(bucketsCopy, self.size + 1);
+    return new HashMap(bucketsCopy, self.size_ + 1);
   } else if (bucket instanceof Array) {
-    const entryIndex = bucket.findIndex(entry => entry.hash === hash && equals(entry.key, key));
+    const entryIndex = bucket.findIndex(entry => entry.hash_ === hash && equals(entry.key_, key));
 
     if (entryIndex === -1) {
       // item not found, add new entry to this bucket
@@ -274,18 +274,18 @@ export function update<Key, Value>(self: HashMap<Key, Value>, key: Key, updater:
         return self;
       }
 
-      const newEntry = {hash, key, value};
+      const newEntry = {hash_: hash, key_: key, value_: value};
 
-      if (self.size + 1 > self.buckets.length / 4) {
+      if (self.size_ + 1 > self.buckets_.length / 4) {
         // if there are an average of more than 4 items per bucket, increase the number of buckets
-        const newBuckets = new Array(self.buckets.length * 2);
+        const newBuckets = new Array(self.buckets_.length * 2);
 
-        for (const bucket of self.buckets) {
+        for (const bucket of self.buckets_) {
           if (bucket === undefined) {
             // do nothing
           } else if (bucket instanceof Array) {
             for (const entry of bucket) {
-              const index = entry.hash % newBuckets.length;
+              const index = entry.hash_ % newBuckets.length;
               const existing = newBuckets[index];
 
               if (existing === undefined) {
@@ -297,7 +297,7 @@ export function update<Key, Value>(self: HashMap<Key, Value>, key: Key, updater:
               }
             }
           } else {
-            const index = bucket.hash % newBuckets.length;
+            const index = bucket.hash_ % newBuckets.length;
             const existing = newBuckets[index];
 
             if (existing === undefined) {
@@ -322,25 +322,25 @@ export function update<Key, Value>(self: HashMap<Key, Value>, key: Key, updater:
           newBuckets[index] = [existing, newEntry];
         }
 
-        return new HashMap(newBuckets, self.size + 1);
+        return new HashMap(newBuckets, self.size_ + 1);
       } else {
         // fit within the same number of buckets
-        const bucketsCopy = self.buckets.slice();
+        const bucketsCopy = self.buckets_.slice();
         const bucketCopy = bucket.slice();
         bucketCopy.push(newEntry);
         bucketsCopy[bucketIndex] = bucketCopy;
 
-        return new HashMap(bucketsCopy, self.size + 1);
+        return new HashMap(bucketsCopy, self.size_ + 1);
       }
     } else {
       // item found, check it
 
       // start by preparing the new buckets
-      const bucketsCopy = self.buckets.slice();
+      const bucketsCopy = self.buckets_.slice();
       const bucketCopy = bucket.slice();
       bucketsCopy[bucketIndex] = bucketCopy;
 
-      const value = updater(bucket[entryIndex]!.value);
+      const value = updater(bucket[entryIndex]!.value_);
 
       if (value === undefined) {
         // remove the item from the bucket
@@ -351,25 +351,25 @@ export function update<Key, Value>(self: HashMap<Key, Value>, key: Key, updater:
         }
       } else {
         // fit the new value into the bucket copy
-        bucketCopy[entryIndex] = {hash, key, value};
+        bucketCopy[entryIndex] = {hash_: hash, key_: key, value_: value};
       }
 
-      return new HashMap(bucketsCopy, self.size);
+      return new HashMap(bucketsCopy, self.size_);
     }
   } else {
-    if (bucket.hash === hash && equals(bucket.key, key)) {
+    if (bucket.hash_ === hash && equals(bucket.key_, key)) {
       // item found, replace it in place
-      const bucketsCopy = self.buckets.slice();
-      const value = updater(bucket.value);
+      const bucketsCopy = self.buckets_.slice();
+      const value = updater(bucket.value_);
 
       if (value === undefined) {
         // remove the item
         bucketsCopy[bucketIndex] = undefined;
       } else {
-        bucketsCopy[bucketIndex] = {hash, key, value};
+        bucketsCopy[bucketIndex] = {hash_: hash, key_: key, value_: value};
       }
 
-      return new HashMap(bucketsCopy, self.size);
+      return new HashMap(bucketsCopy, self.size_);
     } else {
       // item not found, turn this single item into an array of two items
       const value = updater(undefined);
@@ -379,33 +379,33 @@ export function update<Key, Value>(self: HashMap<Key, Value>, key: Key, updater:
         return self;
       }
 
-      const bucketsCopy = self.buckets.slice();
-      bucketsCopy[bucketIndex] = [bucket, {hash, key, value}];
+      const bucketsCopy = self.buckets_.slice();
+      bucketsCopy[bucketIndex] = [bucket, {hash_: hash, key_: key, value_: value}];
 
-      return new HashMap(bucketsCopy, self.size + 1);
+      return new HashMap(bucketsCopy, self.size_ + 1);
     }
   }
 }
 
 export function remove<Key, Value>(self: HashMap<Key, Value>, key: Key): HashMap<Key, Value> {
   const hash = hashCode(key);
-  const bucketIndex = hash % self.buckets.length;
+  const bucketIndex = hash % self.buckets_.length;
 
-  const bucket = self.buckets[bucketIndex];
+  const bucket = self.buckets_[bucketIndex];
 
   if (bucket === undefined) {
     // not found, change nothing
 
     return self;
   } else if (bucket instanceof Array) {
-    const entryIndex = bucket.findIndex(entry => entry.hash === hash && equals(entry.key, key));
+    const entryIndex = bucket.findIndex(entry => entry.hash_ === hash && equals(entry.key_, key));
 
     if (entryIndex === -1) {
       // not found, change nothing
       return self;
     } else {
       // found at index, remove from array
-      const newBuckets = self.buckets.slice();
+      const newBuckets = self.buckets_.slice();
 
       if (bucket.length === 2) {
         // turn array into a single item
@@ -416,19 +416,19 @@ export function remove<Key, Value>(self: HashMap<Key, Value>, key: Key): HashMap
         newBuckets[bucketIndex] = newBucket;
       }
 
-      return new HashMap<Key, Value>(newBuckets, self.size - 1);
+      return new HashMap<Key, Value>(newBuckets, self.size_ - 1);
     }
   } else {
-    if (bucket.hash === hash && equals(bucket.key, key)) {
+    if (bucket.hash_ === hash && equals(bucket.key_, key)) {
       // found at bucket, replace with empty
 
-      if (self.size === 1) {
+      if (self.size_ === 1) {
         // we are removing the only item, just return the EMPTY starter map
         return emptyMap;
       } else {
-        const newBuckets = self.buckets.slice();
+        const newBuckets = self.buckets_.slice();
         newBuckets[bucketIndex] = undefined;
-        return new HashMap<Key, Value>(newBuckets, self.size - 1);
+        return new HashMap<Key, Value>(newBuckets, self.size_ - 1);
       }
     } else {
       // not found, do nothing
@@ -440,13 +440,13 @@ export function remove<Key, Value>(self: HashMap<Key, Value>, key: Key): HashMap
 export function keys<Key, Value>(self: HashMap<Key, Value>): Array<Key> {
   const result = new Array<Key>();
 
-  for (const bucket of self.buckets) {
+  for (const bucket of self.buckets_) {
     if (bucket instanceof Array) {
-      for (const {key} of bucket) {
+      for (const {key_: key} of bucket) {
         result.push(key);
       }
     } else if (bucket !== undefined) {
-      result.push(bucket.key);
+      result.push(bucket.key_);
     }
   }
 
@@ -456,13 +456,13 @@ export function keys<Key, Value>(self: HashMap<Key, Value>): Array<Key> {
 export function values<Key, Value>(self: HashMap<Key, Value>): Array<Value> {
   const result = new Array<Value>();
 
-  for (const bucket of self.buckets) {
+  for (const bucket of self.buckets_) {
     if (bucket instanceof Array) {
-      for (const {value} of bucket) {
+      for (const {value_: value} of bucket) {
         result.push(value);
       }
     } else if (bucket !== undefined) {
-      result.push(bucket.value);
+      result.push(bucket.value_);
     }
   }
 
@@ -480,18 +480,18 @@ export function* entriesOf<Key, Value>(buckets: Array<Bucket<Key, Value>>): Iter
 }
 
 export function merge<Key, Value>(self: HashMap<Key, Value>, other: HashMap<Key, Value>): HashMap<Key, Value> {
-  if (other.size === 0) {
+  if (other.size_ === 0) {
     return self;
-  } else if (self.size === 0) {
+  } else if (self.size_ === 0) {
     return other;
   } else {
     // copy the outer array only once (unless we need to resize), copy children as needed
-    let bucketsCopy = self.buckets.slice();
-    let size = self.size;
+    let bucketsCopy = self.buckets_.slice();
+    let size = self.size_;
 
-    for (const newEntry of entriesOf(other.buckets)) {
-      const {hash, key} = newEntry;
-      const bucketIndex = hash % bucketsCopy.length;
+    for (const newEntry of entriesOf(other.buckets_)) {
+      const {hash_, key_} = newEntry;
+      const bucketIndex = hash_ % bucketsCopy.length;
 
       const bucket = bucketsCopy[bucketIndex];
 
@@ -500,7 +500,7 @@ export function merge<Key, Value>(self: HashMap<Key, Value>, other: HashMap<Key,
         bucketsCopy[bucketIndex] = newEntry;
         size++;
       } else if (bucket instanceof Array) {
-        const entryIndex = bucket.findIndex(entry => entry.hash === hash && equals(entry.key, key));
+        const entryIndex = bucket.findIndex(entry => entry.hash_ === hash_ && equals(entry.key_, key_));
 
         if (entryIndex === -1) {
           // item not found, add new entry to this bucket
@@ -514,7 +514,7 @@ export function merge<Key, Value>(self: HashMap<Key, Value>, other: HashMap<Key,
                 // do nothing
               } else if (bucket instanceof Array) {
                 for (const entry of bucket) {
-                  const index = entry.hash % bucketsCopy.length;
+                  const index = entry.hash_ % bucketsCopy.length;
                   const existing = bucketsCopy[index];
 
                   if (existing === undefined) {
@@ -526,7 +526,7 @@ export function merge<Key, Value>(self: HashMap<Key, Value>, other: HashMap<Key,
                   }
                 }
               } else {
-                const index = bucket.hash % bucketsCopy.length;
+                const index = bucket.hash_ % bucketsCopy.length;
                 const existing = bucketsCopy[index];
 
                 if (existing === undefined) {
@@ -555,7 +555,7 @@ export function merge<Key, Value>(self: HashMap<Key, Value>, other: HashMap<Key,
           bucketsCopy[bucketIndex] = bucketCopy;
         }
       } else {
-        if (bucket.hash === hash && equals(bucket.key, key)) {
+        if (bucket.hash_ === hash_ && equals(bucket.key_, key_)) {
           // item found, replace it in place
           bucketsCopy[bucketIndex] = newEntry;
         } else {
@@ -572,7 +572,7 @@ export function merge<Key, Value>(self: HashMap<Key, Value>, other: HashMap<Key,
 }
 
 export function forEach<Key, Value>(self: HashMap<Key, Value>, action: (value: Value, key: Key) => void): void {
-  for (const {key, value} of entriesOf(self.buckets)) {
+  for (const {key_: key, value_: value} of entriesOf(self.buckets_)) {
     action(value, key);
   }
 }

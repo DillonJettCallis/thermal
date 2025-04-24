@@ -1,18 +1,18 @@
 const factor = 32;
 
 export class Vec<Item> implements Iterable<Item> {
-  readonly size: number;
-  readonly scale: number;
-  readonly content: Array<any>;
+  readonly size_: number;
+  readonly scale_: number;
+  readonly content_: Array<any>;
 
   constructor(content: Array<any>, size: number, scale: number) {
-    this.size = size;
-    this.scale = scale;
-    this.content = content;
+    this.size_ = size;
+    this.scale_ = scale;
+    this.content_ = content;
   }
 
   [Symbol.iterator](): IterableIterator<Item> {
-    return internalIterator(this.content, this.scale);
+    return internalIterator(this.content_, this.scale_);
   }
 }
 
@@ -71,11 +71,11 @@ export function toArray<Item>(self: Vec<Item>): Array<Item> {
 }
 
 function invalidIndex<Item>(self: Vec<Item>, index: number): boolean {
-  return index >= self.size || index < 0 || !Number.isSafeInteger(index);
+  return index >= self.size_ || index < 0 || !Number.isSafeInteger(index);
 }
 
 export function first<Item>(self: Vec<Item>): Item | undefined {
-  if (self.size === 0) {
+  if (self.size_ === 0) {
     return undefined;
   } else {
     return get(self, 0);
@@ -83,10 +83,10 @@ export function first<Item>(self: Vec<Item>): Item | undefined {
 }
 
 export function last<Item>(self: Vec<Item>): Item | undefined {
-  if (self.size === 0) {
+  if (self.size_ === 0) {
     return undefined;
   } else {
-    return get(self, self.size - 1);
+    return get(self, self.size_ - 1);
   }
 }
 
@@ -95,8 +95,8 @@ export function get<Item>(self: Vec<Item>, index: number): Item | undefined {
     return undefined;
   }
 
-  let content = self.content;
-  let scale = self.scale;
+  let content = self.content_;
+  let scale = self.scale_;
 
   while (scale > 0) {
     const pageSize = Math.pow(factor, scale);
@@ -111,18 +111,18 @@ export function get<Item>(self: Vec<Item>, index: number): Item | undefined {
 }
 
 export function push<Item>(self: Vec<Item>, item: Item): Vec<Item> {
-  const pageSize = Math.pow(factor, self.scale + 1);
+  const pageSize = Math.pow(factor, self.scale_ + 1);
 
   // if we are at capacity, we need to grow
-  if (pageSize === self.size) {
-    const newRoot = [self.content];
-    pushInternal(newRoot, self.scale + 1, self.size, item);
-    return new Vec(newRoot, self.size + 1, self.scale + 1);
+  if (pageSize === self.size_) {
+    const newRoot = [self.content_];
+    pushInternal(newRoot, self.scale_ + 1, self.size_, item);
+    return new Vec(newRoot, self.size_ + 1, self.scale_ + 1);
   } else {
     // we can fit into the current scale
-    const contentCopy = self.content.slice();
-    pushInternal(contentCopy, self.scale, self.size, item);
-    return new Vec(contentCopy, self.size + 1, self.scale);
+    const contentCopy = self.content_.slice();
+    pushInternal(contentCopy, self.scale_, self.size_, item);
+    return new Vec(contentCopy, self.size_ + 1, self.scale_);
   }
 }
 
@@ -148,22 +148,22 @@ function pushInternal<Item>(content: Array<any>, scale: number, index: number, i
 }
 
 export function pop<Item>(self: Vec<Item>): Vec<Item> {
-  if (self.size === 0) {
+  if (self.size_ === 0) {
     throw new Error(`Index out of bounds. Cannot pop an empty list`);
   }
 
-  const pageSize = Math.pow(factor, self.scale);
+  const pageSize = Math.pow(factor, self.scale_);
 
 // if we are just one level above capacity, we can drop the last item and continue
-  if (pageSize === self.size + 1) {
-    const newRoot = self.content.slice();
+  if (pageSize === self.size_ + 1) {
+    const newRoot = self.content_.slice();
     newRoot.pop();
-    return new Vec(newRoot, self.size - 1, self.scale - 1);
+    return new Vec(newRoot, self.size_ - 1, self.scale_ - 1);
   } else {
     // after removing the last item we'll have the same scale as we do now
-    const contentCopy = self.content.slice();
-    popInternal(contentCopy, self.scale, self.size);
-    return new Vec(contentCopy, self.size - 1, self.scale);
+    const contentCopy = self.content_.slice();
+    popInternal(contentCopy, self.scale_, self.size_);
+    return new Vec(contentCopy, self.size_ - 1, self.scale_);
   }
 }
 
@@ -188,17 +188,17 @@ function popInternal(content: Array<any>, scale: number, size: number): void {
 
 export function set<Item>(self: Vec<Item>, index: number, item: Item): Vec<Item> {
   if (invalidIndex(self, index)) {
-    if (index === self.size) {
+    if (index === self.size_) {
       // allow setting to the end of the list, but that's it
       return push(self, item);
     }
 
-    throw new Error(`Index out of bounds. Cannot set index ${index} in a list with only ${self.size} elements`);
+    throw new Error(`Index out of bounds. Cannot set index ${index} in a list with only ${self.size_} elements`);
   }
 
-  const contentCopy = self.content.slice();
-  setInternal(contentCopy, self.scale, index, item);
-  return new Vec(contentCopy, self.size, self.scale);
+  const contentCopy = self.content_.slice();
+  setInternal(contentCopy, self.scale_, index, item);
+  return new Vec(contentCopy, self.size_, self.scale_);
 }
 
 function setInternal<Item>(content: Array<any>, scale: number, index: number, item: Item): void {
@@ -215,7 +215,7 @@ function setInternal<Item>(content: Array<any>, scale: number, index: number, it
 }
 
 export function concat<Item>(self: Vec<Item>, other: Iterable<Item>): Vec<Item> {
-  if (self.size === 0) {
+  if (self.size_ === 0) {
     if (other instanceof Vec) {
       return other;
     } else {
@@ -233,7 +233,7 @@ export function concat<Item>(self: Vec<Item>, other: Iterable<Item>): Vec<Item> 
 }
 
 function iterator<Item>(self: Vec<Item>): IterableIterator<Item> {
-  return internalIterator(self.content, self.scale);
+  return internalIterator(self.content_, self.scale_);
 }
 
 function* internalIterator<Item>(content: Array<any>, scale: number): IterableIterator<Item> {

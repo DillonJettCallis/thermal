@@ -34,7 +34,7 @@ import {
   JsStructLayout,
   JsTupleLayout,
   JsUndefined,
-  JsVariable
+  JsVariable, JsVarSet
 } from './jsIr.ts';
 import { createWriteStream, existsSync, mkdirSync, WriteStream } from 'node:fs';
 
@@ -121,20 +121,20 @@ class Output {
         this.#write('/* @__PURE__ */ (() => (')
         this.#write('{\n');
         this.#write('  [_thermalClassMarker]: true,\n');
-        this.#write('  fullName: "');
+        this.#write('  fullName_: "');
         this.#write(dec.symbol.serializedName());
         this.#write('",\n');
-        this.#write('  name: "');
+        this.#write('  name_: "');
         this.#write(dec.name);
         this.#write('",\n');
-        this.#write('  generics: [],\n'); // TODO pass generics down to this point
-        this.#write('  type: "enum",\n');
-        this.#write('  enum: undefined,\n');
-        this.#write('  variants: {\n');
+        this.#write('  generics_: [],\n'); // TODO pass generics down to this point
+        this.#write('  type_: "enum",\n');
+        this.#write('  enum_: undefined,\n');
+        this.#write('  variants_: {\n');
         dec.variants.forEach(v => {
           this.#write('  ');
           this.#write(v.name);
-          this.#write(': ');
+          this.#write('_: ');
           this.#write(v.symbol.serializedName());
           this.#write(',\n');
         })
@@ -190,20 +190,20 @@ class Output {
   #writeStruct(dec: JsStructLayout, enumName: string | undefined): void {
     this.#write('{\n');
     this.#write('  [_thermalClassMarker]: true,\n');
-    this.#write('  fullName: "');
+    this.#write('  fullName_: "');
     this.#write(dec.symbol.serializedName());
     this.#write('",\n');
-    this.#write('  name: "');
+    this.#write('  name_: "');
     this.#write(dec.name);
     this.#write('",\n');
-    this.#write('  generics: [],\n'); // TODO pass generics down to this point
-    this.#write('  type: "struct",\n');
-    this.#write(`  enum: ${enumName ?? 'undefined'},\n`);
-    this.#write('  fields: {\n');
+    this.#write('  generics_: [],\n'); // TODO pass generics down to this point
+    this.#write('  type_: "struct",\n');
+    this.#write(`  enum_: ${enumName ?? 'undefined'},\n`);
+    this.#write('  fields_: {\n');
     dec.fields.forEach(field => {
       this.#write('    ');
       this.#write(field);
-      this.#write(': undefined,\n'); // TODO: pass field info down to this point
+      this.#write('_: undefined,\n'); // TODO: pass field info down to this point
     });
     this.#write('  },\n}');
   }
@@ -211,20 +211,20 @@ class Output {
   #writeTuple(dec: JsTupleLayout, enumName: string | undefined): void {
     this.#write('{\n');
     this.#write('  [_thermalClassMarker]: true,\n');
-    this.#write('  fullName: "');
+    this.#write('  fullName_: "');
     this.#write(dec.symbol.serializedName());
     this.#write('",\n');
-    this.#write('  name: "');
+    this.#write('  name_: "');
     this.#write(dec.name);
     this.#write('",\n');
-    this.#write('  generics: [],\n'); // TODO pass generics down to this point
-    this.#write('  type: "tuple",\n');
-    this.#write(`  enum: ${enumName ?? 'undefined'},\n`);
-    this.#write('  fields: {\n');
+    this.#write('  generics_: [],\n'); // TODO pass generics down to this point
+    this.#write('  type_: "tuple",\n');
+    this.#write(`  enum_: ${enumName ?? 'undefined'},\n`);
+    this.#write('  fields_: {\n');
     dec.fields.forEach(field => {
       this.#write('    ');
       this.#write(field);
-      this.#write(': undefined,\n'); // TODO: pass field info down to this point
+      this.#write('_: undefined,\n'); // TODO: pass field info down to this point
     });
     this.#write('  },\n}');
   }
@@ -232,16 +232,16 @@ class Output {
   #writeAtom(dec: JsAtomLayout, enumName: string | undefined): void {
     this.#write('{\n');
     this.#write('  [_thermalClassMarker]: true,\n');
-    this.#write('  fullName: "');
+    this.#write('  fullName_: "');
     this.#write(dec.symbol.serializedName());
     this.#write('",\n');
-    this.#write('  name: "');
+    this.#write('  name_: "');
     this.#write(dec.name);
     this.#write('",\n');
-    this.#write('  generics: [],\n'); // TODO pass generics down to this point
-    this.#write('  type: "atom",\n');
-    this.#write(`  enum: ${enumName ?? 'undefined'},\n`);
-    this.#write('  fields: {\n  },\n}');
+    this.#write('  generics_: [],\n'); // TODO pass generics down to this point
+    this.#write('  type_: "atom",\n');
+    this.#write(`  enum_: ${enumName ?? 'undefined'},\n`);
+    this.#write('  fields_: {\n  },\n}');
   }
 
   #writeExpression(ex: JsExpression): void {
@@ -282,7 +282,7 @@ class Output {
       this.#write(ex.property);
       this.#write(', (item, value) => ({...item, ');
       this.#write(ex.property);
-      this.#write(': value}))');
+      this.#write('_: value}))');
     } else if (ex instanceof JsFlow) {
       this.#write('_flow([');
       ex.args.forEach(it => this.#writeExpression(it));
@@ -297,7 +297,7 @@ class Output {
       this.#write(')');
     } else if (ex instanceof JsFlowGet) {
       this.#writeExpression(ex.body);
-      this.#write('.get()');
+      this.#write('.get_()');
     } else if (ex instanceof JsUndefined) {
       this.#write('undefined');
     } else if (ex instanceof JsArray) {
@@ -313,7 +313,7 @@ class Output {
       this.#write(', ');
       ex.fields.forEach(field => {
         this.#write(field.name);
-        this.#write(': ');
+        this.#write('_: ');
         this.#writeExpression(field.value);
         this.#write(', ');
       });
@@ -322,6 +322,7 @@ class Output {
       this.#writeExpression(ex.base)
       this.#write('.');
       this.#write(ex.field);
+      this.#write('_');
     } else if (ex instanceof JsArrayAccess) {
       this.#writeExpression(ex.base);
       this.#write('[');
@@ -370,6 +371,12 @@ class Output {
       this.#write(' = ');
       this.#writeExpression(state.body);
       this.#write(';\n');
+    } else if (state instanceof JsVarSet) {
+      this.#writeIndent();
+      this.#writeExpression(state.base);
+      this.#write('.set_(');
+      this.#writeExpression(state.body);
+      this.#write(');\n');
     } else if (state instanceof JsFunctionStatement) {
       this.#writeFunctionStatement(state);
     } else if (state instanceof JsReturn) {

@@ -82,7 +82,7 @@ import {
   JsStructLayout,
   JsTupleLayout,
   JsUnaryOp,
-  JsUndefined
+  JsUndefined, JsVarSet
 } from './jsIr.ts';
 import { List, Map, Seq } from 'immutable';
 import { type ExpressionPhase, Extern, type FunctionPhase, Position, type Symbol } from '../ast.ts';
@@ -661,16 +661,9 @@ export class JsCompiler {
 
       function reassign(base: JsExpression): JsStatement {
         // output `$name.set($base)`
-        return new JsExpressionStatement({
-          base: new JsCall({
-            func: new JsAccess({
-              base: name,
-              field: 'set',
-            }),
-            args: List.of(
-              base,
-            )
-          }),
+        return new JsVarSet({
+          base: name,
+          body:  base,
         });
       }
 

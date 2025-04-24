@@ -27,6 +27,7 @@ export type JsStatement
   = JsDeclareVar
   | JsAssign
   | JsReassign
+  | JsVarSet
   | JsFunctionStatement
   | JsReturn
   | JsIf
@@ -308,6 +309,19 @@ export class JsReassign extends Record<MutableJsReassign>({
   body: undefined as unknown as JsExpression,
 }) {
   constructor(props: MutableJsReassign) {
+    super(props);
+  }
+}
+
+interface MutableJsVarSet {
+  base: JsExpression;
+  body: JsExpression;
+}
+export class JsVarSet extends Record<MutableJsVarSet>({
+  base: undefined as unknown as JsExpression,
+  body: undefined as unknown as JsExpression,
+}) {
+  constructor(props: MutableJsVarSet) {
     super(props);
   }
 }

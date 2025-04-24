@@ -9,17 +9,17 @@ export interface ThermalObject {
 export interface ThermalClass {
   [thermalClassMarker]: true;
 
-  fullName: string; // TODO: for now just include version and everything here
-  name: string; // just the final name
+  fullName_: string; // TODO: for now just include version and everything here
+  name_: string; // just the final name
   // TODO: more room for bounds here
-  generics: Array<{ name: string, bound: ThermalClass | undefined }>;
-  type: 'enum' | 'struct' | 'tuple' | 'atom';
+  generics_: Array<{ name: string, bound: ThermalClass | undefined }>;
+  type_: 'enum' | 'struct' | 'tuple' | 'atom';
 
   // undefined if not a member of an enum, otherwise it's the enum
-  enum: ThermalClass | undefined;
+  enum_: ThermalClass | undefined;
 
   // if an enum these are the variants, if a struct these are the fields, if a tuple these are the fields as _0, _1 etc and if an atom this is empty
-  fields: { [key: string]: ThermalClass; };
+  fields_: { [key: string]: ThermalClass; };
 
   // TODO: methods, protocols
 }
@@ -38,7 +38,7 @@ export function is(obj: any, type: any): boolean {
   }
 
   if (isThermalClass(type)) {
-    switch (type.name) {
+    switch (type.name_) {
       case 'core_string_String':
         return typeof obj === 'string';
       case 'core_math_Int':
@@ -54,10 +54,10 @@ export function is(obj: any, type: any): boolean {
           const clazz = obj[thermalClass] as ThermalClass;
 
           // either object is of type, or type is an enum and obj is a variant of type
-          return clazz === type || (type.type === 'enum' && clazz.enum === type);
+          return clazz === type || (type.type_ === 'enum' && clazz.enum_ === type);
         } else if (isThermalClass(obj)) {
           // either object is of type, or type is an enum and obj is a variant of type
-          return obj === type || (type.type === 'enum' && obj.enum === type);
+          return obj === type || (type.type_ === 'enum' && obj.enum_ === type);
         } else {
           // this must be some random non-Thermal type. It's not something we know about so it must be false
           return false;
@@ -75,11 +75,11 @@ export function equals(left: any, right: any): boolean {
     const leftClass = left[thermalClass] as ThermalClass;
     const rightClass = right[thermalClass] as ThermalClass;
 
-    if (leftClass.fullName !== rightClass.fullName) {
+    if (leftClass.fullName_ !== rightClass.fullName_) {
       return false; // not the same type, must be different
     }
 
-    for (const field of Object.keys(leftClass.fields)) {
+    for (const field of Object.keys(leftClass.fields_)) {
       if (!equals(left[field], right[field])) {
         return false;
       }
@@ -189,8 +189,8 @@ function hash(content: Array<number>, obj: any): void {
       if (thermalClass in obj) {
         const clazz = obj[thermalClass] as ThermalClass;
 
-        hashString(content, clazz.fullName);
-        for (const key of Object.keys(clazz.fields)) {
+        hashString(content, clazz.fullName_);
+        for (const key of Object.keys(clazz.fields_)) {
           hash(content, obj[key]);
         }
       } else {

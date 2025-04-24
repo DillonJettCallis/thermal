@@ -6,21 +6,21 @@ class SingletonImpl<Item> implements Flow<Item> {
     this.#value = value;
   }
 
-  get(): Item {
+  get_(): Item {
     return this.#value;
   }
 
-  debug(): any {
+  debug_(): any {
     return {
       kind: 'singleton',
       value: this.#value,
     };
   }
 
-  subscribe(): void {
+  subscribe_(): void {
   }
 
-  unsubscribe() {
+  unsubscribe_() {
   }
 }
 
@@ -32,32 +32,32 @@ class VarImpl<Item> implements Var<Item> {
     this.#value = init;
   }
 
-  get(): Item {
+  get_(): Item {
     return this.#value;
   }
 
-  debug(): any {
+  debug_(): any {
     return {
       kind: 'var',
       value: this.#value,
     };
   }
 
-  set(value: Item): void {
+  set_(value: Item): void {
     // if no actual change is made, don't trigger a recalculate chain
     if (equals(this.#value, value)) {
       return;
     }
 
     this.#value = value;
-    this.#listeners.forEach(it => it.markDirty());
+    this.#listeners.forEach(it => it.markDirty_());
   }
 
-  subscribe(sink: Sink) {
+  subscribe_(sink: Sink) {
     this.#listeners.push(sink);
   }
 
-  unsubscribe(sink: Sink) {
+  unsubscribe_(sink: Sink) {
     const index = this.#listeners.indexOf(sink);
     if (index !== -1) {
       this.#listeners.splice(index, 1);
@@ -75,35 +75,35 @@ class ProjectionImpl<Base, Item> implements Var<Item>, Sink {
     this.#root = root;
     this.#getter = getter;
     this.#setter = setter;
-    root.subscribe(this);
+    root.subscribe_(this);
   }
 
-  get(): Item {
-    return this.#getter(this.#root.get());
+  get_(): Item {
+    return this.#getter(this.#root.get_());
   }
 
-  debug(): any {
+  debug_(): any {
     return {
       kind: 'projection',
       root: this.#root,
-      value: this.get(),
+      value: this.get_(),
     }
   }
 
-  set(value: Item): void {
+  set_(value: Item): void {
     // updating root will always call markDirty on us, so we don't need to worry about doing that explicitly here
-    this.#root.set(this.#setter(this.#root.get(), value));
+    this.#root.set_(this.#setter(this.#root.get_(), value));
   }
 
-  markDirty(): void {
-    this.#listeners.forEach(it => it.markDirty());
+  markDirty_(): void {
+    this.#listeners.forEach(it => it.markDirty_());
   }
 
-  subscribe(sink: Sink) {
+  subscribe_(sink: Sink) {
     this.#listeners.push(sink);
   }
 
-  unsubscribe(sink: Sink) {
+  unsubscribe_(sink: Sink) {
     const index = this.#listeners.indexOf(sink);
     if (index !== -1) {
       this.#listeners.splice(index, 1);
@@ -121,41 +121,41 @@ class FlowImpl<Args extends [...any[]], Item> implements Flow<Item>, Sink {
   constructor(sources: { [Index in keyof Args]: Flow<Args[Index]> }, calc: (...args: Args) => Item) {
     this.#sources = sources;
     this.#calc = calc;
-    sources.forEach(it => it.subscribe(this));
+    sources.forEach(it => it.subscribe_(this));
   }
 
-  get(): Item {
+  get_(): Item {
     if (this.#dirty) {
-      this.#value = this.#calc(...(this.#sources.map(src => src.get()) as Args));
+      this.#value = this.#calc(...(this.#sources.map(src => src.get_()) as Args));
       this.#dirty = false;
     }
 
     return this.#value!;
   }
 
-  debug(): any {
+  debug_(): any {
     return {
       kind: 'flow',
-      sources: this.#sources.map(it => it.debug()),
+      sources: this.#sources.map(it => it.debug_()),
       value: this.#value,
     };
   }
 
-  markDirty(): void {
+  markDirty_(): void {
     if (this.#dirty) {
       return;
     }
 
     this.#dirty = true;
     this.#value = undefined;
-    this.#listeners.forEach(it => it.markDirty());
+    this.#listeners.forEach(it => it.markDirty_());
   }
 
-  subscribe(sink: Sink) {
+  subscribe_(sink: Sink) {
     this.#listeners.push(sink);
   }
 
-  unsubscribe(sink: Sink) {
+  unsubscribe_(sink: Sink) {
     const index = this.#listeners.indexOf(sink);
     if (index !== -1) {
       this.#listeners.splice(index, 1);
@@ -170,50 +170,50 @@ class DefImpl<Args extends [...any[]], Item> implements Flow<Item>, Sink {
   #value: Flow<Item> | undefined;
   #listeners: Array<Sink> = [];
   #listenerProxy: Sink = {
-    markDirty: () => {
-      this.#listeners.forEach(it => it.markDirty());
+    markDirty_: () => {
+      this.#listeners.forEach(it => it.markDirty_());
     }
   }
 
   constructor(sources: { [Index in keyof Args]: Flow<Args[Index]> }, calc: (...args: Args) => Flow<Item>) {
     this.#sources = sources;
     this.#calc = calc;
-    sources.forEach(it => it.subscribe(this));
+    sources.forEach(it => it.subscribe_(this));
   }
 
-  get(): Item {
+  get_(): Item {
     if (this.#dirty) {
-      this.#value?.unsubscribe(this.#listenerProxy);
-      this.#value = this.#calc(...(this.#sources.map(src => src.get()) as Args));
-      this.#value!.subscribe(this.#listenerProxy);
+      this.#value?.unsubscribe_(this.#listenerProxy);
+      this.#value = this.#calc(...(this.#sources.map(src => src.get_()) as Args));
+      this.#value!.subscribe_(this.#listenerProxy);
       this.#dirty = false;
     }
 
-    return this.#value!.get();
+    return this.#value!.get_();
   }
 
-  debug(): any {
+  debug_(): any {
     return {
       kind: 'def',
-      sources: this.#sources.map(it => it.debug()),
+      sources: this.#sources.map(it => it.debug_()),
     }
   }
 
-  markDirty(): void {
+  markDirty_(): void {
     if (this.#dirty) {
       return;
     }
 
     this.#dirty = true;
     this.#value = undefined;
-    this.#listeners.forEach(it => it.markDirty());
+    this.#listeners.forEach(it => it.markDirty_());
   }
 
-  subscribe(sink: Sink) {
+  subscribe_(sink: Sink) {
     this.#listeners.push(sink);
   }
 
-  unsubscribe(sink: Sink) {
+  unsubscribe_(sink: Sink) {
     const index = this.#listeners.indexOf(sink);
     if (index !== -1) {
       this.#listeners.splice(index, 1);
@@ -225,24 +225,24 @@ class DefImpl<Args extends [...any[]], Item> implements Flow<Item>, Sink {
  * This is how parts that listen to other parts are alerted that their sources changed
  */
 export interface Sink {
-  markDirty(): void;
+  markDirty_(): void;
 }
 
 /**
  * This is a `flow`. You can ask it for its current value or subscribe to be informed when the `flow` is marked dirty.
  */
 export interface Flow<Item> {
-  get(): Item;
-  debug(): any;
-  subscribe(sink: Sink): void;
-  unsubscribe(sink: Sink): void;
+  get_(): Item;
+  debug_(): any;
+  subscribe_(sink: Sink): void;
+  unsubscribe_(sink: Sink): void;
 }
 
 /**
  * This is how `var` is implemented, it extends flow, can be used anywhere flow is, but also allows you to update its value directly
  */
 export interface Var<Item> extends Flow<Item> {
-  set(value: Item): void;
+  set_(value: Item): void;
 }
 
 /**
@@ -281,18 +281,18 @@ export function def<Args extends [...any[]], Item>(sources: { [Index in keyof Ar
 }
 
 export interface EffectContext {
-  onCancel(callback: () => void): void;
+  onCancel_(callback: () => void): void;
 }
 
 export function effect(action: Flow<(context: EffectContext) => void>): void {
   const context = new EffectContextImpl();
   const callback = () => {
-    context.cancel();
-    action.get()(context);
+    context.cancel_();
+    action.get_()(context);
   };
 
-  action.subscribe({
-    markDirty() {
+  action.subscribe_({
+    markDirty_() {
       if (!context.loaded) {
         context.loaded = true;
         setTimeout(callback, 0);
@@ -307,11 +307,11 @@ class EffectContextImpl implements EffectContext {
   loaded: boolean = false;
   #cancelCallbacks: Array<() => void> = [];
 
-  onCancel(callback: () => void) {
+  onCancel_(callback: () => void) {
     this.#cancelCallbacks.push(callback);
   }
 
-  cancel(): void {
+  cancel_(): void {
     this.loaded = false;
     this.#cancelCallbacks.forEach(it => it());
     this.#cancelCallbacks = [];
@@ -326,13 +326,13 @@ export function main<Model>(main: () => Flow<Model>, renderer: (model: Model) =>
     // mark us as no longer dirty
     dirty = false;
     // get the latest state
-    const state = flow.get();
+    const state = flow.get_();
     // render the state
     renderer(state);
   };
 
-  flow.subscribe({
-    markDirty(): void {
+  flow.subscribe_({
+    markDirty_(): void {
       if (!dirty) {
         dirty = true;
         setTimeout(redraw, 0);

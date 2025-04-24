@@ -23,7 +23,7 @@
     "check": "yarn run tsc",
     "lint": "yarn run eslint --fix -c eslint.config.js src/**/*.ts",
     "codegen": "yarn node codegen/codegen.ts",
-    "package": "yarn run esbuild dist/main.js  --format=esm --bundle --outfile=build/simple.js --minify",
+    "package": "yarn run esbuild dist/main.js  --format=esm --bundle --outfile=build/simple.js --minify --mangle-props=_\\$",
 
     "simple": "yarn node src/main.ts sample_simple && yarn package",
     "ticktac": "yarn node src/main.ts sample_ticktac && yarn package",

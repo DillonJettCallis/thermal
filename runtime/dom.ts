@@ -10,50 +10,50 @@ import {
 
 interface IText {
   [thermalClass]: ThermalClass;
-  text: string;
+  text_: string;
 }
 
 export interface ITag {
   [thermalClass]: ThermalClass;
-  tag: string;
-  attributes: HashMap<string, string>;
-  onClick: (() => void) | undefined;
-  children: Vec<ITag | IText>;
+  tag_: string;
+  attributes_: HashMap<string, string>;
+  onClick_: (() => void) | undefined;
+  children_: Vec<ITag | IText>;
 }
 
 interface IHead {
   [thermalClass]: ThermalClass;
-  title: string;
+  title_: string;
 }
 
 interface IHtml {
   [thermalClass]: ThermalClass;
-  head: IHead;
-  body: ITag;
+  head_: IHead;
+  body_: ITag;
 }
 
 let prev: IHtml | undefined;
 
 export function domRenderer(next: IHtml): void {
   if (prev === undefined) {
-    document.title = next.head.title;
-    createTag(document.body, next.body);
+    document.title = next.head_.title_;
+    createTag(document.body, next.body_);
   } else {
-    if (!equals(prev.head, next.head)) {
-      document.title = next.head.title;
+    if (!equals(prev.head_, next.head_)) {
+      document.title = next.head_.title_;
     }
-    updateTag(document.body, prev.body, next.body);
+    updateTag(document.body, prev.body_, next.body_);
   }
 
   prev = next;
 }
 
 function isTag(obj: ThermalObject): obj is ITag {
-  return obj[thermalClass].name === "Tag";
+  return obj[thermalClass].name_ === "Tag";
 }
 
 function isText(obj: ThermalObject): obj is IText {
-  return obj[thermalClass].name === "Text";
+  return obj[thermalClass].name_ === "Text";
 }
 
 function update(elem: Node, prev: ITag | IText, next: ITag | IText) {
@@ -70,11 +70,11 @@ function update(elem: Node, prev: ITag | IText, next: ITag | IText) {
 
     if (isText(next)) {
       const parent = elem.parentElement!;
-      const newNode = document.createTextNode(next.text);
+      const newNode = document.createTextNode(next.text_);
       parent.replaceChild(newNode, elem);
     } else {
       const parent = elem.parentElement!;
-      const newNode = document.createElement(next.tag);
+      const newNode = document.createElement(next.tag_);
       createTag(newNode, next);
       parent.replaceChild(newNode, elem);
     }
@@ -83,33 +83,33 @@ function update(elem: Node, prev: ITag | IText, next: ITag | IText) {
 }
 
 function updateTag(elem: HTMLElement, prev: ITag, next: ITag): void {
-  if (prev.tag !== next.tag) {
+  if (prev.tag_ !== next.tag_) {
     // if the tag itself has changed, just replace it with a newly created one
     const parent = elem.parentElement!;
-    const newChild = document.createElement(next.tag)
+    const newChild = document.createElement(next.tag_)
     createTag(newChild, next);
     parent.replaceChild(newChild, elem);
   } else {
     // set attributes
-    for (const {key, value} of Map_entriesOf(next.attributes.buckets)) {
+    for (const {key_, value_} of Map_entriesOf(next.attributes_.buckets_)) {
       elem.setAttribute(key, value);
     }
 
     // remove any attributes that have been removed
-    for (const key of Map_keys(prev.attributes)) {
-      if (!Map_has(next.attributes, key)) {
+    for (const key of Map_keys(prev.attributes_)) {
+      if (!Map_has(next.attributes_, key)) {
         elem.removeAttribute(key);
       }
     }
 
     // update onclick
-    if (prev.onClick !== next.onClick) {
-      elem.onclick = next.onClick ?? null
+    if (prev.onClick_ !== next.onClick_) {
+      elem.onclick = next.onClick_ ?? null
     }
 
     // update children
     // TODO: support ids
-    for (const {elemChild, prevChild, nextChild} of multiZip(elem, prev.children, next.children)) {
+    for (const {elemChild, prevChild, nextChild} of multiZip(elem, prev.children_, next.children_)) {
       // add
       if (elemChild == null && nextChild != null) {
         create(elem, nextChild)
@@ -130,32 +130,32 @@ function updateTag(elem: HTMLElement, prev: ITag, next: ITag): void {
 
 function create(parent: HTMLElement, node: ITag | IText): void {
   if (isText(node)) {
-    const newNode = document.createTextNode(node.text);
+    const newNode = document.createTextNode(node.text_);
     parent.appendChild(newNode);
   } else {
-    const newNode = document.createElement(node.tag);
+    const newNode = document.createElement(node.tag_);
     createTag(newNode, node);
     parent.appendChild(newNode);
   }
 }
 
 function createTag(elem: HTMLElement, node: ITag): void {
-  Map_forEach(node.attributes, (value, key) => {
+  Map_forEach(node.attributes_, (value, key) => {
     elem.setAttribute(key, value);
   });
 
-  if (node.onClick !== undefined) {
-    elem.onclick = node.onClick;
+  if (node.onClick_ !== undefined) {
+    elem.onclick = node.onClick_;
   }
 
-  Vec_forEach(node.children, child => {
+  Vec_forEach(node.children_, child => {
     create(elem, child);
   });
 }
 
 function* multiZip(elem: HTMLElement, prev: Vec<IText | ITag>, next: Vec<IText | ITag>): IterableIterator<{ elemChild: Node | undefined, prevChild: IText | ITag | undefined, nextChild: IText | ITag | undefined }> {
   const elemChildren = safeChildNodes(elem);
-  const max = Math.max(elemChildren.length, prev.size, next.size);
+  const max = Math.max(elemChildren.length, prev.size_, next.size_);
 
   for (let index = 0; index < max; index++) {
     yield {
