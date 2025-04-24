@@ -22,10 +22,12 @@
     "test": "yarn node --test './src/test/*.test.ts'",
     "check": "yarn run tsc",
     "lint": "yarn run eslint --fix -c eslint.config.js src/**/*.ts",
-    "simple": "yarn node src/main.ts simple.thermal && yarn run esbuild dist/simple.js --bundle --outfile=build/simple.js",
-    "ticktac": "yarn node src/main.ts ticktac.thermal && yarn run esbuild dist/ticktac.js --bundle --outfile=build/simple.js --minify",
-    "proto": "yarn node src/main.ts proto.thermal && yarn run esbuild dist/proto.js --bundle --outfile=build/simple.js",
-    "compare": "yarn node src/main.ts compare.thermal && yarn run esbuild dist/compare.js --bundle --outfile=build/simple.js --minify",
-    "codegen": "yarn node codegen/codegen.ts"
+    "codegen": "yarn node codegen/codegen.ts",
+    "package": "yarn run esbuild dist/main.js  --format=esm --bundle --outfile=build/simple.js --minify",
+
+    "simple": "yarn node src/main.ts sample_simple && yarn package",
+    "ticktac": "yarn node src/main.ts sample_ticktac && yarn package",
+    "proto": "yarn node src/main.ts sample_proto && yarn package",
+    "compare": "yarn node src/main.ts sample_compare && yarn package"
   }
 }

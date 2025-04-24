@@ -14,6 +14,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as process from 'node:process';
 import { readdirSync } from 'node:fs';
+import { File } from './file.ts';
 
 async function main(mainFileName: string): Promise<void> {
   const workingDir = resolve(fileURLToPath(import.meta.url), '../..');
@@ -75,6 +76,13 @@ async function main(mainFileName: string): Promise<void> {
   for (const file of jsCompilePrep) {
     await jsEmitter.emitFile(file);
   }
+
+  new File(`${workingDir}/dist/main.js`).writeText(`
+import { main } from './${mainFileName}.js';
+import { domRenderer } from '../runtime/dom.ts';
+
+domRenderer(main);
+`);
 }
 
 await main(process.argv[2]!);

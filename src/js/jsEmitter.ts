@@ -170,9 +170,9 @@ class Output {
       }
     });
 
-    if (file.main) {
-      this.#write('_main(main, _domRenderer);\n');
-    }
+    // if (file.main) {
+    //   this.#write('_main(main, _domRenderer);\n');
+    // }
   }
 
   #writeDataLayout(layout: JsDataLayout, enumName: string | undefined): void {

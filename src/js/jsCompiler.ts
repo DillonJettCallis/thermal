@@ -121,11 +121,6 @@ export class JsCompiler {
       take: 'effect',
       as: undefined,
     }),
-    new JsImport({
-      from: '../runtime/dom.ts',
-      take: 'domRenderer',
-      as: '_domRenderer',
-    }),
   );
 
   #nextTempId = 0;
@@ -158,7 +153,7 @@ export class JsCompiler {
         return list.toSeq().map(it => it.symbol.serializedName()).toSet()
           .map(path => {
             return new JsImport({
-              from: `./${module.name}.js`,
+              from: `./${module.serializedName()}.js`,
               take: path,
               as: path,
             })
@@ -167,7 +162,7 @@ export class JsCompiler {
 
     const decs = src.declarations.flatMap<JsDeclaration>(dec => {
       if (dec instanceof CheckedImportDeclaration) {
-        return Seq(this.#deconstructImport('.', dec.ex));
+        return Seq(this.#deconstructImport('./' + (dec.package.name === 'self' ? src.module.package.name : dec.package.name), dec.ex));
       } else if (dec instanceof CheckedConstantDeclare) {
         if (dec.external) {
           return this.#importExternal(dec.pos, dec.symbol, dec.access === 'private');
@@ -270,7 +265,7 @@ export class JsCompiler {
     });
 
     return new JsFile({
-      name: substringAfterLast(src.src, '/').replace(/\.thermal$/, '.js'),
+      name: src.module.serializedName() + '.js', // substringAfterLast(src.src, '/').replace(/\.thermal$/, '.js'),
       main: lookForMain && src.declarations.some(dec => dec instanceof CheckedFunctionDeclare && dec.name === 'main'),
       declarations: this.#defaultImports.concat(staticImportReferences, decs),
     })
@@ -411,7 +406,7 @@ export class JsCompiler {
       });
     } else {
       for (const it of ex.children) {
-        yield* this.#deconstructImport(base + '/' + ex.base.name, it);
+        yield* this.#deconstructImport(base + '_' + ex.base.name, it);
       }
     }
   }

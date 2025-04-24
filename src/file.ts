@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
 import { List } from 'immutable';
 
@@ -39,5 +39,9 @@ export class File {
 
   readText(): string {
     return readFileSync(this.#path, { encoding: 'utf-8' });
+  }
+
+  writeText(text: string): void {
+    writeFileSync(this.#path, text, { encoding: 'utf-8' });
   }
 }
