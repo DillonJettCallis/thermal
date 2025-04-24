@@ -78,10 +78,11 @@ async function main(mainFileName: string): Promise<void> {
   }
 
   new File(`${workingDir}/dist/main.js`).writeText(`
-import { main } from './${mainFileName}.js';
+import { main as appMain } from './${mainFileName}.js';
 import { domRenderer } from '../runtime/dom.ts';
+import { main } from '../runtime/runtime.ts';
 
-domRenderer(main);
+main(appMain, domRenderer);
 `);
 }
 
