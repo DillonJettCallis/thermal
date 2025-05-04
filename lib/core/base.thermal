@@ -7,6 +7,26 @@ public enum Option<Item> {
   None,
 }
 
+public enum Result<Item, Error> {
+  Ok { item: Item },
+  Err { err: Error },
+}
+
+public enum Async<Item, Error> {
+  Success { item: Item },
+  Failure { err: Error },
+  Pending {},
+}
+
+public data EffectContext {
+}
+
+implement EffectContext {
+  external sig onCancel(self, callback: sig { -> Unit }): Unit;
+}
+
+external public def effect(action: sig { EffectContext -> Unit }): Unit;
+
 // Todo: PartialEqual maybe?
 public protocol Equal {
   public fun equal(self, other: Self): Boolean;

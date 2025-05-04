@@ -1,4 +1,6 @@
 import { type ThermalClass, thermalClassMarker } from '../../runtime/reflect.js';
+import type { EffectContext } from '../../runtime/runtime.js';
+import { effect as baseEffect, singleton } from '../../runtime/runtime.js'
 
 
 export const Option: ThermalClass = {
@@ -34,5 +36,13 @@ export const None: ThermalClass = {
   type: 'struct',
   enum: Option,
   fields: {}
+}
+
+export function onCancel(context: EffectContext, handler: () => void): void {
+  context.onCancel(handler);
+}
+
+export function effect(handler: (context: EffectContext) => void): void {
+  baseEffect(singleton(handler));
 }
 

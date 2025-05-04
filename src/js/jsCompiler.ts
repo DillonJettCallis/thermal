@@ -115,13 +115,7 @@ export class JsCompiler {
       take,
       as: `_${take}`,
     });
-  })).push(
-    new JsImport({
-      from: '../runtime/runtime.ts',
-      take: 'effect',
-      as: undefined,
-    }),
-  );
+  }));
 
   #nextTempId = 0;
 
@@ -538,25 +532,69 @@ export class JsCompiler {
         }
       }
 
-      const thenBlock = blockify(this.#compileExpression(ex.thenEx, phase));
-      const elseBlock = blockify(ex.elseEx === undefined ? new JsUndefined({}) : this.#compileExpression(ex.elseEx, phase));
+      const thenEx = this.#compileExpression(ex.thenEx, phase);
+      const elseEx = ex.elseEx === undefined ? new JsUndefined({}) : this.#compileExpression(ex.elseEx, phase);
+
+      const thenBlock = blockify(thenEx);
+      const elseBlock = blockify(elseEx);
 
       return this.#use(condition, condition => {
         // handle a flow condition
         if (phase === 'def' && (ex.condition.phase === 'flow' || ex.condition.phase === 'var')) {
+          const thenIsFlow = ex.thenEx.phase === 'flow' || ex.thenEx.phase === 'var';
+          const elseIfFlow = ex.elseEx?.phase === 'flow' || ex.elseEx?.phase === 'var';
+          let flowFunc: '_flow' | '_def';
+          let actualIf: JsIf;
+
+          if (thenIsFlow && elseIfFlow) {
+            // both are flow
+            flowFunc = '_def';
+            actualIf = new JsIf({
+              condition: new JsIdentifierEx({name: '_0'}),
+              thenBlock,
+              elseBlock,
+            });
+          } else if (!thenIsFlow && !elseIfFlow) {
+            // neither are flow
+            flowFunc = '_flow';
+            actualIf = new JsIf({
+              condition: new JsIdentifierEx({name: '_0'}),
+              thenBlock,
+              elseBlock,
+            });
+          } else {
+            // one is flow, the other is not
+            flowFunc = '_def';
+            const singleton = new JsIdentifierEx({ name: '_singleton' });
+
+            if (thenIsFlow) {
+              actualIf = new JsIf({
+                condition: new JsIdentifierEx({name: '_0'}),
+                thenBlock,
+                elseBlock: blockify(this.#use(elseEx, ex => {
+                  return new JsCall({ func: singleton, args: List.of(ex) });
+                })),
+              });
+            } else {
+              actualIf = new JsIf({
+                condition: new JsIdentifierEx({name: '_0'}),
+                thenBlock: blockify(this.#use(thenEx, ex => {
+                  return new JsCall({ func: singleton, args: List.of(ex) });
+                })),
+                elseBlock,
+              });
+            }
+          }
+
           return new JsCall({
-            func: new JsIdentifierEx({name: '_flow'}),
+            func: new JsIdentifierEx({name: flowFunc}),
             args: List.of<JsExpression>(
               new JsArray({args: List.of(condition)}),
               new JsLambdaEx({
                 args: List.of('_0'),
                 body: List.of<JsStatement>(
                   syntheticResult,
-                  new JsIf({
-                    condition: new JsIdentifierEx({name: '_0'}),
-                    thenBlock,
-                    elseBlock,
-                  }),
+                  actualIf,
                   new JsReturn({ body: new JsIdentifierEx({ name: resultId }) }),
                 )
               })

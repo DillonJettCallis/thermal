@@ -460,7 +460,7 @@ export class Checker {
         prev = child.type;
         prevName = childName;
       } else if (prev instanceof CheckedEnumType) {
-        const variant = prev.variants.get(next.name) ?? next.pos.fail(`No such enum variant found ${prev.name}`);
+        const variant = prev.variants.get(next.name) ?? next.pos.fail(`No such enum variant found ${next.name}`);
         path.push(new CheckedIdentifierEx({
           pos: next.pos,
           name: next.name,
@@ -554,7 +554,7 @@ export class Checker {
           };
         });
 
-        const { typeArgs, args } = this.#fullChecking(namesToPairs, scope, ex.pos, genericParams);
+        const { typeArgs, args } = this.#fullChecking(namesToPairs, scope, ex.pos, genericParams, ex.typeArgs);
 
         const baseName = new CheckedNominalType({name: baseType.name});
 
@@ -624,7 +624,7 @@ export class Checker {
       if (funcType.params.size === inputArgs.size) {
         const rawArgs = funcType.params.zipWith((expected: CheckedFunctionTypeParameter, actual: ParserExpression) => ({expected: expected.type, actual}), inputArgs).toOrderedMap();
 
-        const { typeArgs, args } = this.#fullChecking(rawArgs, scope, ex.pos, funcType.typeParams);
+        const { typeArgs, args } = this.#fullChecking(rawArgs, scope, ex.pos, funcType.typeParams, ex.typeArgs);
         const typeParams = funcType.typeParams.toOrderedMap()
           .mapEntries(([index, value]) => {
             return [value.name, typeArgs.get(index)!];
@@ -702,7 +702,7 @@ export class Checker {
       if (funcType.params.size === ex.args.size) {
         const rawArgs = funcType.params.zipWith((expected: CheckedFunctionTypeParameter, actual: ParserExpression) => ({expected: expected.type, actual}), ex.args).toOrderedMap();
 
-        const { typeArgs, args } = this.#fullChecking(rawArgs, scope, ex.pos, funcType.typeParams);
+        const { typeArgs, args } = this.#fullChecking(rawArgs, scope, ex.pos, funcType.typeParams, ex.typeArgs);
         const typeParams = funcType.typeParams.toOrderedMap()
           .mapEntries(([index, value]) => {
             return [value.name, typeArgs.get(index)!];
@@ -770,7 +770,7 @@ export class Checker {
         const genericParams = funcType.typeParams;
         const rawArgs = funcType.fields.zipWith((expected, actual: ParserExpression) => ({expected, actual}), ex.args).toOrderedMap();
 
-        const { typeArgs, args } = this.#fullChecking(rawArgs, scope, ex.pos, genericParams);
+        const { typeArgs, args } = this.#fullChecking(rawArgs, scope, ex.pos, genericParams, ex.typeArgs);
         const typeParams = genericParams.toOrderedMap()
           .mapEntries(([index, value]) => {
             return [value.name, typeArgs.get(index)!];
@@ -1380,12 +1380,40 @@ export class Checker {
   }
 
   //TODO: someday have a way to handle default values, meaning optional actual values
-  #fullChecking<MapKey extends number | string>(pairs: Map<MapKey, { actual: ParserExpression, expected: CheckedTypeExpression }>, scope: Scope, pos: Position, genericParams: List<CheckedTypeParameterType>): { typeArgs: List<CheckedTypeExpression>, args: Map<MapKey, CheckedExpression> } {
+  #fullChecking<MapKey extends number | string>(pairs: Map<MapKey, { actual: ParserExpression, expected: CheckedTypeExpression }>, scope: Scope, pos: Position, genericParams: List<CheckedTypeParameterType>, explicitTypeArgs: List<ParserTypeExpression>): { typeArgs: List<CheckedTypeExpression>, args: Map<MapKey, CheckedExpression> } {
     if (genericParams.isEmpty()) {
+      if (!explicitTypeArgs.isEmpty()) {
+        return pos.fail('Attempt to pass generic arguments to non-generic function');
+      }
+
       return {
         typeArgs: List(),
         args: pairs.map(({actual, expected}) => this.#checkExpression(actual, scope, expected)),
       };
+    }
+
+    if (!explicitTypeArgs.isEmpty()) {
+      // TODO: for now we'll assume you either have the full list or none. This code only works for a full list, the else block handles the none case
+
+      // only handle an exact match
+      if (genericParams.size !== explicitTypeArgs.size) {
+        return pos.fail(`Wrong number of generic arguments. Expected: ${genericParams.size} but found ${explicitTypeArgs.size}`);
+      }
+
+      const typeArgs: List<CheckedTypeExpression> = explicitTypeArgs.map(it => scope.qualifier.checkTypeExpression(it));
+      const actualGenerics: Map<Symbol, CheckedTypeExpression> = (typeArgs.zip(genericParams).toKeyedSeq() as Seq.Keyed<number, [CheckedTypeExpression, CheckedTypeParameterType]>)
+        .mapKeys<Symbol>((_, [, param]) => param.name)
+        .map(([arg]) => arg)
+        .toMap();
+
+      return {
+        typeArgs,
+        args: pairs.map(({actual, expected}) => {
+          const expectedWithGenerics = this.#fillGenericTypes(expected, pos, actualGenerics);
+
+          return this.#checkExpression(actual, scope, expectedWithGenerics);
+        }),
+      }
     }
 
     const expectedGenerics = genericParams.map(it => it.name).toSet();

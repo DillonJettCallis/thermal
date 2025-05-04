@@ -793,39 +793,25 @@ export class Parser {
   }
 
   #parseCallExpression(): ParserExpression {
-    const base = this.#parseConstruct();
+    const base = this.#parseAccessExpression();
+
+    if (this.#endOfFile()) {
+      return base;
+    }
+
     const typeArgs = this.#parseFunctionTypeArguments();
+    const pos = this.#peek().pos;
 
     if (this.#checkSymbol('(')) {
       const args = this.#parseList(')', true, () => this.#parseExpression());
 
       return new ParserCallEx({
-        pos: base.pos,
+        pos,
         func: base,
         typeArgs: typeArgs ?? List(),
         args,
       });
-    } else {
-      if (typeArgs !== undefined) {
-        base.pos.fail('Found generics but no function call');
-      }
-
-      return base;
-    }
-  }
-
-  #parseFunctionTypeArguments(): List<ParserTypeExpression> | undefined {
-    if (this.#checkSymbol('[')) {
-      return this.#parseList(']', false, () => this.#parseTypeExpression());
-    } else {
-      return undefined;
-    }
-  }
-
-  #parseConstruct(): ParserExpression {
-    const base = this.#parseAccessExpression();
-
-    if (this.#checkSymbol('{')) {
+    } else if (this.#checkSymbol('{')) {
       const fields = this.#parseList('}', true, () => {
         const name = this.#assertKind('identifier');
 
@@ -850,13 +836,25 @@ export class Parser {
       });
 
       return new ParserConstructEx({
-        pos: base.pos,
+        pos,
         base,
-        typeArgs: List(), // TODO: parse type arguments for a struct
+        typeArgs: typeArgs ?? List(),
         fields,
       });
     } else {
+      if (typeArgs !== undefined) {
+        base.pos.fail('Found generics but no function call');
+      }
+
       return base;
+    }
+  }
+
+  #parseFunctionTypeArguments(): List<ParserTypeExpression> | undefined {
+    if (this.#checkSymbol('::<')) {
+      return this.#parseList('>', false, () => this.#parseTypeExpression());
+    } else {
+      return undefined;
     }
   }
 

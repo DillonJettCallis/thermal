@@ -66,10 +66,11 @@ const operators = Set.of(
   '%[',
   '#[',
   ']',
-  // compare/generics
+  // generics
+  '::<',
+  // comparison
   '<',
   '>',
-  // comparison
   '<=',
   '>=',
   '==',

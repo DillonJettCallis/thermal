@@ -1,0 +1,25 @@
+import self/base::effect;
+
+public data HttpError {
+  // TODO: add more fields, like the original path, query params, everything else
+  code: Int, // the http response code
+  body: String, // todo, this should be a blob, not just a string
+}
+
+public def getText(path: String): Async<String, HttpError> {
+  var async: Async<String, HttpError> = Async::Pending::<String, HttpError>{};
+
+  effect(sig { context =>
+    val canceler = request(path, "GET", sig { item =>
+      async = Async::Success::<String, HttpError> { item };
+    }, sig { err =>
+      async = Async::Failure::<String, HttpError> { err };
+    });
+
+    context.onCancel(canceler);
+  });
+
+  return async;
+}
+
+external public sig request(path: String, method: String, successCallback: sig { String -> Unit }, failureCallback: sig { HttpError -> Unit }): sig { -> Unit };

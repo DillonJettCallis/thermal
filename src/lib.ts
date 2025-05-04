@@ -115,6 +115,8 @@ export function coreLib(workingDir: string): { package: ParserPackage, coreTypes
   preamble.set('Int', coreTypes.int.name);
   preamble.set('Float', coreTypes.float.name);
   preamble.set('Option', coreTypes.option.name);
+  preamble.set('Async', coreSymbol.child('base').child('Async'));
+  preamble.set('effect', coreSymbol.child('base').child('effect'));
   preamble.set('Unit', coreTypes.unit.name);
   preamble.set('Array', coreSymbol.child('array').child('Array'));
   preamble.set('List', coreSymbol.child('vector').child('Vec'));
@@ -131,7 +133,7 @@ export function coreLib(workingDir: string): { package: ParserPackage, coreTypes
   const externals = Map<Symbol, Extern>().asMutable();
 
   // TODO: core library needs to be pre-checked so we don't have to recheck when we're just trying to use it.
-  const files = List.of('array', 'map', 'set', 'vector', 'bool', 'base', 'math', 'string')
+  const files = List.of('array', 'map', 'set', 'vector', 'bool', 'base', 'math', 'string', 'http')
     .map(key => {
       const parsed = Parser.parseFile(`${workingDir}/lib/core/${key}.thermal`, coreSymbol.child(key));
 

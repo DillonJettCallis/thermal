@@ -35,13 +35,13 @@ const pos = new Position('sample', 1, 1);
 
 const depDict = new DependencyDictionary();
 const rootManager = depDict.addManager(packageName);
-const {package: corePackage, preamble, coreTypes} = coreLib(projectRootPath);
+const {package: corePackage, preamble, coreTypes, declarations: coreDeclarations} = coreLib(projectRootPath);
 const coreManager = depDict.addManager(corePackage.name);
 rootManager.addDependency(corePackage.name);
 
 const corePack = collectSymbols(corePackage.name, corePackage.files, coreManager, preamble);
 
-const typeDict = new TypeDictionary();
+const typeDict = new TypeDictionary(coreDeclarations);
 typeDict.loadPackage(corePack);
 
 const checker = new Checker(rootManager, typeDict, coreTypes, preamble);

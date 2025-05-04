@@ -107,6 +107,10 @@ class ProjectionImpl<Base, Item> implements Var<Item>, Sink {
     const index = this.#listeners.indexOf(sink);
     if (index !== -1) {
       this.#listeners.splice(index, 1);
+
+      if (this.#listeners.length === 0) {
+        this.#root.unsubscribe(this);
+      }
     }
   }
 }
@@ -159,6 +163,10 @@ class FlowImpl<Args extends [...any[]], Item> implements Flow<Item>, Sink {
     const index = this.#listeners.indexOf(sink);
     if (index !== -1) {
       this.#listeners.splice(index, 1);
+
+      if (this.#listeners.length === 0) {
+        this.#sources.forEach(it => it.unsubscribe(this));
+      }
     }
   }
 }
@@ -168,6 +176,7 @@ class DefImpl<Args extends [...any[]], Item> implements Flow<Item>, Sink {
   readonly #calc: (...args: Args) => Flow<Item>;
   #dirty = true;
   #value: Flow<Item> | undefined;
+  #effects: Array<EffectContextImpl> = [];
   #listeners: Array<Sink> = [];
   #listenerProxy: Sink = {
     markDirty: () => {
@@ -183,8 +192,9 @@ class DefImpl<Args extends [...any[]], Item> implements Flow<Item>, Sink {
 
   get(): Item {
     if (this.#dirty) {
-      this.#value?.unsubscribe(this.#listenerProxy);
+      defStack.push(this);
       this.#value = this.#calc(...(this.#sources.map(src => src.get()) as Args));
+      defStack.pop();
       this.#value!.subscribe(this.#listenerProxy);
       this.#dirty = false;
     }
@@ -205,8 +215,12 @@ class DefImpl<Args extends [...any[]], Item> implements Flow<Item>, Sink {
     }
 
     this.#dirty = true;
+    this.#value?.unsubscribe(this.#listenerProxy);
     this.#value = undefined;
     this.#listeners.forEach(it => it.markDirty());
+    if (this.#effects.length > 0) {
+      this.#effects.forEach(it => it.cancel());
+    }
   }
 
   subscribe(sink: Sink) {
@@ -217,6 +231,26 @@ class DefImpl<Args extends [...any[]], Item> implements Flow<Item>, Sink {
     const index = this.#listeners.indexOf(sink);
     if (index !== -1) {
       this.#listeners.splice(index, 1);
+      if (this.#listeners.length === 0) {
+        this.#dirty = true;
+        this.#value?.unsubscribe(this.#listenerProxy);
+        this.#value = undefined;
+
+        if (this.#effects.length > 0) {
+          this.#effects.forEach(it => it.cancel());
+        }
+      }
+    }
+  }
+
+  effect(context: EffectContextImpl): void {
+    this.#effects.push(context);
+  }
+
+  cancelEffect(context: EffectContextImpl): void {
+    const index = this.#effects.indexOf(context);
+    if (index !== -1) {
+      this.#effects.splice(index, 1);
     }
   }
 }
@@ -280,14 +314,25 @@ export function def<Args extends [...any[]], Item>(sources: { [Index in keyof Ar
   return new DefImpl(sources, calc);
 }
 
+/**
+ * Each time a def is about to calculate, it adds itself to the end of this stack.
+ *
+ * This means that the last item in this array is the current def that is being executed.
+ *
+ * Effects use this knowledge to cancel themselves when the def they are used in is declared dirty.
+ */
+const defStack: Array<DefImpl<any, any>> = [];
+
 export interface EffectContext {
   onCancel(callback: () => void): void;
 }
 
 export function effect(action: Flow<(context: EffectContext) => void>): void {
   const context = new EffectContextImpl();
+
   const callback = () => {
     context.cancel();
+    context.prepare();
     action.get()(context);
   };
 
@@ -306,6 +351,20 @@ export function effect(action: Flow<(context: EffectContext) => void>): void {
 class EffectContextImpl implements EffectContext {
   loaded: boolean = false;
   #cancelCallbacks: Array<() => void> = [];
+  #owner: DefImpl<any, any> | undefined;
+
+  constructor() {
+    this.#owner = defStack.at(-1);
+  }
+
+  prepare(): void {
+    const def = this.#owner;
+
+    if (def !== undefined) {
+      def.effect(this);
+      this.onCancel(() => def.cancelEffect(this));
+    }
+  }
 
   onCancel(callback: () => void) {
     this.#cancelCallbacks.push(callback);

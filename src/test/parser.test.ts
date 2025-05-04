@@ -17,7 +17,7 @@ import {
   ParserLambdaEx,
   ParserListLiteralEx,
   ParserMapLiteralEntry,
-  ParserMapLiteralEx,
+  ParserMapLiteralEx, ParserNominalType,
   ParserNotEx,
   ParserSetLiteralEx,
   ParserStaticAccessEx,
@@ -196,7 +196,7 @@ describe('Parser', () => {
   it('should parse a simple static function call', () => expressionParserTest({
     code: 'some::thing("an argument")',
     expected: new ParserCallEx({
-      pos: new Position(src, 1, 5),
+      pos: new Position(src, 1, 12),
       func: new ParserStaticAccessEx({
         pos: new Position(src, 1, 5),
         path: List.of(
@@ -227,7 +227,7 @@ Entry {
   value: 42,
 }`,
     expected: new ParserConstructEx({
-      pos: new Position(src, 2, 1),
+      pos: new Position(src, 2, 7),
       base: new ParserIdentifierEx({
         pos: new Position(src, 2, 1),
         name: 'Entry',
@@ -278,16 +278,19 @@ Entry {
     code: '4 + 5',
     expected: new ParserCallEx({
       pos: new Position(src, 1, 3),
-      func: new ParserIdentifierEx({
+      func: new ParserAccessEx({
         pos: new Position(src, 1, 3),
-        name: '+',
-      }),
-      typeArgs: List(),
-      args: List.of(
-        new ParserIntLiteralEx({
+        base: new ParserIntLiteralEx({
           pos: new Position(src, 1, 1),
           value: 4,
         }),
+        field: new ParserIdentifierEx({
+          pos: new Position(src, 1, 3),
+          name: '+',
+        }),
+      }),
+      typeArgs: List(),
+      args: List.of(
         new ParserIntLiteralEx({
           pos: new Position(src, 1, 5),
           value: 5,
@@ -301,28 +304,34 @@ Entry {
 
     ok(actual.equals(new ParserCallEx({
       pos: new Position(src, 1, 3),
-      func: new ParserIdentifierEx({
+      func: new ParserAccessEx({
         pos: new Position(src, 1, 3),
-        name: '+',
-      }),
-      typeArgs: List(),
-      args: List.of<ParserExpression>(
-        new ParserIntLiteralEx({
+        base: new ParserIntLiteralEx({
           pos: new Position(src, 1, 1),
           value: 4,
         }),
+        field: new ParserIdentifierEx({
+          pos: new Position(src, 1, 3),
+          name: '+',
+        }),
+      }),
+      typeArgs: List(),
+      args: List.of<ParserExpression>(
         new ParserCallEx({
           pos: new Position(src, 1, 7),
-          func: new ParserIdentifierEx({
+          func: new ParserAccessEx({
             pos: new Position(src, 1, 7),
-            name: '*',
-          }),
-          typeArgs: List(),
-          args: List.of(
-            new ParserIntLiteralEx({
+            base: new ParserIntLiteralEx({
               pos: new Position(src, 1, 5),
               value: 5,
             }),
+            field: new ParserIdentifierEx({
+              pos: new Position(src, 1, 7),
+              name: '*',
+            }),
+          }),
+          typeArgs: List(),
+          args: List.of(
             new ParserIntLiteralEx({
               pos: new Position(src, 1, 9),
               value: 3,
@@ -405,16 +414,19 @@ Entry {
     code: '3 * { 2 + 9 }',
     expected: new ParserCallEx({
       pos: new Position(src, 1, 3),
-      func: new ParserIdentifierEx({
+      func: new ParserAccessEx({
         pos: new Position(src, 1, 3),
-        name: '*',
-      }),
-      typeArgs: List(),
-      args: List.of<ParserExpression>(
-        new ParserIntLiteralEx({
+        base: new ParserIntLiteralEx({
           pos: new Position(src, 1, 1),
           value: 3
         }),
+        field: new ParserIdentifierEx({
+          pos: new Position(src, 1, 3),
+          name: '*',
+        }),
+      }),
+      typeArgs: List(),
+      args: List.of<ParserExpression>(
         new ParserBlockEx({
           pos: new Position(src, 1, 5),
           body: List.of(
@@ -422,16 +434,19 @@ Entry {
               pos: new Position(src, 1, 5),
               expression: new ParserCallEx({
                 pos: new Position(src, 1, 9),
-                func: new ParserIdentifierEx({
+                func: new ParserAccessEx({
                   pos: new Position(src, 1, 9),
-                  name: '+',
-                }),
-                typeArgs: List(),
-                args: List.of(
-                  new ParserIntLiteralEx({
+                  base: new ParserIntLiteralEx({
                     pos: new Position(src, 1, 7),
                     value: 2
                   }),
+                  field: new ParserIdentifierEx({
+                    pos: new Position(src, 1, 9),
+                    name: '+',
+                  }),
+                }),
+                typeArgs: List(),
+                args: List.of(
                   new ParserIntLiteralEx({
                     pos: new Position(src, 1, 11),
                     value: 9
@@ -444,5 +459,46 @@ Entry {
       ),
     })
   }));
+
+  it('should parse a constructor with static access and generic parameters', () => expressionParserTest({
+    code: 'Async::Pending::<String, Error>{}',
+    expected: new ParserConstructEx({
+      pos: new Position(src, 1, 32),
+      base: new ParserStaticAccessEx({
+        pos: new Position(src, 1, 6),
+        path: List.of(
+          new ParserIdentifierEx({
+            pos: new Position(src, 1, 1),
+            name: 'Async',
+          }),
+          new ParserIdentifierEx({
+            pos: new Position(src, 1, 8),
+            name: 'Pending',
+          }),
+        )
+      }),
+      typeArgs: List.of(
+        new ParserNominalType({
+          pos: new Position(src, 1, 18),
+          name: List.of(
+            new ParserIdentifierEx({
+              pos: new Position(src, 1, 18),
+              name: 'String',
+            }),
+          ),
+        }),
+        new ParserNominalType({
+          pos: new Position(src, 1, 26),
+          name: List.of(
+            new ParserIdentifierEx({
+              pos: new Position(src, 1, 26),
+              name: 'Error',
+            }),
+          ),
+        }),
+      ),
+      fields: List(),
+    }),
+  }))
 });
 

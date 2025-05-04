@@ -1,0 +1,62 @@
+import dom/dom::{ Html, head, tag, text, content, Element, style, onClick };
+import core/http::getText;
+
+
+
+def main(): Html {
+  return Html {
+    head: head('Http'),
+    body: tag('body', [content([
+      block(),
+    ])]),
+  };
+}
+
+const pages: List<String> = [
+  "readme.md",
+  "todo.txt",
+  "yarn.lock",
+];
+
+def block(): Element {
+  var index = 0;
+
+  flow bodyAsync = getText(pages.get(index));
+  flow body = if (bodyAsync is Async::Pending) {
+    "Pending ..."
+  } else if (bodyAsync is Async::Success) {
+//    bodyAsync.item
+    "The body"
+  } else if (bodyAsync is Async::Failure) {
+    "Error"
+  } else {
+    "What? No match was made?"
+  }
+
+  flow increment = if (index == pages.size - 1) {
+    tag('span', [])
+  } else {
+    val onClickListener = onClick(sig { => index += 1; true });
+    val buttonLabel = content([text("Next")]);
+
+    tag('button', [onClickListener, buttonLabel])
+  };
+
+  flow decrement = if (index == 0) {
+    tag('span', [])
+  } else {
+    tag('button', [onClick(sig { => index -= 1; true }), content([text("Previous")])])
+  };
+
+  return tag('div', [content([
+    decrement,
+    increment,
+
+    tag('div', [content([
+      text(body)
+    ])]),
+  ])]);
+}
+
+
+
