@@ -54,7 +54,6 @@ import {
   CheckedNoOpEx,
   CheckedNotEx,
   CheckedOrEx,
-  CheckedOverloadFunctionType,
   CheckedParameter,
   CheckedParameterizedType,
   CheckedProtocolDeclare,
@@ -728,40 +727,6 @@ export class Checker {
       } else {
         return ex.pos.fail(`Function ${func.pos} expects ${funcType.params.size} arguments but found ${ex.args.size} arguments instead`);
       }
-    } else if (funcType instanceof CheckedOverloadFunctionType) {
-      // overloads are not allowed to have generics
-      // this is a copy of the above code, done in a loop, with generic handling removed
-
-      // we can use any expected type information to resolve things like generics and lambdas
-      branchLoop: for (const branch of funcType.branches) {
-        const funcType = branch;
-        const resolvedFields = ex.args.map((it, index) => this.#checkExpression(it, scope, funcType.params.get(index)?.type));
-
-        // make sure that all types are actually assignable
-        for (let index = 0; index < funcType.params.size; index++) {
-          const expected = funcType.params.get(index)!;
-          const expectedWithGenerics = expected.type;
-          const actual = resolvedFields.get(index)?.type ?? ex.pos.fail('This should not happen. A function call is missing a required argument after it was already checked');
-
-          if (!this.#checkAssignable(actual, expectedWithGenerics)) {
-            // this branch is not valid. Break here and try the next branch
-            continue branchLoop;
-          }
-        }
-
-        return new CheckedCallEx({
-          pos: ex.pos,
-          func,
-          args: resolvedFields,
-          typeArgs: List(),
-          type: funcType.result,
-          // TODO: we're just temporarily assuming that these are only 'fun'
-          phase: this.#phaseCheckCall(resolvedFields.map(arg => ({arg, expectedPhase: undefined})), 'fun', scope),
-        });
-      }
-
-      // no branches worked, fail
-      return ex.pos.fail('No overload found for arguments');
     } else if (funcType instanceof CheckedTupleType) {
       // this is a copy of the function checking code, slightly tweaked
       // TODO: handle default arguments
@@ -1624,7 +1589,7 @@ export class Checker {
     } else if (type instanceof CheckedProtocolType) {
       // TODO: we want to be able to define properties for protocols someday
       return id.pos.fail('Protocol type has no fields');
-    } else if (type instanceof CheckedFunctionType || type instanceof CheckedOverloadFunctionType) {
+    } else if (type instanceof CheckedFunctionType) {
       return id.pos.fail('Function type has no fields');
     } else if (type instanceof CheckedFunctionTypeParameter) {
       return id.pos.fail('Something is wrong, it should be impossible to access this');
@@ -1680,7 +1645,7 @@ export class Checker {
       // TODO: this might not work until we have proper bounds
       // this might also never happen, I'm not sure, needs more thought
       return this.#typeDict.lookupMethod(type.name, id, protocols);
-    } else if (type instanceof CheckedFunctionType || type instanceof CheckedOverloadFunctionType) {
+    } else if (type instanceof CheckedFunctionType) {
       return undefined;
     } else if (type instanceof CheckedFunctionTypeParameter) {
       return id.pos.fail('Something is wrong, it should be impossible to access this');
@@ -1760,9 +1725,6 @@ export class Checker {
         return ex.set('params', ex.params.map(it => it.set('type', fill(it.type)))).set('result', fill(ex.result));
       } else if (ex instanceof CheckedFunctionTypeParameter) {
         return ex.set('type', fill(ex.type));
-      } else if (ex instanceof CheckedOverloadFunctionType) {
-        // overload functions are not allowed to be generic
-        return ex;
       } else if (ex instanceof CheckedParameterizedType) {
         return ex.set('args', ex.args.map(fill));
       } else if (ex instanceof CheckedNominalType) {

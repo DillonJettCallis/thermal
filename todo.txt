@@ -1,4 +1,5 @@
 
+* If a def returns a non-flow, wrap it in a singleton
 * Better parsing of more complex expressions
 * Calling a method right after construction
 * Explicit type arguments in ALL use cases
@@ -6,9 +7,11 @@
 * Core library support - make proper modules for core stuff, extern as much as possible
 * Serialization format for libraries, implement core lib like this
 * Const evaluation
-* Test and evaluate effect system
+* Test and evaluate effect system more
 * Named arguments - if we do them, how we will do them - possibly unify constructors
-* Extend and fill out both dom library and effects like http fetch, timeouts, mouse and keyboard events
+* Extend and fill out both dom library, including mouse and keyboard events
+* Implement full http fetch library
+* Implement timeout events
 * Handle libraries
 * Documentation - find a way to better describe all possible combinations of phases
 * Pattern matching - will depend at least partly on data types

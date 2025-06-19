@@ -573,10 +573,6 @@ function checker(): Generator {
     result: typeExpression,
   }, typeExpression);
 
-  gen.add('OverloadFunctionType', {
-    branches: list(functionType),
-  }, typeExpression);
-
   gen.add('ModuleType', {
     name: symbol,
   }, typeExpression);

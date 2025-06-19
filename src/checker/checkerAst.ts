@@ -39,7 +39,6 @@ export type CheckedTypeExpression
   | CheckedFunctionTypeParameter
   | CheckedTypeParameterType
   | CheckedFunctionType
-  | CheckedOverloadFunctionType
   | CheckedModuleType
   | CheckedProtocolType
   | CheckedDataLayoutType
@@ -228,17 +227,6 @@ export class CheckedFunctionType extends Record<MutableCheckedFunctionType>({
   result: undefined as unknown as CheckedTypeExpression,
 }) {
   constructor(props: MutableCheckedFunctionType) {
-    super(props);
-  }
-}
-
-interface MutableCheckedOverloadFunctionType {
-  branches: List<CheckedFunctionType>;
-}
-export class CheckedOverloadFunctionType extends Record<MutableCheckedOverloadFunctionType>({
-  branches: undefined as unknown as List<CheckedFunctionType>,
-}) {
-  constructor(props: MutableCheckedOverloadFunctionType) {
     super(props);
   }
 }

@@ -9,7 +9,6 @@ import {
   CheckedFunctionTypeParameter,
   CheckedModuleType,
   CheckedNominalType,
-  CheckedOverloadFunctionType,
   CheckedParameterizedType,
   CheckedStructType,
   CheckedTupleType,
@@ -295,82 +294,6 @@ function mathLib(declarations: Map<Symbol, CheckedAccessRecord>, coreTypes: Core
   const mathSymbol = coreSymbol.child('math');
 
   const intType = coreTypes.int;
-  const floatType = coreTypes.float;
-
-  declarations.set(mathSymbol.child('+'), new CheckedAccessRecord({
-    access: 'public',
-    name: mathSymbol.child('+'),
-    module: mathSymbol,
-    type: new CheckedOverloadFunctionType({
-      branches: List.of(
-        unphasedFunction([intType, intType], intType),
-        unphasedFunction([floatType, floatType], floatType),
-      ),
-    }),
-  }));
-  preamble.set('+', mathSymbol.child('+'));
-
-  declarations.set(mathSymbol.child('-'), new CheckedAccessRecord({
-    access: 'public',
-    name: mathSymbol.child('-'),
-    module: mathSymbol,
-    type: new CheckedOverloadFunctionType({
-      branches: List.of(
-        // unary versions
-        unphasedFunction([intType], intType),
-        unphasedFunction([floatType], floatType),
-
-        // binary versions
-        unphasedFunction([intType, intType], intType),
-        unphasedFunction([floatType, floatType], floatType),
-      ),
-    }),
-  }));
-  preamble.set('-', mathSymbol.child('-'));
-
-  declarations.set(mathSymbol.child('*'), new CheckedAccessRecord({
-    access: 'public',
-    name: mathSymbol.child('*'),
-    module: mathSymbol,
-    type: new CheckedOverloadFunctionType({
-      branches: List.of(
-        unphasedFunction([intType, intType], intType),
-        unphasedFunction([floatType, floatType], floatType),
-      ),
-    }),
-  }));
-  preamble.set('*', mathSymbol.child('*'));
-
-  declarations.set(mathSymbol.child('/'), new CheckedAccessRecord({
-    access: 'public',
-    name: mathSymbol.child('/'),
-    module: mathSymbol,
-    type: new CheckedOverloadFunctionType({
-      branches: List.of(
-        unphasedFunction([intType, intType], floatType),
-        unphasedFunction([floatType, floatType], floatType),
-      ),
-    }),
-  }));
-  preamble.set('/', mathSymbol.child('/'));
-
-  // all compare ops work on all number type combinations
-  ['>', '>=', '<', '<='].forEach(op => {
-    declarations.set(mathSymbol.child(op), new CheckedAccessRecord({
-      access: 'public',
-      name: mathSymbol.child(op),
-      module: mathSymbol,
-      type: new CheckedOverloadFunctionType({
-        branches: List.of(
-          unphasedFunction([intType, intType], coreTypes.boolean),
-          unphasedFunction([floatType, intType], coreTypes.boolean),
-          unphasedFunction([intType, floatType], coreTypes.boolean),
-          unphasedFunction([floatType, floatType], coreTypes.boolean),
-        ),
-      }),
-    }));
-    preamble.set(op, mathSymbol.child(op));
-  });
 
   const integerDivisionResultType = createStructType(mathSymbol, declarations, 'IntegerDivisionResult', [], {
     dividend: intType,
