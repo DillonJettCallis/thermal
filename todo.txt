@@ -1,5 +1,4 @@
 
-* If a def returns a non-flow, wrap it in a singleton
 * Better parsing of more complex expressions
 * Calling a method right after construction
 * Explicit type arguments in ALL use cases

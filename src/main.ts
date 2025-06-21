@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import * as process from 'node:process';
 import { readdirSync } from 'node:fs';
 import { File } from './file.ts';
+import { returnLifter } from './transform/returnLifter.ts';
 
 async function main(mainFileName: string): Promise<void> {
   const workingDir = resolve(fileURLToPath(import.meta.url), '../..');
@@ -59,12 +60,15 @@ async function main(mainFileName: string): Promise<void> {
     verifyImports(pack.files, depDict.getManager(pack.name)!, typeDict);
   });
 
+  const returnLifterTransform = returnLifter(coreTypes);
+
   const checkedPackages = packages.map(pack => {
     const checker = new Checker(depDict.getManager(pack.name)!, typeDict, coreTypes, preamble);
 
     return new CheckedPackage({
       name: pack.name,
-      files: pack.files.map(file => checker.checkFile(file)),
+      // TODO: a proper place for transformers to live as part of the workflow
+      files: pack.files.map(file => returnLifterTransform(checker.checkFile(file))),
       externals: pack.externals,
     })
   });

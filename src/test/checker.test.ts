@@ -1,9 +1,9 @@
-import { DependencyDictionary, PackageName, Position, Symbol, TypeDictionary, Version, PhaseType } from '../ast.ts';
+import { DependencyDictionary, PackageName, PhaseType, Position, Symbol, TypeDictionary, Version } from '../ast.ts';
 import { coreLib } from '../lib.ts';
-import { List, Set } from 'immutable';
+import { List } from 'immutable';
 import { Checker, Scope } from '../checker/checker.ts';
 import { equal, ok, throws } from 'node:assert';
-import { collectDeclarations, collectSymbols, Qualifier } from '../checker/collector.ts';
+import { collectSymbols, Qualifier } from '../checker/collector.ts';
 import { describe, it } from 'node:test';
 import { CheckedFunctionType, CheckedFunctionTypeParameter } from '../checker/checkerAst.ts';
 import {

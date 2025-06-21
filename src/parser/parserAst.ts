@@ -1,5 +1,13 @@
-import { Map, List, Set, Record,  } from 'immutable';
-import { Position, type ExpressionPhase, type FunctionPhase, Symbol, type Access, PackageName, Extern,  } from '../ast.ts';
+import { List, Map, Record } from 'immutable';
+import {
+  type Access,
+  type ExpressionPhase,
+  Extern,
+  type FunctionPhase,
+  PackageName,
+  Position,
+  Symbol
+} from '../ast.ts';
 
 export type ParserTypeExpression
   = ParserConcreteType

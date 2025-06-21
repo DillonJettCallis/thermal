@@ -86,7 +86,6 @@ import {
 } from './jsIr.ts';
 import { List, Map, Seq } from 'immutable';
 import { type ExpressionPhase, Extern, type FunctionPhase, Position, type Symbol } from '../ast.ts';
-import { substringAfterLast } from '../utils.ts';
 import { intrinsics } from './jsIntrinsics.ts';
 
 export class JsCompiler {

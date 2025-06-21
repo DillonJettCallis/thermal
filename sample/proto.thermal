@@ -35,11 +35,15 @@ implement Shape for Rectangle {
   }
 }
 
+def testAction(): Int {
+  8
+}
+
 def main(): Html {
-  const test = -2;
-  const test2 = -test;
+  flow size = testAction();
+
   var title = 'Proto'
-  val square = Rectangle { height: 8, width: 8 };
+  flow square = Rectangle { height: size, width: size };
 
   Html {
     head: head(title),
