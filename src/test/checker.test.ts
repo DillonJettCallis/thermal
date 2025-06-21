@@ -3,7 +3,7 @@ import { coreLib } from '../lib.ts';
 import { List, Set } from 'immutable';
 import { Checker, Scope } from '../checker/checker.ts';
 import { equal, ok, throws } from 'node:assert';
-import { collectSymbols, Qualifier } from '../checker/collector.ts';
+import { collectDeclarations, collectSymbols, Qualifier } from '../checker/collector.ts';
 import { describe, it } from 'node:test';
 import { CheckedFunctionType, CheckedFunctionTypeParameter } from '../checker/checkerAst.ts';
 import {
@@ -56,7 +56,7 @@ const preambleScope = preamble.map(name => {
 });
 
 function testScope(): Scope {
-  return Scope.init(preambleScope, Set(), qualifier, root, coreTypes.unit);
+  return Scope.init(preambleScope, preamble.valueSeq().filter(it => typeDict.isProtocol(it)).toSet(), qualifier, root, coreTypes.unit);
 }
 
 describe('Checker', () => {
@@ -99,16 +99,19 @@ describe('Checker', () => {
   it('should typecheck a plain int addition operation', () => {
     const actual = checker.checkCall(new ParserCallEx({
       pos,
-      func: new ParserIdentifierEx({
+      func: new ParserAccessEx({
         pos,
-        name: '+',
-      }),
-      typeArgs: List(),
-      args: List.of(
-        new ParserIntLiteralEx({
+        base: new ParserIntLiteralEx({
           pos,
           value: 1,
         }),
+        field: new ParserIdentifierEx({
+          pos,
+          name: '+',
+        }),
+      }),
+      typeArgs: List(),
+      args: List.of(
         new ParserIntLiteralEx({
           pos,
           value: 1,
@@ -122,16 +125,19 @@ describe('Checker', () => {
   it('should typecheck a plain float addition operation', () => {
     const actual = checker.checkCall(new ParserCallEx({
       pos,
-      func: new ParserIdentifierEx({
+      func: new ParserAccessEx({
         pos,
-        name: '+',
-      }),
-      typeArgs: List(),
-      args: List.of(
-        new ParserFloatLiteralEx({
+        base: new ParserFloatLiteralEx({
           pos,
           value: 1.5,
         }),
+        field: new ParserIdentifierEx({
+          pos,
+          name: '+',
+        }),
+      }),
+      typeArgs: List(),
+      args: List.of(
         new ParserFloatLiteralEx({
           pos,
           value: 1.5,
@@ -340,16 +346,19 @@ describe('Checker', () => {
               }),
               new ParserCallEx({
                 pos,
-                func: new ParserIdentifierEx({
+                func: new ParserAccessEx({
                   pos,
-                  name: '+',
-                }),
-                typeArgs: List(),
-                args: List.of<ParserExpression>(
-                  new ParserIdentifierEx({
+                  base: new ParserIdentifierEx({
                     pos,
                     name: 'x',
                   }),
+                  field: new ParserIdentifierEx({
+                    pos,
+                    name: '*',
+                  }),
+                }),
+                typeArgs: List(),
+                args: List.of<ParserExpression>(
                   new ParserIntLiteralEx({
                     pos,
                     value: 2,
@@ -577,21 +586,24 @@ describe('Checker', () => {
       body: new ParserCallEx({
         pos,
         typeArgs: List(),
-        func: new ParserIdentifierEx({
+        func: new ParserAccessEx({
           pos,
-          name: '+',
+          base: new ParserIdentifierEx({
+            pos,
+            name: 'x',
+          }),
+          field: new ParserIdentifierEx({
+            pos,
+            name: '+',
+          }),
         }),
         args: List.of(
           new ParserIdentifierEx({
             pos,
-            name: 'x',
-          }),
-          new ParserIdentifierEx({
-            pos,
-            name: 'y',
-          }),
-        ),
-      }),
+            name: 'y'
+          })
+        )
+      })
     }), scope, root);
 
     equal(actual.phase, 'flow');
@@ -605,6 +617,9 @@ describe('Checker', () => {
     const scope = parentScope.childFunction(root.child('testFunc'), List(), coreTypes.nothing, 'fun');
     scope.set('x', new PhaseType(coreTypes.int, 'flow', pos));
 
+    // const fun testFunc(y: Int): Int {
+    //   x + y
+    // }
     const input = new ParserFunctionStatement({
       pos,
       name: 'testFunc',
@@ -639,15 +654,18 @@ describe('Checker', () => {
       body: new ParserCallEx({
         pos,
         typeArgs: List(),
-        func: new ParserIdentifierEx({
+        func: new ParserAccessEx({
           pos,
-          name: '+',
-        }),
-        args: List.of(
-          new ParserIdentifierEx({
+          base: new ParserIdentifierEx({
             pos,
             name: 'x',
           }),
+          field: new ParserIdentifierEx({
+            pos,
+            name: '+',
+          }),
+        }),
+        args: List.of(
           new ParserIdentifierEx({
             pos,
             name: 'y',
